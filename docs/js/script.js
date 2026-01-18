@@ -1,5 +1,8 @@
-// Initialize Particles.js
+// Initialize Particles.js and set current year
 document.addEventListener('DOMContentLoaded', function() {
+    // Set current year in copyright
+    document.getElementById('currentYear').textContent = new Date().getFullYear();
+    
     // Particles.js configuration
     particlesJS('particles-js', {
         particles: {
