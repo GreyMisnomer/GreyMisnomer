@@ -1,81 +1,81 @@
-:root {
-  --bg: #111;
-  --fg: #e6e6e6;
-  --muted: #9a9a9a;
-}
-
 * {
-  margin: 0;
-  padding: 0;
-  box-sizing: border-box;
+  margin:0;
+  padding:0;
+  box-sizing:border-box;
 }
 
 html, body {
-  height: 100%;
-  background: var(--bg);
-  font-family: "Inter", system-ui, sans-serif;
-  color: var(--fg);
+  height:100%;
 }
 
-.container {
-  height: 100%;
-  display: flex;
-  flex-direction: column;
-  justify-content: center;
-  align-items: center;
-  text-align: center;
+body {
+  background:#0d0d0f;
+  color:#e0e0ea;
+  font-family: system-ui, -apple-system, sans-serif;
+  overflow:hidden;
+}
+
+.stage {
+  height:100%;
+  display:grid;
+  place-items:center;
+  text-align:center;
+  padding:2rem;
 }
 
 .hero {
-  font-size: clamp(2.5rem, 8vw, 6rem);
-  letter-spacing: 0.15em;
-  text-transform: uppercase;
-  position: relative;
-  cursor: default;
-  transition: transform 0.2s ease;
+  font-size: clamp(3.2rem, 9vw, 9.5rem);
+  font-weight:900;
+  letter-spacing:-0.04em;
+  background: linear-gradient(90deg, #a0a0ff, #c8c8ff, #9090ff, #b0b0ff);
+  background-size: 200% auto;
+  -webkit-background-clip:text;
+  background-clip:text;
+  color:transparent;
+  position:relative;
+  cursor:default;
+  transition: transform .4s ease;
 }
 
-.hero::before,
+.hero:hover {
+  transform: scale(1.015);
+}
+
 .hero::after {
   content: attr(data-text);
-  position: absolute;
-  top: 0;
-  left: 0;
-  opacity: 0;
-  transition: opacity 0.3s;
-}
-
-.hero::before {
-  color: #ff4d4d;
-  transform: translate(2px, 0);
-}
-
-.hero::after {
-  color: #4da6ff;
-  transform: translate(-2px, 0);
-}
-
-.hero:hover::before,
-.hero:hover::after {
-  opacity: 0.6;
+  position:absolute;
+  inset:0;
+  background: linear-gradient(90deg, #8080ff44, #c080ff33, transparent 60%);
+  background-size:180%;
+  background-clip:text;
+  -webkit-background-clip:text;
+  color:transparent;
+  opacity:0.35;
+  filter:blur(25px);
+  z-index:-1;
+  animation: breathe 12s ease-in-out infinite;
 }
 
 .subtitle {
-  margin-top: 1rem;
-  font-size: 0.9rem;
-  letter-spacing: 0.3em;
-  color: var(--muted);
-  opacity: 0;
-  animation: fadeIn 2s ease forwards;
-  animation-delay: 0.8s;
+  margin-top:1.2rem;
+  font-size: clamp(1rem, 3vw, 1.4rem);
+  opacity:0.65;
+  font-weight:300;
+  letter-spacing:0.06em;
+  color:#b0b0d0;
 }
 
-@keyframes fadeIn {
-  to { opacity: 1; }
+@keyframes breathe {
+  0%,100%   { background-position:0% 50%; opacity:0.25; }
+  50%       { background-position:100% 50%; opacity:0.5; }
 }
 
-@media (max-width: 768px) {
-  .hero {
-    letter-spacing: 0.08em;
-  }
+/* Mobile */
+@media (max-width: 640px) {
+  .hero { letter-spacing:-0.02em; }
+}
+
+@keyframes pulse {
+  0%,100% { transform: scale(1); }
+  50%     { transform: scale(1.04); }
 }
