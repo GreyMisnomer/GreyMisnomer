@@ -1,25 +1,23 @@
-const hero = document.querySelector('.hero');
+document.addEventListener('mousemove', (e) => {
+    const hero = document.querySelector('.hero');
+    const width = window.innerWidth;
+    const height = window.innerHeight;
+    
+    // Calculate mouse position relative to center (-1 to 1)
+    const xVal = (e.clientX - width / 2) / width;
+    const yVal = (e.clientY - height / 2) / height;
 
-hero.addEventListener('pointermove', (e) => {
-  const rect = hero.getBoundingClientRect();
-  const x = (e.clientX - rect.left) / rect.width - 0.5;
-  const y = (e.clientY - rect.top) / rect.height - 0.5;
+    // Move the "Red" and "Blue" layers in opposite directions
+    // to create a "misnomer" visual verification effect
+    const redShiftX = xVal * 15; 
+    const redShiftY = yVal * 15;
+    const blueShiftX = xVal * -15; 
+    const blueShiftY = yVal * -15;
 
-  hero.style.transform = `
-    perspective(1200px)
-    rotateX(${y * 12}deg)
-    rotateY(${x * -18}deg)
-    scale(1.02)
-  `;
-});
-
-hero.addEventListener('pointerleave', () => {
-  hero.style.transform = 'perspective(1200px) rotateX(0deg) rotateY(0deg) scale(1)';
-});
-
-// Optional tiny pulse on click/tap
-hero.addEventListener('click', () => {
-  hero.style.animation = 'none';
-  void hero.offsetWidth;
-  hero.style.animation = 'pulse 0.6s ease';
+    // Apply the shifts to pseudo-elements via CSS variables would be complex,
+    // so we manipulate text-shadow for a smoother, dep-free effect
+    hero.style.textShadow = `
+        ${redShiftX}px ${redShiftY}px 0px rgba(255,0,0,0.5),
+        ${blueShiftX}px ${blueShiftY}px 0px rgba(0,255,255,0.5)
+    `;
 });
