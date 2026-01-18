@@ -4,14 +4,94 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>GreyMisnomer</title>
+    <meta name="description" content="Architecting verifiable systems in the grey zones: policy, cryptography, and climate-tech for voluntary international carbon markets.">
     <link rel="stylesheet" href="css/style.css">
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;600;800&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
 </head>
 <body>
+    <!-- Particle Background -->
+    <div id="particles-js"></div>
+    
+    <!-- Main Container -->
     <div class="container">
-        <h1 class="hero" data-text="GreyMisnomer">GreyMisnomer</h1>
-        <p class="subtitle">policy &middot; architecture &middot; trust</p>
+        <!-- Interactive Title -->
+        <div class="title-container">
+            <h1 class="main-title" id="greyTitle">Grey<span class="mislign">M</span>isnomer</h1>
+            <div class="subtitle typewriter">Operating in the spaces between</div>
+        </div>
+
+        <!-- Core Principles -->
+        <div class="principles">
+            <div class="principle-card" data-tilt>
+                <div class="icon">⚖️</div>
+                <h3>Policy + Technology</h3>
+                <p>Where regulation meets implementation</p>
+            </div>
+            <div class="principle-card" data-tilt>
+                <div class="icon">🔗</div>
+                <h3>Trust + Verification</h3>
+                <p>ZKPs, blockchain, auditable systems</p>
+            </div>
+            <div class="principle-card" data-tilt>
+                <div class="icon">🌍</div>
+                <h3>Scalable Infrastructure</h3>
+                <p>National to international markets</p>
+            </div>
+        </div>
+
+        <!-- Call to Action -->
+        <div class="cta-section">
+            <a href="https://github.com/PrabhatKarlekar/GreyMisnomer" class="btn github-btn" target="_blank">
+                <span>🚀 View on GitHub</span>
+            </a>
+            <a href="#about" class="btn secondary-btn" onclick="toggleAbout()">
+                <span>📚 Learn More</span>
+            </a>
+        </div>
+
+        <!-- About Section (Initially Hidden) -->
+        <div id="about" class="about-section">
+            <h2>Building the Future of Voluntary Carbon Markets</h2>
+            <div class="about-grid">
+                <div class="about-card">
+                    <h3>🔬 Research-Driven</h3>
+                    <p>Architecture-first approach to complex policy-tech ecosystems</p>
+                </div>
+                <div class="about-card">
+                    <h3>🔐 Cryptography-First</h3>
+                    <p>Zero-knowledge proofs, verifiable credentials, leakage-free design</p>
+                </div>
+                <div class="about-card">
+                    <h3>🌐 Interoperable</h3>
+                    <p>Cross-border, multi-registry, compliance-by-design systems</p>
+                </div>
+                <div class="about-card">
+                    <h3>⚡ Production-Ready</h3>
+                    <p>SDLC, CI/CD, containerization from day one</p>
+                </div>
+            </div>
+            <div class="tech-stack">
+                <span class="tech-tag">Blockchain</span>
+                <span class="tech-tag">ZKPs</span>
+                <span class="tech-tag">Digital MRV</span>
+                <span class="tech-tag">API-First</span>
+                <span class="tech-tag">Docker</span>
+                <span class="tech-tag">Terraform</span>
+            </div>
+        </div>
+
+        <!-- Footer -->
+        <footer class="footer">
+            <p>GreyMisnomer – Open Source • Verifiable • Evolving</p>
+            <p class="copyright">© 2024 GreyMisnomer Initiative. All specifications open for collaboration.</p>
+        </footer>
     </div>
 
+    <!-- Scripts -->
+    <script src="https://cdn.jsdelivr.net/particles.js/2.0.0/particles.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/vanilla-tilt@1.7.0/dist/vanilla-tilt.min.js"></script>
     <script src="js/script.js"></script>
 </body>
 </html>
