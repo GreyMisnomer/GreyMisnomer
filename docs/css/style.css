@@ -1,0 +1,81 @@
+:root {
+  --bg: #111;
+  --fg: #e6e6e6;
+  --muted: #9a9a9a;
+}
+
+* {
+  margin: 0;
+  padding: 0;
+  box-sizing: border-box;
+}
+
+html, body {
+  height: 100%;
+  background: var(--bg);
+  font-family: "Inter", system-ui, sans-serif;
+  color: var(--fg);
+}
+
+.container {
+  height: 100%;
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+  align-items: center;
+  text-align: center;
+}
+
+.hero {
+  font-size: clamp(2.5rem, 8vw, 6rem);
+  letter-spacing: 0.15em;
+  text-transform: uppercase;
+  position: relative;
+  cursor: default;
+  transition: transform 0.2s ease;
+}
+
+.hero::before,
+.hero::after {
+  content: attr(data-text);
+  position: absolute;
+  top: 0;
+  left: 0;
+  opacity: 0;
+  transition: opacity 0.3s;
+}
+
+.hero::before {
+  color: #ff4d4d;
+  transform: translate(2px, 0);
+}
+
+.hero::after {
+  color: #4da6ff;
+  transform: translate(-2px, 0);
+}
+
+.hero:hover::before,
+.hero:hover::after {
+  opacity: 0.6;
+}
+
+.subtitle {
+  margin-top: 1rem;
+  font-size: 0.9rem;
+  letter-spacing: 0.3em;
+  color: var(--muted);
+  opacity: 0;
+  animation: fadeIn 2s ease forwards;
+  animation-delay: 0.8s;
+}
+
+@keyframes fadeIn {
+  to { opacity: 1; }
+}
+
+@media (max-width: 768px) {
+  .hero {
+    letter-spacing: 0.08em;
+  }
+}
