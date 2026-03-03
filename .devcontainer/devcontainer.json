@@ -1,0 +1,32 @@
+{
+  "name": "GreyMisnomer Rust Development",
+  "image": "mcr.microsoft.com/devcontainers/rust:1-bookworm",
+  
+  "features": {
+    "ghcr.io/devcontainers/features/python:1": {
+      "version": "3.12"
+    },
+    "ghcr.io/devcontainers/features/node:1": {
+      "version": "lts"
+    }
+  },
+  
+  "postCreateCommand": "rustup component add rustfmt clippy && cargo install cargo-audit",
+  
+  "customizations": {
+    "vscode": {
+      "extensions": [
+        "rust-lang.rust-analyzer",
+        "serayuzgur.crates",
+        "tamasfe.even-better-toml",
+        "vadimcn.vscode-lldb"
+      ],
+      "settings": {
+        "rust-analyzer.checkOnSave.command": "clippy"
+      }
+    }
+  },
+  
+  "forwardPorts": [],
+  "remoteUser": "vscode"
+}
