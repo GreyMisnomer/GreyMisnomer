@@ -1,0 +1,147 @@
+# RFC-002: Credit Serialization Format & Range Locking Rules
+
+**Status:** Draft  
+**Created:** 2026-04-14  
+**Author:** @PrabhatKarlekar  
+**Related Issues:** #3 (RFC-001)  
+**Target Phase:** Year 0-1
+
+---
+
+## 1. Problem Statement
+
+Pure fungible tokens hide origin, vintage, methodology, and usage history. This leads to:
+- Double counting
+- Phantom credits
+- Inability to prove exact retirement
+- No non-reusability guarantee
+- High risk of replay attacks and range reuse
+
+> [!CAUTION]
+> Without serialization, the registry cannot enforce lifecycle correctness at the protocol level (as established in **RFC-001**).
+
+---
+
+## 2. Proposed Solution
+
+Adopt **semi-fungible serialized credits**:
+- Credits from the **same issuance batch** are fungible with each other.
+- Credits are **non-fungible across batches or over time**.
+- Each issuance batch receives a **contiguous serial range**.
+- Each serial represents **exactly 1 tCO₂e**.
+
+**Example:**
+- Project `SOLAR-2026-001` → serial range `1_000_000 – 1_999_999`
+
+---
+
+## 3. Serialization Format
+
+**Recommended structure:**
+`[PROJECT_ID]-[VINTAGE]-[BATCH]-[START_SERIAL]-[END_SERIAL]`
+
+**Example:** `PRJ123-2026-001-1000000-1999999`
+
+**On-chain minimal storage:**
+- `serial_start` (u64)
+- `serial_end` (u64)
+- `credit_id` (linked to PoI from RFC-001)
+- `owner`
+- `status` (Active | Locked | Burned)
+
+> [!NOTE]
+> **Metadata** (project ID, vintage, methodology hash, PoI reference) lives off the directly tracked token inside the PoI object.
+
+---
+
+## 4. Range Locking Lifecycle
+
+```mermaid
+flowchart LR
+    A[Unlocked<br>pre-mint] -->|PoI validated<br>range assigned| B[Minted]
+    B -->|Locked| C[Locked]
+    C -->|Exact range or<br>slice burned| D[Burned]
+    D --> E[Permanently<br>Retired]
+```
+
+- **Unlocked → Minted**: PoI validated → range assigned and locked.
+- **Locked → Burned**: Exact serial range (or slice) burned on retirement.
+- **No valid path** back to Unlocked or Minted states.
+
+> [!IMPORTANT]
+> **Locking prevents:** Duplicate issuance, replay attacks, double counting, and range reuse.
+
+---
+
+## 5. Partial Retirement (Slicing)
+
+When only part of a range is retired:
+- Burned slice → permanently retired + PoO issued
+- Remaining range(s) stay active with same `credit_id`
+- New sub-ranges created with updated bounds
+
+---
+
+## 6. Core Invariants (Enforced by Registry)
+
+1. A serialization range can only be minted once.
+2. Once locked, a range cannot be reassigned.
+3. Burned serials cannot be re-minted (no re-entry path).
+4. Every retired serial must have a corresponding PoO (RFC-001).
+5. Partial retirement must preserve full traceability.
+
+---
+
+## 7. Alternatives Considered
+
+- **Pure ERC-20** → Rejected (no traceability)
+- **Pure ERC-721** → Rejected (gas cost + fragmentation)
+- **ERC-1155 / ERC-3525 without custom locking** → Strong candidate, but requires explicit range-locking logic on top
+
+---
+
+## 8. Open Questions
+
+1. Maximum batch size? (1M? 10M?)
+2. Hierarchical serials (project → vintage → methodology)?
+3. Should serial format be encoded directly in the token ID?
+4. Cross-chain serial uniqueness (future multi-chain support)?
+
+---
+
+## 9. References
+
+- `architecture/qna_document_v1.pdf` → Q4 (serialization), Q5 (locking)
+- `architecture/desgin_document_v2.pdf` → Serialization & locking sections
+- **RFC-001 (Two-Proof Model)** — PoI required before any range can be minted
+
+---
+
+## 10. Implementation Notes (Phase Alpha)
+
+**Location:** `src/core/`
+
+**Rust types to define:**
+
+```rust
+struct SerialRange {
+    start: u64,
+    end: u64,
+}
+
+struct CreditBatch {
+    project_id: String,
+    vintage: u32,
+    serial_range: SerialRange,
+    owner: Address,
+    status: CreditStatus,
+}
+```
+
+**Tests required:**
+- Range uniqueness enforcement
+- Partial slice retirement
+- Burn irreversibility
+- Mint without valid PoI → revert
+
+**Dependencies:** None (pure Rust in Phase Alpha)
