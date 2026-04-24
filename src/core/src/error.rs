@@ -35,6 +35,10 @@ pub enum RegistryError {
     #[error("a PoO has already been issued for this serial range — cannot issue twice")]
     PoOAlreadyIssued,
 
+    // RFC-002 §5: partial burn requested but no active slice contains the burn range.
+    #[error("no active slice contains the requested burn range {start}–{end}")]
+    BurnRangeNotFound { start: u64, end: u64 },
+
     // RFC-001: any lifecycle transition not permitted by the state machine
     #[error("invalid state transition: {from} -> {to}")]
     InvalidStateTransition { from: String, to: String },

@@ -104,7 +104,7 @@ impl Registry {
         // Find the active slice that strictly contains the burn envelope
         let slice_idx = batch.slices.iter()
             .position(|s| s.status == CreditStatus::Active && s.range.contains(&burn_range))
-            .ok_or_else(|| RegistryError::InvalidRange)?;
+            .ok_or_else(|| RegistryError::BurnRangeNotFound { start: burn_range.start, end: burn_range.end })?;
 
         // Excise target slice
         let target_slice = batch.slices.remove(slice_idx);
