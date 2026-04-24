@@ -9,10 +9,22 @@ pub enum CreditStatus {
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct SerialSlice {
+    pub range: SerialRange,
+    pub status: CreditStatus,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct CreditBatch {
     pub project_id: String,
     pub credit_id: String,
-    pub serial_range: SerialRange,
+    pub original_range: SerialRange,
+    pub slices: Vec<SerialSlice>,
     pub owner: String,
-    pub status: CreditStatus,
+}
+
+impl CreditBatch {
+    pub fn is_active(&self) -> bool {
+        self.slices.iter().any(|s| s.status == CreditStatus::Active)
+    }
 }
