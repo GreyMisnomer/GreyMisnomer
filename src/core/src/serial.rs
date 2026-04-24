@@ -38,6 +38,28 @@ impl SerialRange {
     pub fn contains(&self, other: &SerialRange) -> bool {
         self.start <= other.start && self.end >= other.end
     }
+
+    // Slices a target burn range out of this contiguous range, returning the Active remainders.
+    // RFC-002: Partial retirement slicing engine.
+    pub fn slice(&self, burn: &SerialRange) -> Result<Vec<SerialRange>, RegistryError> {
+        if !self.contains(burn) {
+            return Err(RegistryError::InvalidRange);
+        }
+
+        let mut remainders = Vec::new();
+
+        // Left remainder
+        if self.start < burn.start {
+            remainders.push(SerialRange::new(self.start, burn.start - 1)?);
+        }
+
+        // Right remainder
+        if self.end > burn.end {
+            remainders.push(SerialRange::new(burn.end + 1, self.end)?);
+        }
+
+        Ok(remainders)
+    }
 }
 
 #[cfg(test)]
@@ -83,5 +105,54 @@ mod tests {
         let b = SerialRange::new(10, 50).unwrap();
         assert!(a.contains(&b));
         assert!(!b.contains(&a));
+    }
+
+    #[test]
+    fn test_slice_middle() {
+        let main = SerialRange::new(0, 999).unwrap();
+        let burn = SerialRange::new(200, 399).unwrap();
+        let remainders = main.slice(&burn).unwrap();
+        
+        assert_eq!(remainders.len(), 2);
+        assert_eq!(remainders[0], SerialRange::new(0, 199).unwrap());
+        assert_eq!(remainders[1], SerialRange::new(400, 999).unwrap());
+    }
+
+    #[test]
+    fn test_slice_left_edge() {
+        let main = SerialRange::new(0, 999).unwrap();
+        let burn = SerialRange::new(0, 499).unwrap();
+        let remainders = main.slice(&burn).unwrap();
+        
+        assert_eq!(remainders.len(), 1);
+        assert_eq!(remainders[0], SerialRange::new(500, 999).unwrap());
+    }
+
+    #[test]
+    fn test_slice_right_edge() {
+        let main = SerialRange::new(0, 999).unwrap();
+        let burn = SerialRange::new(500, 999).unwrap();
+        let remainders = main.slice(&burn).unwrap();
+        
+        assert_eq!(remainders.len(), 1);
+        assert_eq!(remainders[0], SerialRange::new(0, 499).unwrap());
+    }
+
+    #[test]
+    fn test_slice_full() {
+        let main = SerialRange::new(0, 999).unwrap();
+        let burn = SerialRange::new(0, 999).unwrap();
+        let remainders = main.slice(&burn).unwrap();
+        
+        assert_eq!(remainders.len(), 0);
+    }
+
+    #[test]
+    fn test_slice_invalid_not_contained() {
+        let main = SerialRange::new(100, 200).unwrap();
+        let burn = SerialRange::new(150, 250).unwrap();
+        let result = main.slice(&burn);
+        
+        assert!(result.is_err());
     }
 }
