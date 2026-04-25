@@ -4,17 +4,23 @@ use crate::credit::{CreditBatch, CreditStatus, SerialSlice};
 use crate::poo::{PoO, PoOStatus, ClaimType};
 use crate::serial::SerialRange;
 
+// The Registry serves as the central state machine and source of truth for the entire GreyMisnomer protocol.
+// It manages the global lifecycle of all Carbon Credits, ensuring compliance with RFC-001, RFC-002, and RFC-003.
 #[derive(Default)]
 pub struct Registry {
+    // Active and retired credit batches representing all issued supply
     pub credits: Vec<CreditBatch>,
+    // Globally immutable append-only record of all retired/burned ranges (Invariant 4 & 5)
     pub burned_ranges: Vec<SerialRange>,
 }
 
 impl Registry {
+    // Instantiates an empty protocol Registry state
     pub fn new() -> Self {
         Self::default()
     }
 
+    // Validates a Proof-of-Integrity (PoI) before minting. Ensures the PoI hasn't been used and is semantically valid.
     pub fn validate_poi(&self, poi: &PoI) -> Result<(), RegistryError> {
         if poi.is_used() {
             return Err(RegistryError::PoIAlreadyUsed);
@@ -27,6 +33,7 @@ impl Registry {
         Ok(())
     }
 
+    // Mint logic mapping: ingests a PoI and issues a new CreditBatch to the owner if invariants hold.
     pub fn mint(&mut self, poi: &mut PoI, owner: String) -> Result<CreditBatch, RegistryError> {
         self.validate_poi(poi)?;
 
@@ -119,6 +126,12 @@ impl Registry {
         
         // Push the executed burn footprint onto the batch tracking object
         batch.slices.push(SerialSlice { range: burn_range, status: CreditStatus::Retired });
+
+        // Normalize slices to merge adjacent fragments and prevent infinite fragmentation
+        crate::credit::normalize_slices(&mut batch.slices);
+
+        // Assert fail-fast internal validation guard to prevent silent state corruption
+        assert!(batch.validate_internal(), "CreditBatch internal state corrupted after burn mutation");
 
         // Lock globally 
         self.burned_ranges.push(burn_range);
@@ -268,6 +281,7 @@ mod tests {
         assert_eq!(registry.burned_ranges[0], burn_range);
 
         let batch = registry.credits.first().unwrap();
+        // Since it's normalized, left is active, middle is retired, right is active. Total 3 slices.
         assert_eq!(batch.slices.len(), 3);
         
         let active_slices: Vec<_> = batch.slices.iter().filter(|s| s.status == CreditStatus::Active).collect();
@@ -278,5 +292,27 @@ mod tests {
         let retired_slices: Vec<_> = batch.slices.iter().filter(|s| s.status == CreditStatus::Retired).collect();
         assert_eq!(retired_slices.len(), 1);
         assert_eq!(retired_slices[0].range, burn_range);
+    }
+
+    #[test]
+    fn normalization_merges_adjacent_slices() {
+        let mut registry = Registry::new();
+        let mut poi = make_poi("CC-1", 0, 999);
+
+        registry.mint(&mut poi, "Alice".to_string()).unwrap();
+
+        // Burn two adjacent ranges
+        registry.burn("CC-1", SerialRange::new(200, 299).unwrap(), "A".to_string(), ClaimType::CorporateNetZero).unwrap();
+        registry.burn("CC-1", SerialRange::new(300, 399).unwrap(), "B".to_string(), ClaimType::CorporateNetZero).unwrap();
+
+        let batch = registry.credits.first().unwrap();
+
+        let retired: Vec<_> = batch.slices.iter()
+            .filter(|s| s.status == CreditStatus::Retired)
+            .collect();
+
+        // After normalization -> should merge into ONE slice
+        assert_eq!(retired.len(), 1);
+        assert_eq!(retired[0].range, SerialRange::new(200, 399).unwrap());
     }
 }
