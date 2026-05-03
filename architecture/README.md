@@ -1,1 +1,5 @@
-# ADRs (Architecture Decision Records), System Design docs
+# Architecture
+
+Contains final architectural documents and diagrams for the GreyMisnomer protocol.
+
+- `diagrams/`: System architecture diagrams.

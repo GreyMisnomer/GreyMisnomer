@@ -36,6 +36,30 @@ impl CreditBatch {
         self.slices.iter().any(|s| s.status == CreditStatus::Active)
     }
 
+    pub fn summary(&self) -> String {
+        let mut out = String::new();
+
+        out.push_str(&format!("Credit ID: {}\n", self.credit_id));
+        out.push_str(&format!("Owner: {}\n\n", self.owner));
+        out.push_str(&format!("Original Range: {}–{}\n\n", self.original_range.start, self.original_range.end));
+
+        out.push_str("Active:\n");
+        for s in &self.slices {
+            if s.status == CreditStatus::Active {
+                out.push_str(&format!("  {}–{}\n", s.range.start, s.range.end));
+            }
+        }
+
+        out.push_str("\nRetired:\n");
+        for s in &self.slices {
+            if s.status == CreditStatus::Retired {
+                out.push_str(&format!("  {}–{}\n", s.range.start, s.range.end));
+            }
+        }
+
+        out
+    }
+
     // Validates the internal consistency of the CreditBatch to ensure no overlap or out-of-bounds slices exist.
     // Serves as a critical fail-fast invariant guard after any state mutation.
     pub fn validate_internal(&self) -> bool {
