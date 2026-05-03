@@ -17,3 +17,9 @@ anyhow = "1.0"
 # blake3 is a very fast cryptographic hash function. We'll use it for our Merkle Trees (from RFC-003)
 # explicitly pinned to 1.5.5 to avoid compiling errors on older Rust setups
 blake3 = "=1.5.5"
+# serde_json for human-readable output in the CLI demo
+serde_json = "1.0"
+
+[[example]]
+name = "demo"
+path = "examples/demo.rs"
