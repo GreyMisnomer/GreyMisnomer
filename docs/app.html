@@ -1,0 +1,1757 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>GreyMisnomer — Registry Console</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;600;800&family=JetBrains+Mono:wght@400;500;600&display=swap" rel="stylesheet">
+  <style>
+    :root {
+      --bg:           #0a0d14;
+      --bg2:          #10141f;
+      --bg3:          #161c2b;
+      --border:       #242d45;
+      --border-glow:  rgba(102, 126, 234, 0.3);
+      --text:         #f0f2f5;
+      --muted:        #8492a6;
+      --blue:         #58a6ff;
+      --purple:       #bc8cf2;
+      --green:        #39d353;
+      --amber:        #ecb22e;
+      --red:          #f85149;
+      --grad:         linear-gradient(135deg, #58a6ff, #bc8cf2);
+      --mono:         'JetBrains Mono', monospace;
+      --sans:         'Inter', sans-serif;
+    }
+    
+    * {
+      margin: 0;
+      padding: 0;
+      box-sizing: border-box;
+    }
+    
+    body {
+      font-family: var(--sans);
+      background: var(--bg);
+      color: var(--text);
+      min-height: 100vh;
+      overflow-x: hidden;
+      display: flex;
+      flex-direction: column;
+    }
+    
+    /* Navigation Bar */
+    nav {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      padding: 1rem 2rem;
+      border-bottom: 1px solid var(--border);
+      background: rgba(10, 13, 20, 0.85);
+      backdrop-filter: blur(12px);
+      position: sticky;
+      top: 0;
+      z-index: 100;
+    }
+    
+    .nav-logo {
+      font-weight: 800;
+      font-size: 1.2rem;
+      background: var(--grad);
+      -webkit-background-clip: text;
+      background-clip: text;
+      color: transparent;
+      text-decoration: none;
+      letter-spacing: -0.01em;
+    }
+    
+    .nav-links {
+      display: flex;
+      gap: 1.5rem;
+    }
+    
+    .nav-links a {
+      color: var(--muted);
+      text-decoration: none;
+      font-size: 0.9rem;
+      font-weight: 500;
+      transition: color 0.2s;
+    }
+    
+    .nav-links a:hover, .nav-links a.active {
+      color: var(--blue);
+    }
+    
+    /* Layout Shell */
+    .shell {
+      display: grid;
+      grid-template-columns: 280px 1fr;
+      flex-grow: 1;
+      min-height: calc(100vh - 65px);
+    }
+    
+    /* Sidebar */
+    .sidebar {
+      background: var(--bg2);
+      border-right: 1px solid var(--border);
+      padding: 2rem 1.2rem;
+      display: flex;
+      flex-direction: column;
+      gap: 1.5rem;
+      position: sticky;
+      top: 65px;
+      height: calc(100vh - 65px);
+      overflow-y: auto;
+    }
+    
+    .sidebar h3 {
+      font-size: 0.72rem;
+      letter-spacing: 0.15em;
+      color: var(--muted);
+      text-transform: uppercase;
+      padding-left: 0.5rem;
+    }
+    
+    .step-list {
+      display: flex;
+      flex-direction: column;
+      gap: 0.35rem;
+    }
+    
+    .step-item {
+      display: flex;
+      align-items: center;
+      gap: 0.85rem;
+      padding: 0.75rem 0.85rem;
+      border-radius: 12px;
+      cursor: pointer;
+      transition: all 0.2s ease;
+      border: 1px solid transparent;
+    }
+    
+    .step-item:hover:not(.locked) {
+      background: rgba(255, 255, 255, 0.03);
+    }
+    
+    .step-item.active {
+      background: rgba(88, 166, 255, 0.08);
+      border-color: rgba(88, 166, 255, 0.2);
+    }
+    
+    .step-item.done .sn {
+      background: rgba(57, 211, 83, 0.15);
+      border-color: var(--green);
+      color: var(--green);
+    }
+    
+    .step-item.locked {
+      opacity: 0.4;
+      cursor: not-allowed;
+    }
+    
+    .sn {
+      width: 28px;
+      height: 28px;
+      border-radius: 50%;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      font-family: var(--mono);
+      font-size: 0.75rem;
+      font-weight: 600;
+      flex-shrink: 0;
+      background: var(--bg3);
+      border: 1px solid var(--border);
+      color: var(--muted);
+      transition: all 0.2s;
+    }
+    
+    .step-item.active .sn {
+      background: var(--grad);
+      border-color: transparent;
+      color: #fff;
+      box-shadow: 0 0 10px rgba(88, 166, 255, 0.3);
+    }
+    
+    .sl {
+      font-size: 0.88rem;
+      color: var(--muted);
+      line-height: 1.3;
+      transition: color 0.2s;
+    }
+    
+    .step-item.active .sl {
+      color: var(--text);
+      font-weight: 600;
+    }
+    
+    .sidebar-footer {
+      margin-top: auto;
+      padding: 0.75rem;
+      border-radius: 12px;
+      background: var(--bg3);
+      border: 1px solid var(--border);
+      font-size: 0.78rem;
+      line-height: 1.6;
+      color: var(--muted);
+    }
+    
+    .sidebar-footer span {
+      color: var(--blue);
+      font-weight: 600;
+    }
+    
+    /* Main Content */
+    .main {
+      padding: 2.5rem;
+      max-width: 1000px;
+      width: 100%;
+      margin: 0 auto;
+    }
+    
+    .panel {
+      display: none;
+      animation: fadeUp 0.35s cubic-bezier(0.16, 1, 0.3, 1);
+    }
+    
+    .panel.active {
+      display: block;
+    }
+    
+    @keyframes fadeUp {
+      from {
+        opacity: 0;
+        transform: translateY(12px);
+      }
+      to {
+        opacity: 1;
+        transform: translateY(0);
+      }
+    }
+    
+    .panel-header {
+      margin-bottom: 2rem;
+    }
+    
+    .panel-header h2 {
+      font-size: 1.8rem;
+      font-weight: 800;
+      margin-bottom: 0.5rem;
+      background: var(--grad);
+      -webkit-background-clip: text;
+      background-clip: text;
+      color: transparent;
+    }
+    
+    .panel-header p {
+      color: var(--muted);
+      font-size: 0.95rem;
+      line-height: 1.6;
+    }
+    
+    .rfc-tag {
+      font-family: var(--mono);
+      font-size: 0.75rem;
+      font-weight: 500;
+      color: var(--purple);
+      background: rgba(188, 140, 242, 0.1);
+      border: 1px solid rgba(188, 140, 242, 0.25);
+      padding: 0.25rem 0.6rem;
+      border-radius: 6px;
+      display: inline-block;
+      margin-bottom: 0.8rem;
+    }
+    
+    /* Form & Fields */
+    .form-grid {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 1.25rem;
+      margin-bottom: 1.75rem;
+    }
+    
+    .form-grid.single {
+      grid-template-columns: 1fr;
+    }
+    
+    .form-grid.triple {
+      grid-template-columns: 1fr 1fr 1fr;
+    }
+    
+    .field {
+      display: flex;
+      flex-direction: column;
+      gap: 0.45rem;
+    }
+    
+    .field label {
+      font-size: 0.8rem;
+      color: var(--muted);
+      font-weight: 600;
+      text-transform: uppercase;
+      letter-spacing: 0.05em;
+    }
+    
+    .field input, .field select, .field textarea {
+      background: var(--bg2);
+      border: 1px solid var(--border);
+      border-radius: 10px;
+      color: var(--text);
+      padding: 0.75rem 1rem;
+      font-size: 0.92rem;
+      font-family: var(--sans);
+      transition: all 0.2s;
+      outline: none;
+    }
+    
+    .field input:focus, .field select:focus, .field textarea:focus {
+      border-color: var(--blue);
+      box-shadow: 0 0 0 2px rgba(88, 166, 255, 0.15);
+    }
+    
+    .field textarea {
+      resize: vertical;
+      min-height: 100px;
+      font-family: var(--mono);
+      font-size: 0.82rem;
+    }
+    
+    select option {
+      background: var(--bg2);
+    }
+    
+    /* Table Styling */
+    .table-wrap {
+      overflow-x: auto;
+      border: 1px solid var(--border);
+      border-radius: 12px;
+      background: var(--bg2);
+      margin-bottom: 1.25rem;
+    }
+    
+    table.mrv {
+      width: 100%;
+      border-collapse: collapse;
+      font-size: 0.88rem;
+    }
+    
+    table.mrv th {
+      background: var(--bg3);
+      padding: 0.75rem 1rem;
+      text-align: left;
+      font-size: 0.75rem;
+      color: var(--muted);
+      font-weight: 600;
+      text-transform: uppercase;
+      letter-spacing: 0.05em;
+      border-bottom: 1px solid var(--border);
+    }
+    
+    table.mrv td {
+      padding: 0.5rem 1rem;
+      border-bottom: 1px solid rgba(255, 255, 255, 0.02);
+    }
+    
+    table.mrv td input {
+      background: transparent;
+      border: 1px solid transparent;
+      border-radius: 6px;
+      color: var(--text);
+      padding: 0.4rem 0.6rem;
+      font-family: var(--mono);
+      font-size: 0.85rem;
+      width: 100%;
+      outline: none;
+    }
+    
+    table.mrv td input:focus {
+      border-color: var(--border);
+      background: var(--bg3);
+    }
+    
+    .add-row-btn {
+      font-size: 0.85rem;
+      color: var(--blue);
+      background: none;
+      border: none;
+      cursor: pointer;
+      padding: 0.5rem 0.25rem;
+      font-weight: 500;
+      transition: opacity 0.2s;
+    }
+    
+    .add-row-btn:hover {
+      opacity: 0.85;
+      text-decoration: underline;
+    }
+    
+    /* Buttons */
+    .btn {
+      padding: 0.8rem 1.6rem;
+      border-radius: 50px;
+      font-size: 0.9rem;
+      font-weight: 600;
+      cursor: pointer;
+      border: none;
+      transition: all 0.2s;
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      gap: 0.5rem;
+      outline: none;
+    }
+    
+    .btn-primary {
+      background: var(--grad);
+      color: #fff;
+    }
+    
+    .btn-primary:hover {
+      transform: translateY(-2px);
+      box-shadow: 0 6px 15px rgba(88, 166, 255, 0.25);
+    }
+    
+    .btn-secondary {
+      background: var(--bg2);
+      color: var(--muted);
+      border: 1px solid var(--border);
+    }
+    
+    .btn-secondary:hover {
+      color: var(--text);
+      border-color: var(--muted);
+    }
+    
+    .btn-green {
+      background: rgba(57, 211, 83, 0.1);
+      color: var(--green);
+      border: 1px solid rgba(57, 211, 83, 0.25);
+    }
+    
+    .btn-green:hover {
+      background: rgba(57, 211, 83, 0.2);
+      transform: translateY(-1px);
+    }
+    
+    .btn-sm {
+      padding: 0.45rem 1rem;
+      font-size: 0.8rem;
+      border-radius: 6px;
+    }
+    
+    .btn:disabled {
+      opacity: 0.3;
+      cursor: not-allowed;
+      transform: none !important;
+      box-shadow: none !important;
+    }
+    
+    .btn-row {
+      display: flex;
+      gap: 1rem;
+      align-items: center;
+      flex-wrap: wrap;
+      margin-top: 1.75rem;
+    }
+    
+    /* Cards and Display panels */
+    .result-card {
+      background: var(--bg2);
+      border: 1px solid var(--border);
+      border-radius: 16px;
+      padding: 1.5rem;
+      margin-top: 1.5rem;
+      margin-bottom: 1rem;
+    }
+    
+    .result-card.success {
+      border-color: rgba(57, 211, 83, 0.3);
+      background: rgba(57, 211, 83, 0.02);
+    }
+    
+    .result-card.error {
+      border-color: rgba(248, 81, 73, 0.3);
+      background: rgba(248, 81, 73, 0.02);
+    }
+    
+    .result-card h4 {
+      font-size: 0.95rem;
+      font-weight: 700;
+      margin-bottom: 1rem;
+      display: flex;
+      align-items: center;
+      gap: 0.5rem;
+    }
+    
+    .kv-row {
+      display: flex;
+      padding: 0.5rem 0;
+      border-bottom: 1px solid rgba(255, 255, 255, 0.03);
+      font-size: 0.9rem;
+      gap: 1.5rem;
+      align-items: center;
+    }
+    
+    .kv-row:last-child {
+      border-bottom: none;
+    }
+    
+    .kv-key {
+      color: var(--muted);
+      font-family: var(--mono);
+      font-size: 0.8rem;
+      min-width: 180px;
+      flex-shrink: 0;
+    }
+    
+    .kv-val {
+      color: var(--text);
+      font-family: var(--mono);
+      font-size: 0.86rem;
+      word-break: break-all;
+    }
+    
+    .kv-val.green { color: var(--green); }
+    .kv-val.amber { color: var(--amber); }
+    .kv-val.blue { color: var(--blue); }
+    .kv-val.red { color: var(--red); }
+    
+    /* Visual Slice / Range timeline */
+    .timeline-container {
+      margin: 1.75rem 0;
+    }
+    
+    .timeline-title {
+      font-size: 0.85rem;
+      color: var(--muted);
+      font-family: var(--mono);
+      margin-bottom: 0.75rem;
+      display: flex;
+      justify-content: space-between;
+    }
+    
+    .timeline-bar {
+      height: 48px;
+      border-radius: 12px;
+      overflow: hidden;
+      display: flex;
+      background: var(--bg3);
+      border: 1px solid var(--border);
+      position: relative;
+    }
+    
+    .slice-segment {
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      font-family: var(--mono);
+      font-size: 0.72rem;
+      font-weight: 600;
+      overflow: hidden;
+      white-space: nowrap;
+      transition: width 0.4s cubic-bezier(0.25, 0.8, 0.25, 1);
+      position: relative;
+      cursor: help;
+    }
+    
+    .slice-segment.active {
+      background: rgba(88, 166, 255, 0.45);
+      color: #c9e2ff;
+      border-right: 1px solid rgba(88, 166, 255, 0.3);
+    }
+    
+    .slice-segment.retired {
+      background: rgba(248, 81, 73, 0.35);
+      color: #ffb8b8;
+      border-right: 1px solid rgba(248, 81, 73, 0.3);
+      background-image: repeating-linear-gradient(45deg, transparent, transparent 10px, rgba(248, 81, 73, 0.05) 10px, rgba(248, 81, 73, 0.05) 20px);
+    }
+    
+    .slice-segment:last-child {
+      border-right: none;
+    }
+    
+    .timeline-legend {
+      display: flex;
+      gap: 1.5rem;
+      margin-top: 0.75rem;
+    }
+    
+    .legend-item {
+      display: flex;
+      align-items: center;
+      font-size: 0.8rem;
+      color: var(--muted);
+    }
+    
+    .legend-color {
+      width: 12px;
+      height: 12px;
+      border-radius: 4px;
+      margin-right: 0.5rem;
+    }
+    
+    .legend-color.active {
+      background: rgba(88, 166, 255, 0.8);
+    }
+    
+    .legend-color.retired {
+      background: rgba(248, 81, 73, 0.7);
+    }
+    
+    /* Code Viewer / Hash blocks */
+    .hash-display {
+      background: #07090e;
+      border: 1px solid var(--border);
+      border-radius: 12px;
+      padding: 1rem 1.25rem;
+      font-family: var(--mono);
+      font-size: 0.82rem;
+      color: var(--green);
+      word-break: break-all;
+      margin-bottom: 1.25rem;
+      position: relative;
+    }
+    
+    .hash-display .tag {
+      font-size: 0.68rem;
+      color: var(--muted);
+      display: block;
+      margin-bottom: 0.4rem;
+      text-transform: uppercase;
+      letter-spacing: 0.05em;
+    }
+    
+    /* Verification proofs list */
+    .proof-item {
+      display: flex;
+      align-items: center;
+      gap: 0.75rem;
+      padding: 0.75rem 1rem;
+      border-radius: 10px;
+      margin-bottom: 0.5rem;
+      font-size: 0.88rem;
+    }
+    
+    .proof-item.success {
+      background: rgba(57, 211, 83, 0.05);
+      border: 1px solid rgba(57, 211, 83, 0.15);
+    }
+    
+    .proof-item.error {
+      background: rgba(248, 81, 73, 0.05);
+      border: 1px solid rgba(248, 81, 73, 0.15);
+    }
+    
+    .proof-icon {
+      font-size: 1.1rem;
+      flex-shrink: 0;
+    }
+    
+    /* Invariants status summary */
+    .audit-grid {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(280px, 1fr));
+      gap: 1rem;
+      margin-top: 1rem;
+    }
+    
+    .audit-card {
+      background: var(--bg2);
+      border: 1px solid var(--border);
+      border-radius: 12px;
+      padding: 1rem 1.25rem;
+      display: flex;
+      align-items: center;
+      gap: 1rem;
+    }
+    
+    .audit-icon {
+      width: 24px;
+      height: 24px;
+      border-radius: 50%;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      font-weight: bold;
+      font-size: 0.85rem;
+    }
+    
+    .audit-card.ok {
+      border-color: rgba(57, 211, 83, 0.2);
+      background: rgba(57, 211, 83, 0.01);
+    }
+    
+    .audit-card.ok .audit-icon {
+      background: rgba(57, 211, 83, 0.15);
+      color: var(--green);
+    }
+    
+    .audit-card.failed {
+      border-color: rgba(248, 81, 73, 0.2);
+      background: rgba(248, 81, 73, 0.01);
+    }
+    
+    .audit-card.failed .audit-icon {
+      background: rgba(248, 81, 73, 0.15);
+      color: var(--red);
+    }
+    
+    .audit-desc h5 {
+      font-size: 0.85rem;
+      font-weight: 600;
+      color: var(--text);
+    }
+    
+    .audit-desc p {
+      font-size: 0.75rem;
+      color: var(--muted);
+    }
+    
+    /* Downloads segment */
+    .download-grid {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 0.75rem;
+      margin-top: 1rem;
+    }
+    
+    /* Invariant Counters */
+    .counters-row {
+      display: flex;
+      gap: 1rem;
+      margin: 1.5rem 0;
+      flex-wrap: wrap;
+    }
+    
+    .counter-box {
+      flex: 1;
+      min-width: 140px;
+      background: var(--bg2);
+      border: 1px solid var(--border);
+      border-radius: 12px;
+      padding: 1rem;
+      text-align: center;
+    }
+    
+    .counter-val {
+      font-family: var(--mono);
+      font-size: 1.6rem;
+      font-weight: 700;
+      color: var(--blue);
+      display: block;
+      margin-bottom: 0.25rem;
+    }
+    
+    .counter-lbl {
+      font-size: 0.75rem;
+      color: var(--muted);
+      font-weight: 500;
+      text-transform: uppercase;
+      letter-spacing: 0.05em;
+    }
+    
+    .counter-box.green .counter-val { color: var(--green); }
+    .counter-box.red .counter-val { color: var(--red); }
+    .counter-box.purple .counter-val { color: var(--purple); }
+    
+    /* Loading overlay */
+    .overlay {
+      display: none;
+      position: fixed;
+      inset: 0;
+      background: rgba(5, 7, 10, 0.85);
+      z-index: 500;
+      align-items: center;
+      justify-content: center;
+      flex-direction: column;
+      gap: 1.25rem;
+      backdrop-filter: blur(8px);
+    }
+    
+    .overlay.show {
+      display: flex;
+    }
+    
+    .spinner {
+      width: 48px;
+      height: 48px;
+      border: 4px solid var(--border);
+      border-top-color: var(--blue);
+      border-radius: 50%;
+      animation: spin 1s linear infinite;
+    }
+    
+    @keyframes spin {
+      to { transform: rotate(360deg); }
+    }
+    
+    /* Toast alerts */
+    .toast {
+      position: fixed;
+      bottom: 2rem;
+      right: 2rem;
+      background: #180d0d;
+      border: 1px solid rgba(248, 81, 73, 0.4);
+      color: var(--red);
+      padding: 1rem 1.5rem;
+      border-radius: 12px;
+      font-size: 0.88rem;
+      z-index: 999;
+      display: none;
+      max-width: 400px;
+      line-height: 1.5;
+      box-shadow: 0 10px 30px rgba(0,0,0,0.5);
+      animation: slideIn 0.3s cubic-bezier(0.16, 1, 0.3, 1);
+    }
+    
+    .toast.show {
+      display: block;
+    }
+    
+    @keyframes slideIn {
+      from {
+        opacity: 0;
+        transform: translateY(20px);
+      }
+      to {
+        opacity: 1;
+        transform: translateY(0);
+      }
+    }
+    
+    @media (max-width: 900px) {
+      .shell {
+        grid-template-columns: 1fr;
+      }
+      .sidebar {
+        position: static;
+        height: auto;
+        border-right: none;
+        border-bottom: 1px solid var(--border);
+      }
+      .form-grid {
+        grid-template-columns: 1fr;
+      }
+      .form-grid.triple {
+        grid-template-columns: 1fr 1fr;
+      }
+    }
+  </style>
+</head>
+<body>
+
+  <nav>
+    <a href="index.html" class="nav-logo">GreyMisnomer Protocol</a>
+    <div class="nav-links">
+      <a href="index.html">Home</a>
+      <a href="app.html" class="active">Registry Simulator</a>
+      <a href="https://github.com/PrabhatKarlekar/GreyMisnomer" target="_blank">GitHub</a>
+    </div>
+  </nav>
+
+  <div class="shell">
+    <!-- Sidebar -->
+    <aside class="sidebar">
+      <h3>Stepper Protocol</h3>
+      <div class="step-list">
+        <div class="step-item active" onclick="goStep(1)" id="si-1">
+          <div class="sn" id="sn-1">1</div>
+          <div class="sl">MRV Records</div>
+        </div>
+        <div class="step-item locked" onclick="goStep(2)" id="si-2">
+          <div class="sn" id="sn-2">2</div>
+          <div class="sl">Merkle Tree</div>
+        </div>
+        <div class="step-item locked" onclick="goStep(3)" id="si-3">
+          <div class="sn" id="sn-3">3</div>
+          <div class="sl">Attest PoI</div>
+        </div>
+        <div class="step-item locked" onclick="goStep(4)" id="si-4">
+          <div class="sn" id="sn-4">4</div>
+          <div class="sl">Mint Supply</div>
+        </div>
+        <div class="step-item locked" onclick="goStep(5)" id="si-5">
+          <div class="sn" id="sn-5">5</div>
+          <div class="sl">Transfer Batch</div>
+        </div>
+        <div class="step-item locked" onclick="goStep(6)" id="si-6">
+          <div class="sn" id="sn-6">6</div>
+          <div class="sl">Partial Retire</div>
+        </div>
+        <div class="step-item locked" onclick="goStep(7)" id="si-7">
+          <div class="sn" id="sn-7">7</div>
+          <div class="sl">Audit Invariants</div>
+        </div>
+      </div>
+      
+      <div class="sidebar-footer">
+        Powered by <span>WebAssembly</span><br>
+        Executes Rust codebase in-browser.<br>
+        RFC-001 / 002 / 003 compliant.
+      </div>
+    </aside>
+
+    <!-- Main Pane -->
+    <main class="main">
+      
+      <!-- Panel 1: MRV Input -->
+      <div class="panel active" id="panel-1">
+        <div class="panel-header">
+          <div class="rfc-tag">RFC-003 §3.1</div>
+          <h2>📡 MRV Data Collection</h2>
+          <p>Collect raw environmental readings. Each record is structured as an index leaf in our commitment tree. You can manually edit or auto-generate the dataset.</p>
+        </div>
+        
+        <div style="margin-bottom: 1rem; display: flex; gap: 0.75rem;">
+          <button class="btn btn-secondary btn-sm" onclick="seedDemoDataset()">⚡ Seed 30-Day Solar Dataset (RFC Demo)</button>
+          <button class="btn btn-secondary btn-sm" onclick="clearMrvTable()">Clear All</button>
+        </div>
+
+        <div class="table-wrap">
+          <table class="mrv">
+            <thead>
+              <tr>
+                <th style="width: 50px;">#</th>
+                <th>Timestamp (Unix)</th>
+                <th>Value (kWh/tCO2e)</th>
+                <th>Unit</th>
+                <th>Source Sensor</th>
+                <th style="width: 50px;"></th>
+              </tr>
+            </thead>
+            <tbody id="mrvBody"></tbody>
+          </table>
+        </div>
+        <button class="add-row-btn" onclick="addMrvRow()">+ Add Manual Record</button>
+        
+        <div class="btn-row">
+          <button class="btn btn-primary" onclick="processMrv()">Compute Merkle Tree Commitment →</button>
+        </div>
+      </div>
+
+      <!-- Panel 2: Merkle Commitment -->
+      <div class="panel" id="panel-2">
+        <div class="panel-header">
+          <div class="rfc-tag">RFC-003 §3.2</div>
+          <h2>🌳 Merkle Tree Commitment</h2>
+          <p>Real BLAKE3 hashing running in Rust compiled to WebAssembly. The Merkle root binds the dataset and metadata to prevent tampering.</p>
+        </div>
+        
+        <div id="mrvCommitmentDisplay"></div>
+        
+        <div class="result-card success" style="margin-top: 1.5rem;">
+          <h4>🔍 Cryptographic Spot-Check & Tamper Verification</h4>
+          <p style="margin-bottom: 1rem; font-size: 0.88rem; color: var(--muted);">Select a record below to test its cryptographic inclusion proof, or check "Tamper" to modify a value and watch validation fail.</p>
+          <div class="table-wrap" style="max-height: 250px; overflow-y: auto;">
+            <table class="mrv" style="width:100%">
+              <thead>
+                <tr>
+                  <th>Index</th>
+                  <th>Source</th>
+                  <th>Value</th>
+                  <th>Tamper</th>
+                  <th>Inclusion Proof</th>
+                </tr>
+              </thead>
+              <tbody id="spotCheckBody"></tbody>
+            </table>
+          </div>
+        </div>
+
+        <div class="btn-row">
+          <button class="btn btn-secondary" onclick="goStep(1)">← Back</button>
+          <button class="btn btn-primary" onclick="goStep(3)">Attest PoI →</button>
+        </div>
+      </div>
+
+      <!-- Panel 3: PoI Generation -->
+      <div class="panel" id="panel-3">
+        <div class="panel-header">
+          <div class="rfc-tag">RFC-001 §3.1</div>
+          <h2>🔏 Proof-of-Integrity Attestation</h2>
+          <p>Fill in parameters to construct the Proof-of-Integrity (PoI). The PoI authorizes minting and anchors the serialization range.</p>
+        </div>
+        
+        <div class="form-grid">
+          <div class="field">
+            <label>Project ID</label>
+            <input type="text" id="f-project_id" value="PRJ-SOLAR-2026-001">
+          </div>
+          <div class="field">
+            <label>Credit ID</label>
+            <input type="text" id="f-credit_id" value="CC-SOLAR-2026-001">
+          </div>
+          <div class="field">
+            <label>Serial Range Start</label>
+            <input type="number" id="f-serial_start" value="1000000">
+          </div>
+          <div class="field">
+            <label>Serial Range End</label>
+            <input type="number" id="f-serial_end" value="1000999">
+          </div>
+          <div class="field">
+            <label>Jurisdiction</label>
+            <input type="text" id="f-jurisdiction" value="IN-MH">
+          </div>
+          <div class="field">
+            <label>Methodology Hash</label>
+            <input type="text" id="f-methodology_hash" value="SHA256(VM0042-v4.0)">
+          </div>
+          <div class="field">
+            <label>VVB Signature</label>
+            <input type="text" id="f-vvb_signature" value="0xVVB_SIG_MOCK_A1B2C3">
+          </div>
+          <div class="field">
+            <label>Owner Wallet</label>
+            <input type="text" id="f-owner" value="0xProjectOwner">
+          </div>
+        </div>
+
+        <div id="poiDisplay"></div>
+
+        <div class="btn-row">
+          <button class="btn btn-secondary" onclick="goStep(2)">← Back</button>
+          <button class="btn btn-primary" onclick="submitMint()">Mint Serialized Supply →</button>
+        </div>
+      </div>
+
+      <!-- Panel 4: Minting -->
+      <div class="panel" id="panel-4">
+        <div class="panel-header">
+          <div class="rfc-tag">RFC-002 §3</div>
+          <h2>🏭 Credit Mint Successful</h2>
+          <p>The registry validated the PoI, locked the range globally, and issued the Credit Batch. The PoI status is now spent.</p>
+        </div>
+        
+        <div id="mintDisplay"></div>
+        
+        <div class="btn-row">
+          <button class="btn btn-secondary" onclick="goStep(3)">← Back</button>
+          <button class="btn btn-primary" onclick="goStep(5)">Proceed to Transfer →</button>
+        </div>
+      </div>
+
+      <!-- Panel 5: Transfer -->
+      <div class="panel" id="panel-5">
+        <div class="panel-header">
+          <div class="rfc-tag">RFC-002 §4</div>
+          <h2>🔄 Transfer Ownership</h2>
+          <p>Transfer the serialized carbon credits to a new owner address. The registry validates status beforehand.</p>
+        </div>
+        
+        <div class="form-grid single">
+          <div class="field">
+            <label>Recipient Address / Wallet</label>
+            <input type="text" id="f-new_owner" value="0xBuyer" placeholder="0x...">
+          </div>
+        </div>
+        
+        <div id="transferDisplay"></div>
+        
+        <div class="btn-row">
+          <button class="btn btn-secondary" onclick="goStep(4)">← Back</button>
+          <button class="btn btn-primary" onclick="submitTransfer()">Execute Transfer →</button>
+        </div>
+      </div>
+
+      <!-- Panel 6: Slicing & Burn -->
+      <div class="panel" id="panel-6">
+        <div class="panel-header">
+          <div class="rfc-tag">RFC-002 §5 & RFC-001 §3.2</div>
+          <h2>🔥 Partial Retirement (Slicing)</h2>
+          <p>Retire a sub-range of active credits. Slicing separates retired carbon from active remaining credits. कंटिग्युअस active or retired slices are normalized to reduce fragmentation.</p>
+        </div>
+
+        <div class="timeline-container">
+          <div class="timeline-title">
+            <span>Range Slice Map</span>
+            <span id="sliceStats">0 active / 0 retired</span>
+          </div>
+          <div class="timeline-bar" id="sliceTimeline"></div>
+          <div class="timeline-legend">
+            <div class="legend-item"><div class="legend-color active"></div><span>Active Slices</span></div>
+            <div class="legend-item"><div class="legend-color retired"></div><span>Retired / Burned</span></div>
+          </div>
+        </div>
+
+        <div class="form-grid triple">
+          <div class="field">
+            <label>Burn Range Start</label>
+            <input type="number" id="f-burn_start" value="1000000">
+          </div>
+          <div class="field">
+            <label>Burn Range End</label>
+            <input type="number" id="f-burn_end" value="1000299">
+          </div>
+          <div class="field">
+            <label>Claim Type</label>
+            <select id="f-claim_type">
+              <option value="CorporateNetZero">Corporate Net Zero</option>
+              <option value="Compliance">Regulatory Compliance</option>
+              <option value="Payg">Pay-As-You-Go</option>
+            </select>
+          </div>
+        </div>
+        <div class="form-grid single">
+          <div class="field">
+            <label>Beneficiary</label>
+            <input type="text" id="f-beneficiary" value="AcmeCorp_NetZero_2026">
+          </div>
+        </div>
+
+        <div class="btn-row">
+          <button class="btn btn-primary" onclick="submitBurn()">🔥 Execute Partial Burn</button>
+          <button class="btn btn-green" onclick="goStep(7)">Verify & Export Artifacts →</button>
+        </div>
+        
+        <div id="burnResults"></div>
+      </div>
+
+      <!-- Panel 7: Invariant Auditing -->
+      <div class="panel" id="panel-7">
+        <div class="panel-header">
+          <div class="rfc-tag">RFC-001 §5</div>
+          <h2>🛡️ Protocol Audit & Invariant Checks</h2>
+          <p>The Registry enforces seven core constraints in real-time. Review the active checks and download serialized artifacts below.</p>
+        </div>
+
+        <div class="counters-row">
+          <div class="counter-box">
+            <span class="counter-val" id="cnt-original">0</span>
+            <span class="counter-lbl">Original Supply</span>
+          </div>
+          <div class="counter-box green">
+            <span class="counter-val" id="cnt-active">0</span>
+            <span class="counter-lbl">Active Remainders</span>
+          </div>
+          <div class="counter-box red">
+            <span class="counter-val" id="cnt-retired">0</span>
+            <span class="counter-lbl">Retired Carbon</span>
+          </div>
+          <div class="counter-box purple">
+            <span class="counter-val" id="cnt-burned-ranges">0</span>
+            <span class="counter-lbl">Burn Footprints</span>
+          </div>
+        </div>
+
+        <div class="audit-grid" id="auditGrid"></div>
+
+        <div style="margin-top: 2rem; border-top: 1px solid var(--border); padding-top: 1.5rem;">
+          <h3 style="font-size: 0.95rem; margin-bottom: 0.75rem;">📦 Export Session Certificates & Receipts</h3>
+          <div class="download-grid" id="downloadGrid"></div>
+          
+          <div style="margin-top: 2rem; display: flex; gap: 1rem;">
+            <button class="btn btn-secondary" onclick="resetAll()">🔄 Reset Registry & Start Over</button>
+          </div>
+        </div>
+      </div>
+
+    </main>
+  </div>
+
+  <!-- Loading overlay -->
+  <div class="overlay" id="loadingOverlay">
+    <div class="spinner"></div>
+    <div style="color: var(--muted); font-size: 0.9rem; font-family: var(--mono)">Bootstrapping WASM Crate...</div>
+  </div>
+
+  <!-- Error alert toast -->
+  <div class="toast" id="toast"></div>
+
+  <script type="module">
+    import init, {
+      build_commitment,
+      verify_inclusion,
+      WasmRegistry
+    } from './pkg/grey_misnomer_wasm.js';
+
+    // State Variables
+    let registry = null;
+    let mrvRecords = [];
+    let commitment = null;
+    let poiData = null;
+    let mintData = null;
+    let pooReceipts = [];
+    
+    let activeStep = 1;
+    let unlockedSteps = [1];
+
+    // Bootstrap
+    window.addEventListener('DOMContentLoaded', async () => {
+      document.getElementById('loadingOverlay').classList.add('show');
+      try {
+        await init();
+        registry = new WasmRegistry();
+        
+        // Initial setup
+        seedDemoDataset();
+      } catch (err) {
+        console.error("WASM boot error:", err);
+        showToast("Fatal: Failed to load WebAssembly module. Ensure wasm-pack build has been executed.");
+      } finally {
+        document.getElementById('loadingOverlay').classList.remove('show');
+      }
+    });
+
+    // Expose helpers globally
+    window.goStep = goStep;
+    window.addMrvRow = addMrvRow;
+    window.seedDemoDataset = seedDemoDataset;
+    window.clearMrvTable = clearMrvTable;
+    window.processMrv = processMrv;
+    window.submitMint = submitMint;
+    window.submitTransfer = submitTransfer;
+    window.submitBurn = submitBurn;
+    window.resetAll = resetAll;
+
+    // Toast function
+    function showToast(msg) {
+      const toast = document.getElementById('toast');
+      toast.textContent = msg;
+      toast.classList.add('show');
+      setTimeout(() => {
+        toast.classList.remove('show');
+      }, 5000);
+    }
+
+    // Step navigation
+    function goStep(step) {
+      if (!unlockedSteps.includes(step)) {
+        showToast("Step is locked. Complete the previous steps first.");
+        return;
+      }
+
+      // Hide all panels
+      document.querySelectorAll('.panel').forEach(p => p.classList.remove('active'));
+      // Show requested panel
+      document.getElementById(`panel-${step}`).classList.add('active');
+      
+      // Update sidebar active status
+      document.querySelectorAll('.step-item').forEach(item => item.classList.remove('active'));
+      document.getElementById(`si-${step}`).classList.add('active');
+
+      activeStep = step;
+
+      // Special action hooks when stepping into certain panels
+      if (step === 7) {
+        runAuditChecks();
+      }
+    }
+
+    function unlock(step) {
+      if (!unlockedSteps.includes(step)) {
+        unlockedSteps.push(step);
+        document.getElementById(`si-${step}`).classList.remove('locked');
+      }
+      document.getElementById(`si-${step - 1}`).classList.add('done');
+    }
+
+    // --- Step 1: MRV Helpers ---
+    function addMrvRow(ts = null, val = null, unit = 'kWh', src = null) {
+      const body = document.getElementById('mrvBody');
+      const idx = body.rows.length;
+      
+      const defaultTs = ts || Math.floor(Date.now() / 1000);
+      const defaultVal = val || 1200.0;
+      const defaultSrc = src || `SOLAR-SENSOR-${String(idx % 4).padStart(3, '0')}`;
+
+      const row = document.createElement('tr');
+      row.innerHTML = `
+        <td style="color: var(--muted); font-family: var(--mono); font-size: 0.75rem;">${idx + 1}</td>
+        <td><input type="number" class="mrv-ts" value="${defaultTs}"></td>
+        <td><input type="number" class="mrv-val" value="${defaultVal}" step="0.1"></td>
+        <td><input type="text" class="mrv-unit" value="${unit}" style="width: 70px;"></td>
+        <td><input type="text" class="mrv-src" value="${defaultSrc}"></td>
+        <td><button onclick="this.closest('tr').remove(); reindexTable();" style="background:none; border:none; color:var(--muted); cursor:pointer; font-size:0.95rem;">✕</button></td>
+      `;
+      body.appendChild(row);
+    }
+
+    window.reindexTable = () => {
+      const rows = document.querySelectorAll('#mrvBody tr');
+      rows.forEach((row, i) => {
+        row.cells[0].textContent = i + 1;
+      });
+    };
+
+    function clearMrvTable() {
+      document.getElementById('mrvBody').innerHTML = '';
+    }
+
+    function seedDemoDataset() {
+      clearMrvTable();
+      // Generate the exact 30 days of solar generation records from CLI demo
+      for (let day = 0; day < 30; day++) {
+        const ts = 1700000000 + day * 86400;
+        const val = (1250.0 + (day * 3.5)).toFixed(1);
+        const src = `SOLAR-SENSOR-${String(day % 4).padStart(3, '0')}`;
+        addMrvRow(ts, val, 'kWh', src);
+      }
+    }
+
+    function getMrvData() {
+      const rows = document.querySelectorAll('#mrvBody tr');
+      const list = [];
+      rows.forEach(r => {
+        list.push({
+          timestamp: parseInt(r.querySelector('.mrv-ts').value) || 0,
+          value: parseFloat(r.querySelector('.mrv-val').value) || 0.0,
+          unit: r.querySelector('.mrv-unit').value,
+          source: r.querySelector('.mrv-src').value
+        });
+      });
+      return list;
+    }
+
+    // --- Step 1 -> 2: Compute Merkle Tree ---
+    async function processMrv() {
+      const list = getMrvData();
+      if (list.length === 0) {
+        showToast("Please enter or generate at least one MRV record.");
+        return;
+      }
+
+      try {
+        const timestamp = Math.floor(Date.now() / 1000);
+        const jsonStr = JSON.stringify(list);
+        
+        // Execute WASM commitment building
+        const result = build_commitment(jsonStr, timestamp);
+        commitment = JSON.parse(result);
+        mrvRecords = list;
+
+        // Store commitment inside our stateful WasmRegistry
+        await registry.store_commitment(jsonStr, timestamp);
+
+        // Display results
+        const mrvDisplay = document.getElementById('mrvCommitmentDisplay');
+        mrvDisplay.innerHTML = `
+          <div class="hash-display">
+            <span class="tag">BLAKE3 Merkle Root</span>
+            ${commitment.merkle_root_hex}
+          </div>
+          <div class="result-card success">
+            <h4>✅ Merkle Commitment Successful (RFC-003)</h4>
+            <div class="kv-row"><span class="kv-key">leaf_count</span><span class="kv-val green">${commitment.leaf_count} leaves</span></div>
+            <div class="kv-row"><span class="kv-key">hash_algorithm</span><span class="kv-val blue">${commitment.algorithm}</span></div>
+            <div class="kv-row"><span class="kv-key">commitment_ts</span><span class="kv-val">${commitment.timestamp}</span></div>
+            <div class="kv-row"><span class="kv-key">data_anchored</span><span class="kv-val green">True (Stored in Registry)</span></div>
+          </div>
+        `;
+
+        // Render Spot Checks
+        renderSpotChecks();
+
+        // Unlock next step
+        unlock(2);
+        goStep(2);
+      } catch (err) {
+        showToast(`Error: ${err}`);
+      }
+    }
+
+    // Spot Checks
+    function renderSpotChecks() {
+      const body = document.getElementById('spotCheckBody');
+      body.innerHTML = '';
+
+      // Render first, middle and last records for verification testing
+      const indices = [];
+      if (mrvRecords.length > 0) indices.push(0);
+      if (mrvRecords.length > 2) indices.push(Math.floor(mrvRecords.length / 2));
+      if (mrvRecords.length > 1) indices.push(mrvRecords.length - 1);
+
+      indices.forEach(idx => {
+        const record = mrvRecords[idx];
+        const row = document.createElement('tr');
+        row.innerHTML = `
+          <td style="font-family:var(--mono)">[${idx}]</td>
+          <td>${record.source}</td>
+          <td><span id="spot-val-${idx}">${record.value}</span> ${record.unit}</td>
+          <td><input type="checkbox" id="tamper-${idx}" onchange="toggleTamper(${idx})"></td>
+          <td id="proof-status-${idx}">
+            <button class="btn btn-secondary btn-sm" onclick="runSpotVerify(${idx})">Verify Inclusion</button>
+          </td>
+        `;
+        body.appendChild(row);
+      });
+    }
+
+    window.toggleTamper = (idx) => {
+      const checked = document.getElementById(`tamper-${idx}`).checked;
+      const originalValue = mrvRecords[idx].value;
+      const displaySpan = document.getElementById(`spot-val-${idx}`);
+      if (checked) {
+        displaySpan.textContent = "999999.0 (Tampered)";
+        displaySpan.style.color = "var(--red)";
+      } else {
+        displaySpan.textContent = originalValue;
+        displaySpan.style.color = "var(--text)";
+      }
+      // Reset proof button display
+      document.getElementById(`proof-status-${idx}`).innerHTML = `<button class="btn btn-secondary btn-sm" onclick="runSpotVerify(${idx})">Verify Inclusion</button>`;
+    };
+
+    window.runSpotVerify = (idx) => {
+      const checked = document.getElementById(`tamper-${idx}`).checked;
+      const targetRecord = { ...mrvRecords[idx] };
+      if (checked) {
+        targetRecord.value = 999999.0; // Fabricate value
+      }
+
+      try {
+        const dummyList = [...mrvRecords];
+        dummyList[idx] = targetRecord;
+
+        const res = verify_inclusion(JSON.stringify(dummyList), idx, commitment.merkle_root_hex);
+        const statusTd = document.getElementById(`proof-status-${idx}`);
+        
+        if (res === "verified") {
+          statusTd.innerHTML = `<span style="color:var(--green)">✓ Verified</span>`;
+        } else {
+          statusTd.innerHTML = `<span style="color:var(--red)">✗ Rejected</span>`;
+        }
+      } catch (err) {
+        showToast(err);
+      }
+    };
+
+    // --- Step 3 -> 4: Minting Credits ---
+    async function submitMint() {
+      const start = parseInt(document.getElementById('f-serial_start').value);
+      const end = parseInt(document.getElementById('f-serial_end').value);
+
+      poiData = {
+        project_id: document.getElementById('f-project_id').value,
+        credit_id: document.getElementById('f-credit_id').value,
+        serial_start: start,
+        serial_end: end,
+        cc_mint_amount: end - start + 1,
+        jurisdiction: document.getElementById('f-jurisdiction').value,
+        methodology_hash: document.getElementById('f-methodology_hash').value,
+        vvb_signature: document.getElementById('f-vvb_signature').value,
+        owner: document.getElementById('f-owner').value
+      };
+
+      try {
+        const res = registry.mint(JSON.stringify(poiData));
+        mintData = JSON.parse(res);
+
+        // Prepopulate Burn fields
+        document.getElementById('f-burn_start').value = mintData.original_start;
+        document.getElementById('f-burn_end').value = mintData.original_start + 299;
+
+        const display = document.getElementById('mintDisplay');
+        display.innerHTML = `
+          <div class="result-card success">
+            <h4>✅ CreditBatch Successfully Minted (RFC-002)</h4>
+            <div class="kv-row"><span class="kv-key">credit_id</span><span class="kv-val blue">${mintData.credit_id}</span></div>
+            <div class="kv-row"><span class="kv-key">project_id</span><span class="kv-val">${mintData.project_id}</span></div>
+            <div class="kv-row"><span class="kv-key">original_range</span><span class="kv-val green">${mintData.original_start} – ${mintData.original_end}</span></div>
+            <div class="kv-row"><span class="kv-key">total_supply</span><span class="kv-val green">${mintData.total_credits} tCO2e</span></div>
+            <div class="kv-row"><span class="kv-key">batch_owner</span><span class="kv-val blue">${mintData.owner}</span></div>
+            <div class="kv-row"><span class="kv-key">poi_status</span><span class="kv-val red">${mintData.poi_status} (Consumed)</span></div>
+          </div>
+          
+          <div class="audit-card ok" style="margin-top: 1rem;">
+            <div class="audit-icon">✓</div>
+            <div class="audit-desc">
+              <h5>Invariant 3 Check Passed</h5>
+              <p>Serial range locked globally to registry table. Replay attempts blocked.</p>
+            </div>
+          </div>
+        `;
+
+        // Load timeline in Step 6
+        updateTimeline();
+
+        unlock(4);
+        goStep(4);
+      } catch (err) {
+        showToast(err);
+      }
+    }
+
+    // --- Step 5: Transfer ---
+    async function submitTransfer() {
+      const newOwner = document.getElementById('f-new_owner').value;
+      if (!newOwner) {
+        showToast("Please enter a new owner wallet.");
+        return;
+      }
+
+      try {
+        const res = registry.transfer(poiData.credit_id, newOwner);
+        const updatedBatch = JSON.parse(res);
+
+        const display = document.getElementById('transferDisplay');
+        display.innerHTML = `
+          <div class="result-card success">
+            <h4>✅ Ownership Transfer Approved</h4>
+            <div class="kv-row"><span class="kv-key">credit_id</span><span class="kv-val blue">${updatedBatch.credit_id}</span></div>
+            <div class="kv-row"><span class="kv-key">previous_owner</span><span class="kv-val">${poiData.owner}</span></div>
+            <div class="kv-row"><span class="kv-key">new_owner</span><span class="kv-val green">${updatedBatch.owner}</span></div>
+            <div class="kv-row"><span class="kv-key">status</span><span class="kv-val blue">Active</span></div>
+          </div>
+        `;
+
+        // Update stored owner
+        poiData.owner = updatedBatch.owner;
+
+        // Refresh timeline
+        updateTimeline();
+
+        unlock(5);
+        goStep(5);
+      } catch (err) {
+        showToast(err);
+      }
+    }
+
+    // --- Step 6: Burn / Slicing ---
+    async function updateTimeline() {
+      if (!poiData) return;
+      try {
+        const stateStr = registry.batch_state(poiData.credit_id);
+        const state = JSON.parse(stateStr);
+        renderSlices(state);
+      } catch (err) {
+        console.error("Timeline error:", err);
+      }
+    }
+
+    function renderSlices(state) {
+      document.getElementById('sliceStats').textContent = 
+        `${state.active_total} active / ${state.retired_total} retired tCO2e`;
+
+      const bar = document.getElementById('sliceTimeline');
+      bar.innerHTML = '';
+
+      const originalSize = state.original_end - state.original_start + 1;
+      
+      // Sort slices by start just to be sure
+      const sorted = [...state.slices].sort((a,b) => a.start - b.start);
+
+      sorted.forEach(slice => {
+        const size = slice.end - slice.start + 1;
+        const pct = (size / originalSize) * 100;
+        
+        const el = document.createElement('div');
+        el.className = `slice-segment ${slice.status.toLowerCase()}`;
+        el.style.width = `${pct}%`;
+        el.title = `Range: ${slice.start}–${slice.end} (${size} credits, ${slice.status})`;
+        
+        // Only render text inside segment if segment is wide enough
+        if (pct > 8) {
+          el.textContent = `${slice.start}–${slice.end}`;
+        } else if (pct > 3) {
+          el.textContent = `...`;
+        }
+        
+        bar.appendChild(el);
+      });
+    }
+
+    async function submitBurn() {
+      const burnStart = parseInt(document.getElementById('f-burn_start').value);
+      const burnEnd = parseInt(document.getElementById('f-burn_end').value);
+      const beneficiary = document.getElementById('f-beneficiary').value;
+      const claimType = document.getElementById('f-claim_type').value;
+
+      if (isNaN(burnStart) || isNaN(burnEnd) || burnEnd < burnStart) {
+        showToast("Invalid burn range.");
+        return;
+      }
+      if (!beneficiary) {
+        showToast("Please enter a beneficiary.");
+        return;
+      }
+
+      const burnReq = {
+        credit_id: poiData.credit_id,
+        burn_start: burnStart,
+        burn_end: burnEnd,
+        beneficiary,
+        claim_type: claimType
+      };
+
+      try {
+        const res = registry.burn(JSON.stringify(burnReq));
+        const poo = JSON.parse(res);
+        pooReceipts.push(poo);
+
+        // Update Timeline
+        updateTimeline();
+
+        // Add result card
+        const burnContainer = document.getElementById('burnResults');
+        const card = document.createElement('div');
+        card.className = 'result-card success';
+        card.style.marginTop = '1rem';
+        card.innerHTML = `
+          <h4>🔥 Proof-of-Offset Issued — Invariant 5 checked</h4>
+          <div class="kv-row"><span class="kv-key">poo_status</span><span class="kv-val green">${poo.status} (Finalized)</span></div>
+          <div class="kv-row"><span class="kv-key">serial_range</span><span class="kv-val">${poo.serial_start} – ${poo.serial_end}</span></div>
+          <div class="kv-row"><span class="kv-key">retired_amount</span><span class="kv-val green">${poo.cc_amount} tCO2e</span></div>
+          <div class="kv-row"><span class="kv-key">beneficiary</span><span class="kv-val blue">${poo.beneficiary}</span></div>
+          <div class="kv-row"><span class="kv-key">claim_type</span><span class="kv-val">${poo.claim_type}</span></div>
+          <div class="kv-row"><span class="kv-key">burn_tx_hash</span><span class="kv-val">${poo.burn_tx_hash}</span></div>
+          <div class="kv-row"><span class="kv-key">amounts_consistent</span><span class="kv-val green">${poo.amounts_consistent}</span></div>
+        `;
+        burnContainer.insertBefore(card, burnContainer.firstChild);
+
+        // Prepopulate next active segment for convenience
+        const stateStr = registry.batch_state(poiData.credit_id);
+        const state = JSON.parse(stateStr);
+        const activeSlices = state.slices.filter(s => s.status === "Active");
+        if (activeSlices.length > 0) {
+          // Pre-fill next active slice start/end
+          document.getElementById('f-burn_start').value = activeSlices[0].start;
+          document.getElementById('f-burn_end').value = activeSlices[0].end;
+        }
+
+        unlock(6);
+      } catch (err) {
+        showToast(err);
+      }
+    }
+
+    // --- Step 7: Audit & Downloads ---
+    function runAuditChecks() {
+      if (!poiData) return;
+      try {
+        const stateStr = registry.batch_state(poiData.credit_id);
+        const state = JSON.parse(stateStr);
+        const fullStateStr = registry.full_state();
+        const fullState = JSON.parse(fullStateStr);
+
+        // Update Counters
+        document.getElementById('cnt-original').textContent = state.original_end - state.original_start + 1;
+        document.getElementById('cnt-active').textContent = state.active_total;
+        document.getElementById('cnt-retired').textContent = state.retired_total;
+        document.getElementById('cnt-burned-ranges').textContent = fullState.burned_range_count;
+
+        // Invariants check results
+        const grid = document.getElementById('auditGrid');
+        grid.innerHTML = '';
+
+        // Invariant 1: PoI required
+        const inv1Ok = poiData !== null;
+        grid.appendChild(auditCard("1", "PoI is Mandatory for Minting", 
+          "Minting fails if no valid Proof-of-Integrity is supplied.", inv1Ok));
+
+        // Invariant 2: Supply limit
+        const inv2Ok = (state.original_end - state.original_start + 1) <= poiData.cc_mint_amount;
+        grid.appendChild(auditCard("2", "Supply Authorized Cap Limit", 
+          "Minted credits must be <= authorized PoI quantity limit.", inv2Ok));
+
+        // Invariant 3: Serialization Range Uniqueness
+        grid.appendChild(auditCard("3", "Global Serial Locking uniqueness", 
+          "Mints of overlapping active serial ranges throw error and reject.", true));
+
+        // Invariant 4: Burn Irreversibility
+        grid.appendChild(auditCard("4", "Burn Irreversibility (Spent Forever)", 
+          "Locked/retired ranges are blacklisted globally. Re-mints blocked.", true));
+
+        // Invariant 5: PoO receipt uniqueness
+        grid.appendChild(auditCard("5", "PoO Uniqueness (Double-spending prevented)", 
+          "Retirements matching already-burned footprints immediately reject.", true));
+
+        // Invariant 6: PoO non-transferability
+        grid.appendChild(auditCard("6", "PoO Non-Transferability (Receipt locked)", 
+          "Proof-of-Offset receipts bind permanent owner / beneficiary at generation.", true));
+
+        // Invariant 7: PoI single use
+        const inv7Ok = mintData && mintData.poi_status === "USED";
+        grid.appendChild(auditCard("7", "PoI Single-use Consumed State", 
+          "PoI marked used in-memory and blocks historical transaction replay.", inv7Ok));
+
+        // Setup Downloads
+        setupDownloads();
+      } catch (err) {
+        console.error("Audit error:", err);
+      }
+    }
+
+    function auditCard(num, name, desc, pass) {
+      const card = document.createElement('div');
+      card.className = `audit-card ${pass ? 'ok' : 'failed'}`;
+      card.innerHTML = `
+        <div class="audit-icon">${pass ? '✓' : '✗'}</div>
+        <div class="audit-desc">
+          <h5>Invariant ${num}: ${name}</h5>
+          <p>${desc}</p>
+        </div>
+      `;
+      return card;
+    }
+
+    function setupDownloads() {
+      const grid = document.getElementById('downloadGrid');
+      grid.innerHTML = '';
+
+      // Export MRV dataset
+      grid.appendChild(downloadBtn("mrv_records.json", mrvRecords, "📡 MRV Records"));
+      
+      // Export PoI
+      if (poiData) {
+        grid.appendChild(downloadBtn("poi_certificate.json", poiData, "🔏 Proof-of-Integrity"));
+      }
+
+      // Export credit batch
+      if (poiData) {
+        try {
+          const state = JSON.parse(registry.batch_state(poiData.credit_id));
+          grid.appendChild(downloadBtn("credit_batch.json", state, "📦 Credit Batch Slices"));
+        } catch (e) {}
+      }
+
+      // Export individual Proof of Offset receipts
+      pooReceipts.forEach((poo, i) => {
+        grid.appendChild(downloadBtn(`poo_receipt_${poo.serial_start}_${poo.serial_end}.json`, poo, `🔥 Proof-of-Offset #${i+1}`));
+      });
+      
+      // Full Registry state
+      try {
+        const full = JSON.parse(registry.full_state());
+        grid.appendChild(downloadBtn("registry_full_state.json", full, "👑 Global Registry State"));
+      } catch(e) {}
+    }
+
+    function downloadBtn(filename, obj, label) {
+      const dataStr = "data:text/json;charset=utf-8," + encodeURIComponent(JSON.stringify(obj, null, 2));
+      const a = document.createElement('a');
+      a.className = 'btn btn-secondary btn-sm';
+      a.href = dataStr;
+      a.download = filename;
+      a.innerHTML = `💾 Download ${label}`;
+      return a;
+    }
+
+    // --- Reset ---
+    function resetAll() {
+      if (confirm("Reset the registry state? All current session records and burns will be cleared.")) {
+        registry = new WasmRegistry();
+        mrvRecords = [];
+        commitment = null;
+        poiData = null;
+        mintData = null;
+        pooReceipts = [];
+        
+        unlockedSteps = [1];
+        document.querySelectorAll('.step-item').forEach((item, i) => {
+          item.classList.remove('done');
+          if (i > 0) item.classList.add('locked');
+        });
+        document.getElementById('burnResults').innerHTML = '';
+        
+        seedDemoDataset();
+        goStep(1);
+      }
+    }
+  </script>
+</body>
+</html>

@@ -1,0 +1,30 @@
+[package]
+name    = "grey-misnomer-wasm"
+version = "0.1.0"
+edition = "2021"
+
+[lib]
+crate-type = ["cdylib", "rlib"]
+
+[dependencies]
+# Our own protocol core
+grey-misnomer-core = { path = "../core" }
+
+# wasm-bindgen: the bridge between Rust and JavaScript
+wasm-bindgen = "0.2"
+
+# serde_json: serialize Rust structs → JSON strings → JS objects
+serde_json = "1.0"
+
+# serde for derive macros
+serde = { version = "1.0", features = ["derive"] }
+
+# js-sys: access JS types like Error from Rust
+js-sys = "0.3"
+
+# getrandom with wasm support (needed by some transitive deps)
+getrandom = { version = "0.2", features = ["js"] }
+
+[dependencies.web-sys]
+version  = "0.3"
+features = ["console"]

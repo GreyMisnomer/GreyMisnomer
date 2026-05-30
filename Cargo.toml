@@ -1,0 +1,6 @@
+[workspace]
+members = [
+    "src/core",
+    "src/wasm",
+]
+resolver = "2"
