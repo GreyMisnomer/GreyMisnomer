@@ -1,0 +1,15 @@
+{
+  "name": "grey-misnomer-wasm",
+  "type": "module",
+  "version": "0.1.0",
+  "files": [
+    "grey_misnomer_wasm_bg.wasm",
+    "grey_misnomer_wasm.js",
+    "grey_misnomer_wasm.d.ts"
+  ],
+  "main": "grey_misnomer_wasm.js",
+  "types": "grey_misnomer_wasm.d.ts",
+  "sideEffects": [
+    "./snippets/*"
+  ]
+}

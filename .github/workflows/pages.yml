@@ -1,4 +1,4 @@
-name: Deploy GitHub Pages
+name: Build WASM + Deploy GitHub Pages
 
 on:
   push:
@@ -10,7 +10,7 @@ permissions:
   id-token: write
 
 jobs:
-  deploy:
+  build-and-deploy:
     runs-on: ubuntu-latest
     environment:
       name: github-pages
@@ -19,6 +19,39 @@ jobs:
     steps:
       - name: Checkout
         uses: actions/checkout@v4
+
+      - name: Install Rust stable + wasm32 target
+        uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: wasm32-unknown-unknown
+
+      - name: Cache Rust build artifacts
+        uses: actions/cache@v4
+        with:
+          path: |
+            ~/.cargo/registry
+            ~/.cargo/git
+            target/
+          key: ${{ runner.os }}-cargo-${{ hashFiles('**/Cargo.lock') }}
+          restore-keys: |
+            ${{ runner.os }}-cargo-
+
+      - name: Install wasm-pack
+        run: curl https://rustwasm.github.io/wasm-pack/installer/init.sh -sSf | sh
+
+      - name: Build WASM package
+        working-directory: src/wasm
+        run: |
+          wasm-pack build \
+            --target web \
+            --out-dir ../../docs/pkg \
+            --out-name grey_misnomer_wasm \
+            --release
+
+      # wasm-pack writes a * gitignore inside pkg/ — we don't want that on CI
+      - name: Override pkg/.gitignore so artifacts are served
+        run: |
+          printf '# Allow all — wasm-pack default overridden\n!*\n' > docs/pkg/.gitignore
 
       - name: Upload Pages Artifact
         uses: actions/upload-pages-artifact@v3

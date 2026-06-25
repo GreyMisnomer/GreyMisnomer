@@ -4,9 +4,12 @@
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>GreyMisnomer — Registry Console</title>
+  <meta name="description" content="Interactive carbon credit registry simulator. Walk through MRV data entry, Merkle commitment, PoI attestation, minting, transfer, and retirement — powered by Rust compiled to WebAssembly.">
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
   <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;600;800&family=JetBrains+Mono:wght@400;500;600&display=swap" rel="stylesheet">
+  <!-- jsPDF for client-side PDF certificate generation -->
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
   <style>
     :root {
       --bg:           #0a0d14;
@@ -839,9 +842,209 @@
         grid-template-columns: 1fr 1fr;
       }
     }
+
+    /* ── Drag-and-drop upload zone ───────────────────────────────────────── */
+    .upload-zone {
+      border: 2px dashed var(--border);
+      border-radius: 14px;
+      padding: 1.75rem 1.5rem;
+      text-align: center;
+      cursor: pointer;
+      transition: all 0.25s ease;
+      background: var(--bg2);
+      position: relative;
+      margin-bottom: 1.25rem;
+    }
+    .upload-zone:hover, .upload-zone.drag-over {
+      border-color: var(--blue);
+      background: rgba(88, 166, 255, 0.04);
+      box-shadow: 0 0 0 3px rgba(88, 166, 255, 0.08);
+    }
+    .upload-zone input[type="file"] {
+      position: absolute;
+      inset: 0;
+      opacity: 0;
+      cursor: pointer;
+      width: 100%;
+      height: 100%;
+    }
+    .upload-zone-icon {
+      font-size: 2rem;
+      margin-bottom: 0.5rem;
+    }
+    .upload-zone-label {
+      font-size: 0.9rem;
+      color: var(--muted);
+      line-height: 1.6;
+    }
+    .upload-zone-label strong {
+      color: var(--blue);
+    }
+    .upload-zone-formats {
+      margin-top: 0.5rem;
+      font-size: 0.75rem;
+      font-family: var(--mono);
+      color: var(--muted);
+      opacity: 0.7;
+    }
+
+    /* ── Onboarding welcome modal ─────────────────────────────────────────── */
+    .modal-backdrop {
+      display: none;
+      position: fixed;
+      inset: 0;
+      background: rgba(5, 7, 12, 0.88);
+      z-index: 800;
+      align-items: center;
+      justify-content: center;
+      backdrop-filter: blur(10px);
+    }
+    .modal-backdrop.show {
+      display: flex;
+    }
+    .modal-box {
+      background: var(--bg2);
+      border: 1px solid var(--border);
+      border-radius: 20px;
+      padding: 2.5rem;
+      max-width: 560px;
+      width: 90%;
+      box-shadow: 0 25px 60px rgba(0,0,0,0.6);
+      animation: fadeUp 0.4s cubic-bezier(0.16, 1, 0.3, 1);
+    }
+    .modal-logo {
+      font-size: 1.1rem;
+      font-weight: 800;
+      background: var(--grad);
+      -webkit-background-clip: text;
+      background-clip: text;
+      color: transparent;
+      margin-bottom: 0.5rem;
+    }
+    .modal-box h2 {
+      font-size: 1.5rem;
+      font-weight: 800;
+      margin-bottom: 0.75rem;
+      line-height: 1.3;
+    }
+    .modal-box p {
+      color: var(--muted);
+      font-size: 0.9rem;
+      line-height: 1.65;
+      margin-bottom: 1.25rem;
+    }
+    .modal-steps {
+      display: flex;
+      flex-direction: column;
+      gap: 0.6rem;
+      margin-bottom: 1.75rem;
+    }
+    .modal-step {
+      display: flex;
+      align-items: center;
+      gap: 0.85rem;
+      padding: 0.7rem 1rem;
+      border-radius: 10px;
+      background: var(--bg3);
+      border: 1px solid var(--border);
+      font-size: 0.87rem;
+    }
+    .modal-step-num {
+      width: 26px;
+      height: 26px;
+      border-radius: 50%;
+      background: var(--grad);
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      font-size: 0.75rem;
+      font-weight: 700;
+      color: #fff;
+      flex-shrink: 0;
+    }
+    .modal-note {
+      font-size: 0.78rem;
+      color: var(--muted);
+      background: var(--bg3);
+      border: 1px solid var(--border);
+      border-radius: 8px;
+      padding: 0.65rem 0.9rem;
+      margin-bottom: 1.5rem;
+      line-height: 1.5;
+    }
+    .modal-note strong { color: var(--amber); }
+
+    /* ── Serial range live preview ────────────────────────────────────────── */
+    .range-preview {
+      margin-top: 0.5rem;
+      font-family: var(--mono);
+      font-size: 0.78rem;
+      color: var(--blue);
+      padding: 0.4rem 0.75rem;
+      background: rgba(88, 166, 255, 0.07);
+      border-radius: 6px;
+      border: 1px solid rgba(88, 166, 255, 0.15);
+      display: none;
+    }
+    .range-preview.show { display: block; }
+
+    /* ── Record count badge ───────────────────────────────────────────────── */
+    .record-badge {
+      display: inline-flex;
+      align-items: center;
+      gap: 0.4rem;
+      padding: 0.3rem 0.75rem;
+      border-radius: 20px;
+      background: rgba(57, 211, 83, 0.08);
+      border: 1px solid rgba(57, 211, 83, 0.2);
+      font-family: var(--mono);
+      font-size: 0.78rem;
+      color: var(--green);
+      transition: all 0.2s;
+    }
+
+    /* ── PDF / ZIP button ─────────────────────────────────────────────────── */
+    .btn-amber {
+      background: rgba(236, 178, 46, 0.1);
+      color: var(--amber);
+      border: 1px solid rgba(236, 178, 46, 0.25);
+    }
+    .btn-amber:hover {
+      background: rgba(236, 178, 46, 0.2);
+      transform: translateY(-1px);
+    }
+
+    /* keyboard shortcut hint */
+    .kbd-hint {
+      font-size: 0.72rem;
+      color: var(--muted);
+      margin-left: auto;
+      font-family: var(--mono);
+      opacity: 0.6;
+    }
   </style>
 </head>
 <body>
+
+  <!-- ── Onboarding welcome modal ─────────────────────────────────────── -->
+  <div class="modal-backdrop" id="onboardingModal">
+    <div class="modal-box">
+      <div class="modal-logo">GreyMisnomer Protocol</div>
+      <h2>Welcome to the Registry Simulator</h2>
+      <p>Walk through the full carbon credit lifecycle — from raw sensor data to cryptographic retirement certificates — powered entirely by Rust compiled to WebAssembly running in your browser. No server, no backend.</p>
+      <div class="modal-steps">
+        <div class="modal-step"><div class="modal-step-num">1</div><span>📡 Enter or upload MRV measurement records</span></div>
+        <div class="modal-step"><div class="modal-step-num">2</div><span>🌳 Generate a BLAKE3 Merkle commitment over the dataset</span></div>
+        <div class="modal-step"><div class="modal-step-num">3</div><span>🔏 Attest a Proof-of-Integrity (PoI) for your project</span></div>
+        <div class="modal-step"><div class="modal-step-num">4</div><span>🏭 Mint a serialized carbon credit batch</span></div>
+        <div class="modal-step"><div class="modal-step-num">5</div><span>🔄 Transfer ownership to a buyer wallet</span></div>
+        <div class="modal-step"><div class="modal-step-num">6</div><span>🔥 Partially retire credits and receive a Proof-of-Offset</span></div>
+        <div class="modal-step"><div class="modal-step-num">7</div><span>🛡️ Audit invariants and download all certificates</span></div>
+      </div>
+      <div class="modal-note">⚠ <strong>Per-session simulator:</strong> All state lives in this browser tab. Refreshing the page resets everything. This is by design — it's a protocol explainer, not a shared ledger.</div>
+      <button class="btn btn-primary" style="width:100%;" onclick="dismissOnboarding()">Start the Protocol →</button>
+    </div>
+  </div>
 
   <nav>
     <a href="index.html" class="nav-logo">GreyMisnomer Protocol</a>
@@ -905,9 +1108,21 @@
           <p>Collect raw environmental readings. Each record is structured as an index leaf in our commitment tree. You can manually edit or auto-generate the dataset.</p>
         </div>
         
-        <div style="margin-bottom: 1rem; display: flex; gap: 0.75rem;">
-          <button class="btn btn-secondary btn-sm" onclick="seedDemoDataset()">⚡ Seed 30-Day Solar Dataset (RFC Demo)</button>
+        <div style="margin-bottom: 1rem; display: flex; gap: 0.75rem; align-items: center; flex-wrap: wrap;">
+          <button class="btn btn-secondary btn-sm" onclick="seedDemoDataset()">⚡ Seed 30-Day Solar Dataset</button>
           <button class="btn btn-secondary btn-sm" onclick="clearMrvTable()">Clear All</button>
+          <span class="record-badge" id="recordBadge">0 records</span>
+        </div>
+
+        <!-- Drag-and-drop file upload zone -->
+        <div class="upload-zone" id="uploadZone">
+          <input type="file" id="mrvFileInput" accept=".csv,.json,.txt" onchange="handleFileUpload(event)">
+          <div class="upload-zone-icon">📂</div>
+          <div class="upload-zone-label">
+            <strong>Drop your MRV file here</strong> or click to browse<br>
+            Imports records into the table below — existing rows are replaced.
+          </div>
+          <div class="upload-zone-formats">Accepted: .csv (timestamp,value,unit,source) &nbsp;·&nbsp; .json ([{timestamp,value,unit,source}])</div>
         </div>
 
         <div class="table-wrap">
@@ -929,6 +1144,7 @@
         
         <div class="btn-row">
           <button class="btn btn-primary" onclick="processMrv()">Compute Merkle Tree Commitment →</button>
+          <span class="kbd-hint">or press →</span>
         </div>
       </div>
 
@@ -986,11 +1202,12 @@
           </div>
           <div class="field">
             <label>Serial Range Start</label>
-            <input type="number" id="f-serial_start" value="1000000">
+            <input type="number" id="f-serial_start" value="1000000" oninput="updateRangePreview()" onchange="updateRangePreview()">
           </div>
           <div class="field">
             <label>Serial Range End</label>
-            <input type="number" id="f-serial_end" value="1000999">
+            <input type="number" id="f-serial_end" value="1000999" oninput="updateRangePreview()" onchange="updateRangePreview()">
+            <div class="range-preview" id="rangePreview"></div>
           </div>
           <div class="field">
             <label>Jurisdiction</label>
@@ -1162,6 +1379,20 @@
   <div class="toast" id="toast"></div>
 
   <script type="module">
+    // ── Onboarding modal ──────────────────────────────────────────────────────
+    function dismissOnboarding() {
+      document.getElementById('onboardingModal').classList.remove('show');
+      try { localStorage.setItem('gm-onboarded', '1'); } catch(_) {}
+    }
+    window.dismissOnboarding = dismissOnboarding;
+
+    // Show modal only on first visit
+    window.addEventListener('DOMContentLoaded', () => {
+      let seen = false;
+      try { seen = !!localStorage.getItem('gm-onboarded'); } catch(_) {}
+      if (!seen) document.getElementById('onboardingModal').classList.add('show');
+    });
+
     import init, {
       build_commitment,
       verify_inclusion,
@@ -1206,6 +1437,37 @@
     window.submitTransfer = submitTransfer;
     window.submitBurn = submitBurn;
     window.resetAll = resetAll;
+    window.handleFileUpload = handleFileUpload;
+    window.updateRangePreview = updateRangePreview;
+    window.exportPdfCertificate = exportPdfCertificate;
+    window.exportZipBundle = exportZipBundle;
+
+    // ── Keyboard navigation: → / ← to move between steps ────────────────────
+    document.addEventListener('keydown', (e) => {
+      // Ignore when typing in an input/textarea
+      if (['INPUT', 'TEXTAREA', 'SELECT'].includes(document.activeElement.tagName)) return;
+      if (e.key === 'ArrowRight' && activeStep < 7) {
+        const next = activeStep + 1;
+        if (unlockedSteps.includes(next)) goStep(next);
+      } else if (e.key === 'ArrowLeft' && activeStep > 1) {
+        const prev = activeStep - 1;
+        if (unlockedSteps.includes(prev)) goStep(prev);
+      }
+    });
+
+    // ── Drag-and-drop upload zone events ─────────────────────────────────────
+    (() => {
+      const zone = document.getElementById('uploadZone');
+      if (!zone) return;
+      zone.addEventListener('dragover', (e) => { e.preventDefault(); zone.classList.add('drag-over'); });
+      zone.addEventListener('dragleave', () => zone.classList.remove('drag-over'));
+      zone.addEventListener('drop', (e) => {
+        e.preventDefault();
+        zone.classList.remove('drag-over');
+        const file = e.dataTransfer?.files?.[0];
+        if (file) processUploadedFile(file);
+      });
+    })();
 
     // Toast function
     function showToast(msg) {
@@ -1265,9 +1527,10 @@
         <td><input type="number" class="mrv-val" value="${defaultVal}" step="0.1"></td>
         <td><input type="text" class="mrv-unit" value="${unit}" style="width: 70px;"></td>
         <td><input type="text" class="mrv-src" value="${defaultSrc}"></td>
-        <td><button onclick="this.closest('tr').remove(); reindexTable();" style="background:none; border:none; color:var(--muted); cursor:pointer; font-size:0.95rem;">✕</button></td>
+        <td><button onclick="this.closest('tr').remove(); reindexTable(); updateRecordBadge();" style="background:none; border:none; color:var(--muted); cursor:pointer; font-size:0.95rem;">✕</button></td>
       `;
       body.appendChild(row);
+      updateRecordBadge();
     }
 
     window.reindexTable = () => {
@@ -1279,6 +1542,13 @@
 
     function clearMrvTable() {
       document.getElementById('mrvBody').innerHTML = '';
+      updateRecordBadge();
+    }
+
+    function updateRecordBadge() {
+      const n = document.querySelectorAll('#mrvBody tr').length;
+      const badge = document.getElementById('recordBadge');
+      if (badge) badge.textContent = `${n} record${n !== 1 ? 's' : ''}`;
     }
 
     function seedDemoDataset() {
@@ -1289,6 +1559,67 @@
         const val = (1250.0 + (day * 3.5)).toFixed(1);
         const src = `SOLAR-SENSOR-${String(day % 4).padStart(3, '0')}`;
         addMrvRow(ts, val, 'kWh', src);
+      }
+      updateRecordBadge();
+    }
+
+    // ── CSV / JSON file upload handler ────────────────────────────────────────
+    function handleFileUpload(event) {
+      const file = event.target.files?.[0];
+      if (file) processUploadedFile(file);
+    }
+
+    function processUploadedFile(file) {
+      const reader = new FileReader();
+      reader.onload = (e) => {
+        const text = e.target.result;
+        let records = [];
+        try {
+          if (file.name.endsWith('.json')) {
+            records = JSON.parse(text);
+            if (!Array.isArray(records)) throw new Error('JSON must be an array of records');
+          } else {
+            // CSV: timestamp,value,unit,source (first row may be header)
+            const lines = text.trim().split(/\r?\n/).filter(l => l.trim());
+            const isHeader = isNaN(lines[0].split(',')[0]);
+            const dataLines = isHeader ? lines.slice(1) : lines;
+            records = dataLines.map((line, i) => {
+              const parts = line.split(',');
+              if (parts.length < 4) throw new Error(`Row ${i + 1}: expected 4 columns (timestamp,value,unit,source)`);
+              return {
+                timestamp: parseInt(parts[0].trim()) || 0,
+                value: parseFloat(parts[1].trim()) || 0,
+                unit: parts[2].trim() || 'kWh',
+                source: parts[3].trim() || `SENSOR-${i}`
+              };
+            });
+          }
+          if (records.length === 0) throw new Error('File contains no records');
+          clearMrvTable();
+          records.forEach(r => addMrvRow(r.timestamp, r.value, r.unit || 'kWh', r.source));
+          updateRecordBadge();
+          showSuccessToast(`✓ Imported ${records.length} records from ${file.name}`);
+        } catch (err) {
+          showToast(`Import failed: ${err.message}`);
+        }
+      };
+      reader.readAsText(file);
+    }
+
+    // ── Serial range live preview ──────────────────────────────────────────────
+    function updateRangePreview() {
+      const start = parseInt(document.getElementById('f-serial_start')?.value) || 0;
+      const end   = parseInt(document.getElementById('f-serial_end')?.value)   || 0;
+      const preview = document.getElementById('rangePreview');
+      if (!preview) return;
+      if (end >= start) {
+        const count = end - start + 1;
+        preview.textContent = `→ ${count.toLocaleString()} credits in this batch (serials ${start.toLocaleString()} – ${end.toLocaleString()})`;
+        preview.classList.add('show');
+      } else {
+        preview.textContent = '⚠ End must be ≥ start';
+        preview.style.color = 'var(--red)';
+        preview.classList.add('show');
       }
     }
 
@@ -1315,7 +1646,8 @@
       }
 
       try {
-        const timestamp = Math.floor(Date.now() / 1000);
+        // wasm-bindgen maps Rust u64 → JS BigInt; plain Number throws "Cannot convert to BigInt"
+        const timestamp = BigInt(Math.floor(Date.now() / 1000));
         const jsonStr = JSON.stringify(list);
         
         // Execute WASM commitment building
@@ -1345,8 +1677,10 @@
         // Render Spot Checks
         renderSpotChecks();
 
-        // Unlock next step
+        // Unlock step 2 (Merkle result display) AND step 3 (Attest PoI form)
+        // so the "Attest PoI →" button on Panel 2 is reachable.
         unlock(2);
+        unlock(3);
         goStep(2);
       } catch (err) {
         showToast(`Error: ${err}`);
@@ -1468,7 +1802,10 @@
         // Load timeline in Step 6
         updateTimeline();
 
+        // Unlock step 4 (Mint result display) AND step 5 (Transfer form)
+        // so the "Proceed to Transfer →" button on Panel 4 is reachable.
         unlock(4);
+        unlock(5);
         goStep(4);
       } catch (err) {
         showToast(err);
@@ -1504,7 +1841,11 @@
         // Refresh timeline
         updateTimeline();
 
+        // Unlock step 6 (Partial Retire). Step 5 is already in unlockedSteps
+        // from submitMint(); re-calling unlock(5) marks si-4 done again (harmless).
+        // goStep(5) stays on Panel 5 to show the transfer result.
         unlock(5);
+        unlock(6);
         goStep(5);
       } catch (err) {
         showToast(err);
@@ -1613,7 +1954,10 @@
           document.getElementById('f-burn_end').value = activeSlices[0].end;
         }
 
+        // Unlock step 7 (Audit & Invariants) so the sidebar link and
+        // "Verify & Export Artifacts →" button on Panel 6 are reachable.
         unlock(6);
+        unlock(7);
       } catch (err) {
         showToast(err);
       }
@@ -1719,6 +2063,12 @@
         const full = JSON.parse(registry.full_state());
         grid.appendChild(downloadBtn("registry_full_state.json", full, "👑 Global Registry State"));
       } catch(e) {}
+
+      // Show PDF + ZIP buttons if we have enough state
+      if (poiData && mintData) {
+        document.getElementById('pdfExportBtn').style.display = '';
+        document.getElementById('zipExportBtn').style.display = '';
+      }
     }
 
     function downloadBtn(filename, obj, label) {
@@ -1729,6 +2079,247 @@
       a.download = filename;
       a.innerHTML = `💾 Download ${label}`;
       return a;
+    }
+
+    // ── PDF Certificate export (jsPDF) ────────────────────────────────────────
+    function exportPdfCertificate() {
+      if (!poiData || !mintData || !commitment) {
+        showToast('Complete the full workflow first to generate a PDF.');
+        return;
+      }
+      try {
+        const { jsPDF } = window.jspdf;
+        const doc = new jsPDF({ unit: 'mm', format: 'a4' });
+        const ts = new Date().toISOString();
+
+        // ── Header ──────────────────────────────────────────────────────────
+        doc.setFillColor(10, 13, 20);
+        doc.rect(0, 0, 210, 40, 'F');
+        doc.setTextColor(88, 166, 255);
+        doc.setFontSize(20);
+        doc.setFont('helvetica', 'bold');
+        doc.text('GreyMisnomer Protocol', 15, 18);
+        doc.setFontSize(11);
+        doc.setTextColor(188, 140, 242);
+        doc.text('Carbon Credit Registry — Session Certificate', 15, 27);
+        doc.setFontSize(8);
+        doc.setTextColor(132, 146, 166);
+        doc.text(`Generated: ${ts}`, 15, 34);
+
+        // ── Section helper ──────────────────────────────────────────────────
+        let y = 52;
+        const sectionTitle = (title) => {
+          doc.setFillColor(22, 28, 43);
+          doc.rect(10, y - 5, 190, 9, 'F');
+          doc.setFontSize(10);
+          doc.setFont('helvetica', 'bold');
+          doc.setTextColor(88, 166, 255);
+          doc.text(title, 14, y);
+          y += 9;
+        };
+        const field = (key, value) => {
+          doc.setFontSize(9);
+          doc.setFont('helvetica', 'bold');
+          doc.setTextColor(132, 146, 166);
+          doc.text(key, 14, y);
+          doc.setFont('courier', 'normal');
+          doc.setTextColor(240, 242, 245);
+          const lines = doc.splitTextToSize(String(value), 130);
+          doc.text(lines, 70, y);
+          y += lines.length * 5.5 + 1;
+          if (y > 270) { doc.addPage(); y = 20; }
+        };
+
+        // ── MRV Commitment ──────────────────────────────────────────────────
+        sectionTitle('RFC-003 · MRV Commitment (BLAKE3 Merkle)');
+        field('Merkle Root', commitment.merkle_root_hex);
+        field('Leaf Count', `${commitment.leaf_count} records`);
+        field('Hash Algorithm', commitment.algorithm);
+        field('Commitment TS', commitment.timestamp);
+        y += 3;
+
+        // ── Proof-of-Integrity ───────────────────────────────────────────────
+        sectionTitle('RFC-001 · Proof-of-Integrity (PoI)');
+        field('Project ID', poiData.project_id);
+        field('Credit ID', poiData.credit_id);
+        field('Jurisdiction', poiData.jurisdiction);
+        field('Methodology Hash', poiData.methodology_hash);
+        field('VVB Signature', poiData.vvb_signature);
+        field('Owner Wallet', poiData.owner);
+        field('Serial Range', `${poiData.serial_start} – ${poiData.serial_end}`);
+        field('Authorized Supply', `${poiData.cc_mint_amount} tCO₂e`);
+        y += 3;
+
+        // ── Credit Batch ─────────────────────────────────────────────────────
+        sectionTitle('RFC-002 · Minted Credit Batch');
+        field('Credit ID', mintData.credit_id);
+        field('Project ID', mintData.project_id);
+        field('Original Range', `${mintData.original_start} – ${mintData.original_end}`);
+        field('Total Credits', `${mintData.total_credits} tCO₂e`);
+        field('Batch Owner', mintData.owner);
+        field('PoI Status', mintData.poi_status + ' (consumed)');
+        y += 3;
+
+        // ── PoO Receipts ──────────────────────────────────────────────────────
+        if (pooReceipts.length > 0) {
+          sectionTitle(`RFC-001 · Proof-of-Offset Receipts (${pooReceipts.length})`);
+          pooReceipts.forEach((poo, i) => {
+            field(`Receipt #${i + 1}`, `${poo.serial_start} – ${poo.serial_end} | ${poo.cc_amount} tCO₂e | ${poo.claim_type}`);
+            field('Beneficiary', poo.beneficiary);
+            field('Burn TX Hash', poo.burn_tx_hash);
+            y += 2;
+          });
+        }
+
+        // ── Footer ───────────────────────────────────────────────────────────
+        const pageCount = doc.getNumberOfPages();
+        for (let i = 1; i <= pageCount; i++) {
+          doc.setPage(i);
+          doc.setFontSize(7.5);
+          doc.setTextColor(132, 146, 166);
+          doc.text('GreyMisnomer · Per-session simulator · Rust/WASM · RFC-001/002/003', 14, 289);
+          doc.text(`Page ${i} of ${pageCount}`, 185, 289, { align: 'right' });
+        }
+
+        doc.save(`greymisnomer_certificate_${poiData.credit_id}.pdf`);
+      } catch (err) {
+        showToast(`PDF generation failed: ${err.message}`);
+        console.error(err);
+      }
+    }
+
+    // ── ZIP bundle export (browser CompressionStream) ─────────────────────────
+    async function exportZipBundle() {
+      if (!poiData) {
+        showToast('Complete the full workflow first.');
+        return;
+      }
+      // Build a simple ZIP using JSZip-free technique: just pack JSON files
+      // into a flat .zip using the CompressionStream API (Chrome 80+, Firefox 113+)
+      // Fallback: offer a multi-file download if CompressionStream unavailable.
+      try {
+        const files = {};
+        files['mrv_records.json'] = JSON.stringify(mrvRecords, null, 2);
+        if (commitment) files['merkle_commitment.json'] = JSON.stringify(commitment, null, 2);
+        if (poiData) files['poi_certificate.json'] = JSON.stringify(poiData, null, 2);
+        if (mintData) files['credit_batch_mint.json'] = JSON.stringify(mintData, null, 2);
+        pooReceipts.forEach((poo, i) => {
+          files[`poo_receipt_${i+1}_${poo.serial_start}_${poo.serial_end}.json`] = JSON.stringify(poo, null, 2);
+        });
+        try {
+          const full = JSON.parse(registry.full_state());
+          files['registry_full_state.json'] = JSON.stringify(full, null, 2);
+        } catch(_) {}
+
+        // Build a minimal ZIP binary
+        const zipBytes = buildZip(files);
+        const blob = new Blob([zipBytes], { type: 'application/zip' });
+        const url = URL.createObjectURL(blob);
+        const a = document.createElement('a');
+        a.href = url;
+        a.download = `greymisnomer_audit_${poiData.credit_id}_${Date.now()}.zip`;
+        a.click();
+        setTimeout(() => URL.revokeObjectURL(url), 5000);
+        showSuccessToast('✓ Audit ZIP downloaded');
+      } catch (err) {
+        showToast(`ZIP export failed: ${err.message}`);
+        console.error(err);
+      }
+    }
+
+    // Minimal ZIP builder (STORE method, no compression — universally compatible)
+    function buildZip(files) {
+      const encoder = new TextEncoder();
+      const parts = [];
+      const centralDir = [];
+      let offset = 0;
+
+      const crc32 = (data) => {
+        let crc = -1;
+        const table = buildCrcTable();
+        for (const b of data) crc = (crc >>> 8) ^ table[(crc ^ b) & 0xff];
+        return (crc ^ -1) >>> 0;
+      };
+
+      const buildCrcTable = () => {
+        if (buildCrcTable._t) return buildCrcTable._t;
+        const t = new Uint32Array(256);
+        for (let i = 0; i < 256; i++) {
+          let c = i;
+          for (let j = 0; j < 8; j++) c = (c & 1) ? (0xedb88320 ^ (c >>> 1)) : (c >>> 1);
+          t[i] = c;
+        }
+        return (buildCrcTable._t = t);
+      };
+
+      const u32 = (n) => { const b = new Uint8Array(4); new DataView(b.buffer).setUint32(0, n, true); return b; };
+      const u16 = (n) => { const b = new Uint8Array(2); new DataView(b.buffer).setUint16(0, n, true); return b; };
+      const str = (s) => encoder.encode(s);
+
+      for (const [name, content] of Object.entries(files)) {
+        const data = encoder.encode(content);
+        const nameBytes = str(name);
+        const crc = crc32(data);
+        const localHeader = new Uint8Array([
+          ...u32(0x04034b50), // local file header sig
+          ...u16(20),         // version needed
+          ...u16(0),          // flags
+          ...u16(0),          // compression: STORE
+          ...u16(0), ...u16(0), // mod time/date
+          ...u32(crc),        // CRC-32
+          ...u32(data.length),// compressed size
+          ...u32(data.length),// uncompressed size
+          ...u16(nameBytes.length),
+          ...u16(0),          // extra length
+          ...nameBytes,
+          ...data
+        ]);
+        parts.push(localHeader);
+
+        centralDir.push(new Uint8Array([
+          ...u32(0x02014b50), // central dir sig
+          ...u16(20), ...u16(20), ...u16(0), ...u16(0),
+          ...u16(0), ...u16(0), ...u16(0),
+          ...u32(crc),
+          ...u32(data.length), ...u32(data.length),
+          ...u16(nameBytes.length), ...u16(0), ...u16(0),
+          ...u16(0), ...u16(0), ...u32(0),
+          ...u32(offset),
+          ...nameBytes
+        ]));
+        offset += localHeader.length;
+      }
+
+      const cdSize = centralDir.reduce((s, b) => s + b.length, 0);
+      const eocd = new Uint8Array([
+        ...u32(0x06054b50),
+        ...u16(0), ...u16(0),
+        ...u16(centralDir.length), ...u16(centralDir.length),
+        ...u32(cdSize), ...u32(offset),
+        ...u16(0)
+      ]);
+
+      const total = [...parts, ...centralDir, eocd].reduce((s, b) => s + b.length, 0);
+      const out = new Uint8Array(total);
+      let pos = 0;
+      for (const b of [...parts, ...centralDir, eocd]) { out.set(b, pos); pos += b.length; }
+      return out;
+    }
+
+    // ── Success toast (green variant) ─────────────────────────────────────────
+    function showSuccessToast(msg) {
+      const toast = document.getElementById('toast');
+      toast.style.background = '#0d1f0d';
+      toast.style.borderColor = 'rgba(57, 211, 83, 0.4)';
+      toast.style.color = 'var(--green)';
+      toast.textContent = msg;
+      toast.classList.add('show');
+      setTimeout(() => {
+        toast.classList.remove('show');
+        toast.style.background = '';
+        toast.style.borderColor = '';
+        toast.style.color = '';
+      }, 3500);
     }
 
     // --- Reset ---
