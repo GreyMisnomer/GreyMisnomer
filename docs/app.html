@@ -1459,6 +1459,17 @@
         let activeCredits = b.totalCredits;
         try { const state = JSON.parse(registry.batch_state(b.creditId)); activeCredits = state.active_total; } catch(_){}
 
+        const isSeller = b.owner === currentWallet;
+        let actionHtml = '';
+        if (activeCredits <= 0) {
+          actionHtml = '<span class="status-pill retired">Sold Out</span>';
+        } else if (isSeller) {
+          actionHtml = '<span style="font-size:0.8rem;color:var(--muted);font-style:italic;">You own this listing</span>';
+        } else {
+          const totalCost = (activeCredits * b.listingPrice).toLocaleString();
+          actionHtml = `<button class="btn btn-primary btn-sm" style="width:100%" onclick="purchaseCredit(${bIdx})">🛒 Buy ${activeCredits.toLocaleString()} credits · ₹${totalCost}</button>`;
+        }
+
         html += `<div class="listing-card">
           <div class="listing-header">
             <div class="listing-title">${b.projectName || b.creditId}</div>
@@ -1466,13 +1477,13 @@
           </div>
           <div class="listing-meta">
             <strong>${b.tech}</strong> · ${b.creditId}<br>
-            Seller: ${b.owner}
+            Seller: ${b.owner}${isSeller ? ' <strong style="color:var(--amber)">(You)</strong>' : ''}
           </div>
           <div class="listing-stats">
             <div class="listing-stat">Available<span>${activeCredits.toLocaleString()}</span></div>
             <div class="listing-stat">Total<span>${b.totalCredits.toLocaleString()}</span></div>
           </div>
-          ${activeCredits > 0 ? `<button class="btn btn-primary btn-sm" style="width:100%" onclick="purchaseCredit(${bIdx})">🛒 Purchase & Transfer</button>` : '<span class="status-pill retired">Sold Out</span>'}
+          ${actionHtml}
         </div>`;
       });
       html += '</div>';
@@ -1482,13 +1493,47 @@
     function purchaseCredit(bIdx) {
       const batch = mintedBatches[bIdx];
       const previousOwner = batch.owner;
+
+      // Guard: can't buy your own credits
+      if (previousOwner === currentWallet) {
+        showToast('You cannot purchase your own credits. Switch to a Buyer role first.');
+        return;
+      }
+
+      // Get available credits
+      let activeCredits = batch.totalCredits;
+      try { const state = JSON.parse(registry.batch_state(batch.creditId)); activeCredits = state.active_total; } catch(_){}
+      const totalCost = (activeCredits * batch.listingPrice).toLocaleString();
+
+      // Confirmation dialog
+      const confirmed = confirm(
+        `Purchase Confirmation\n` +
+        `━━━━━━━━━━━━━━━━━━━━━\n` +
+        `Credit: ${batch.creditId}\n` +
+        `Project: ${batch.projectName}\n` +
+        `Seller: ${previousOwner}\n` +
+        `Buyer: ${currentWallet} (${currentOrg})\n` +
+        `Quantity: ${activeCredits.toLocaleString()} tCO2e\n` +
+        `Total Cost: ₹${totalCost}\n\n` +
+        `Proceed with purchase?`
+      );
+      if (!confirmed) return;
+
       try {
         const res = registry.transfer(batch.creditId, currentWallet);
         const updated = JSON.parse(res);
         batch.owner = updated.owner;
-        showSuccessToast(`✓ Credits transferred from ${previousOwner} to ${currentWallet}`);
+        batch.listedOnMarket = false; // Remove from marketplace after purchase
+
+        // Update marketplace badge
+        document.getElementById('badge-marketplace').textContent = mintedBatches.filter(b => b.listedOnMarket).length;
+
+        showSuccessToast(`✓ Purchased ${activeCredits.toLocaleString()} credits from ${previousOwner} → now in your Portfolio`);
         refreshMarketplace();
         refreshDashboard();
+
+        // Auto-navigate to Portfolio so buyer sees their new credits
+        setTimeout(() => navigate('portfolio'), 800);
       } catch (err) { showToast(`Transfer error: ${err}`); }
     }
     window.purchaseCredit = purchaseCredit;
