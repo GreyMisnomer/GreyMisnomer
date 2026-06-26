@@ -3,12 +3,11 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>GreyMisnomer — Registry Console</title>
-  <meta name="description" content="Interactive carbon credit registry simulator. Walk through MRV data entry, Merkle commitment, PoI attestation, minting, transfer, and retirement — powered by Rust compiled to WebAssembly.">
+  <title>GreyMisnomer — Carbon Credit Registry Platform</title>
+  <meta name="description" content="Enterprise carbon credit registry platform. Manage projects, MRV data, verification, minting, marketplace trading, and retirement — powered by Rust compiled to WebAssembly.">
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;600;800&family=JetBrains+Mono:wght@400;500;600&display=swap" rel="stylesheet">
-  <!-- jsPDF for client-side PDF certificate generation -->
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800&family=JetBrains+Mono:wght@400;500;600&display=swap" rel="stylesheet">
   <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
   <style>
     :root {
@@ -24,17 +23,12 @@
       --green:        #39d353;
       --amber:        #ecb22e;
       --red:          #f85149;
+      --cyan:         #56d4dd;
       --grad:         linear-gradient(135deg, #58a6ff, #bc8cf2);
       --mono:         'JetBrains Mono', monospace;
       --sans:         'Inter', sans-serif;
     }
-    
-    * {
-      margin: 0;
-      padding: 0;
-      box-sizing: border-box;
-    }
-    
+    * { margin:0; padding:0; box-sizing:border-box; }
     body {
       font-family: var(--sans);
       background: var(--bg);
@@ -42,1327 +36,860 @@
       min-height: 100vh;
       overflow-x: hidden;
       display: flex;
-      flex-direction: column;
     }
-    
-    /* Navigation Bar */
-    nav {
+
+    /* ── Left Navigation ───────────────────────────────────────── */
+    .sidebar {
+      width: 260px;
+      min-width: 260px;
+      background: var(--bg2);
+      border-right: 1px solid var(--border);
       display: flex;
-      align-items: center;
-      justify-content: space-between;
-      padding: 1rem 2rem;
-      border-bottom: 1px solid var(--border);
-      background: rgba(10, 13, 20, 0.85);
-      backdrop-filter: blur(12px);
-      position: sticky;
+      flex-direction: column;
+      height: 100vh;
+      position: fixed;
       top: 0;
+      left: 0;
       z-index: 100;
+      overflow-y: auto;
     }
-    
-    .nav-logo {
+    .sidebar-brand {
+      padding: 1.5rem 1.25rem 1rem;
+      border-bottom: 1px solid var(--border);
+    }
+    .sidebar-brand h1 {
+      font-size: 1.1rem;
       font-weight: 800;
-      font-size: 1.2rem;
       background: var(--grad);
       -webkit-background-clip: text;
       background-clip: text;
       color: transparent;
-      text-decoration: none;
-      letter-spacing: -0.01em;
+      margin-bottom: 0.15rem;
     }
-    
-    .nav-links {
-      display: flex;
-      gap: 1.5rem;
-    }
-    
-    .nav-links a {
+    .sidebar-brand .subtitle {
+      font-size: 0.7rem;
       color: var(--muted);
-      text-decoration: none;
-      font-size: 0.9rem;
-      font-weight: 500;
-      transition: color 0.2s;
+      letter-spacing: 0.08em;
+      text-transform: uppercase;
     }
-    
-    .nav-links a:hover, .nav-links a.active {
-      color: var(--blue);
+    .nav-section {
+      padding: 1rem 0.75rem 0.35rem;
     }
-    
-    /* Layout Shell */
-    .shell {
-      display: grid;
-      grid-template-columns: 280px 1fr;
-      flex-grow: 1;
-      min-height: calc(100vh - 65px);
-    }
-    
-    /* Sidebar */
-    .sidebar {
-      background: var(--bg2);
-      border-right: 1px solid var(--border);
-      padding: 2rem 1.2rem;
-      display: flex;
-      flex-direction: column;
-      gap: 1.5rem;
-      position: sticky;
-      top: 65px;
-      height: calc(100vh - 65px);
-      overflow-y: auto;
-    }
-    
-    .sidebar h3 {
-      font-size: 0.72rem;
+    .nav-section-title {
+      font-size: 0.68rem;
       letter-spacing: 0.15em;
       color: var(--muted);
       text-transform: uppercase;
       padding-left: 0.5rem;
+      margin-bottom: 0.5rem;
     }
-    
-    .step-list {
-      display: flex;
-      flex-direction: column;
-      gap: 0.35rem;
-    }
-    
-    .step-item {
+    .nav-item {
       display: flex;
       align-items: center;
-      gap: 0.85rem;
-      padding: 0.75rem 0.85rem;
-      border-radius: 12px;
+      gap: 0.75rem;
+      padding: 0.6rem 0.85rem;
+      border-radius: 10px;
       cursor: pointer;
-      transition: all 0.2s ease;
+      transition: all 0.15s ease;
       border: 1px solid transparent;
-    }
-    
-    .step-item:hover:not(.locked) {
-      background: rgba(255, 255, 255, 0.03);
-    }
-    
-    .step-item.active {
-      background: rgba(88, 166, 255, 0.08);
-      border-color: rgba(88, 166, 255, 0.2);
-    }
-    
-    .step-item.done .sn {
-      background: rgba(57, 211, 83, 0.15);
-      border-color: var(--green);
-      color: var(--green);
-    }
-    
-    .step-item.locked {
-      opacity: 0.4;
-      cursor: not-allowed;
-    }
-    
-    .sn {
-      width: 28px;
-      height: 28px;
-      border-radius: 50%;
-      display: flex;
-      align-items: center;
-      justify-content: center;
-      font-family: var(--mono);
-      font-size: 0.75rem;
-      font-weight: 600;
-      flex-shrink: 0;
-      background: var(--bg3);
-      border: 1px solid var(--border);
-      color: var(--muted);
-      transition: all 0.2s;
-    }
-    
-    .step-item.active .sn {
-      background: var(--grad);
-      border-color: transparent;
-      color: #fff;
-      box-shadow: 0 0 10px rgba(88, 166, 255, 0.3);
-    }
-    
-    .sl {
       font-size: 0.88rem;
       color: var(--muted);
-      line-height: 1.3;
-      transition: color 0.2s;
+      font-weight: 500;
+      margin-bottom: 2px;
+      user-select: none;
     }
-    
-    .step-item.active .sl {
+    .nav-item:hover { background: rgba(255,255,255,0.03); color: var(--text); }
+    .nav-item.active {
+      background: rgba(88,166,255,0.08);
+      border-color: rgba(88,166,255,0.2);
       color: var(--text);
       font-weight: 600;
     }
-    
-    .sidebar-footer {
-      margin-top: auto;
-      padding: 0.75rem;
-      border-radius: 12px;
-      background: var(--bg3);
-      border: 1px solid var(--border);
-      font-size: 0.78rem;
-      line-height: 1.6;
-      color: var(--muted);
-    }
-    
-    .sidebar-footer span {
+    .nav-item.locked { opacity: 0.3; cursor: not-allowed; }
+    .nav-item .nav-icon { font-size: 1.05rem; width: 22px; text-align: center; }
+    .nav-item .nav-badge {
+      margin-left: auto;
+      font-size: 0.68rem;
+      font-family: var(--mono);
+      padding: 0.15rem 0.5rem;
+      border-radius: 10px;
+      background: rgba(88,166,255,0.1);
       color: var(--blue);
       font-weight: 600;
     }
-    
-    /* Main Content */
-    .main {
-      padding: 2.5rem;
-      max-width: 1000px;
+    .sidebar-footer {
+      margin-top: auto;
+      padding: 1rem 1.25rem;
+      border-top: 1px solid var(--border);
+      font-size: 0.75rem;
+      color: var(--muted);
+      line-height: 1.6;
+    }
+    .sidebar-footer span { color: var(--blue); font-weight: 600; }
+
+    /* ── Main Content Area ──────────────────────────────────────── */
+    .main-wrapper {
+      margin-left: 260px;
+      flex: 1;
+      display: flex;
+      flex-direction: column;
+      min-height: 100vh;
+    }
+
+    /* Top Bar */
+    .topbar {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      padding: 0.75rem 2rem;
+      border-bottom: 1px solid var(--border);
+      background: rgba(10,13,20,0.85);
+      backdrop-filter: blur(12px);
+      position: sticky;
+      top: 0;
+      z-index: 50;
+      gap: 1rem;
+    }
+    .demo-badge {
+      font-size: 0.72rem;
+      font-family: var(--mono);
+      color: var(--amber);
+      background: rgba(236,178,46,0.08);
+      border: 1px solid rgba(236,178,46,0.2);
+      padding: 0.3rem 0.75rem;
+      border-radius: 6px;
+      display: flex;
+      align-items: center;
+      gap: 0.4rem;
+    }
+    .role-switcher {
+      display: flex;
+      align-items: center;
+      gap: 0.6rem;
+    }
+    .role-switcher label {
+      font-size: 0.78rem;
+      color: var(--muted);
+      font-weight: 500;
+    }
+    .role-switcher select {
+      background: var(--bg2);
+      border: 1px solid var(--border);
+      border-radius: 8px;
+      color: var(--text);
+      padding: 0.4rem 0.75rem;
+      font-size: 0.82rem;
+      font-family: var(--sans);
+      outline: none;
+      cursor: pointer;
+    }
+    .role-switcher select:focus { border-color: var(--blue); }
+    select option { background: var(--bg2); }
+    .topbar-links {
+      display: flex;
+      gap: 1rem;
+      align-items: center;
+    }
+    .topbar-links a {
+      color: var(--muted);
+      text-decoration: none;
+      font-size: 0.82rem;
+      font-weight: 500;
+      transition: color 0.2s;
+    }
+    .topbar-links a:hover { color: var(--blue); }
+
+    /* Content */
+    .content {
+      padding: 2rem 2.5rem;
+      max-width: 1100px;
       width: 100%;
-      margin: 0 auto;
+      flex: 1;
     }
-    
-    .panel {
-      display: none;
-      animation: fadeUp 0.35s cubic-bezier(0.16, 1, 0.3, 1);
-    }
-    
-    .panel.active {
-      display: block;
-    }
-    
-    @keyframes fadeUp {
-      from {
-        opacity: 0;
-        transform: translateY(12px);
-      }
-      to {
-        opacity: 1;
-        transform: translateY(0);
-      }
-    }
-    
-    .panel-header {
-      margin-bottom: 2rem;
-    }
-    
-    .panel-header h2 {
-      font-size: 1.8rem;
+
+    /* View containers */
+    .view { display: none; animation: fadeUp 0.3s cubic-bezier(0.16,1,0.3,1); }
+    .view.active { display: block; }
+    @keyframes fadeUp { from { opacity:0; transform:translateY(10px); } to { opacity:1; transform:translateY(0); } }
+
+    /* ── Shared Components ──────────────────────────────────────── */
+    .page-title {
+      font-size: 1.6rem;
       font-weight: 800;
-      margin-bottom: 0.5rem;
       background: var(--grad);
       -webkit-background-clip: text;
       background-clip: text;
       color: transparent;
+      margin-bottom: 0.3rem;
     }
-    
-    .panel-header p {
-      color: var(--muted);
-      font-size: 0.95rem;
-      line-height: 1.6;
-    }
-    
+    .page-desc { color: var(--muted); font-size: 0.9rem; line-height: 1.6; margin-bottom: 1.75rem; }
     .rfc-tag {
-      font-family: var(--mono);
-      font-size: 0.75rem;
-      font-weight: 500;
-      color: var(--purple);
-      background: rgba(188, 140, 242, 0.1);
-      border: 1px solid rgba(188, 140, 242, 0.25);
-      padding: 0.25rem 0.6rem;
-      border-radius: 6px;
-      display: inline-block;
-      margin-bottom: 0.8rem;
+      font-family: var(--mono); font-size: 0.72rem; font-weight: 500;
+      color: var(--purple); background: rgba(188,140,242,0.1);
+      border: 1px solid rgba(188,140,242,0.25);
+      padding: 0.2rem 0.55rem; border-radius: 6px;
+      display: inline-block; margin-bottom: 0.6rem;
     }
-    
-    /* Form & Fields */
-    .form-grid {
+
+    /* Metric Cards */
+    .metrics-grid {
       display: grid;
-      grid-template-columns: 1fr 1fr;
-      gap: 1.25rem;
-      margin-bottom: 1.75rem;
+      grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+      gap: 1rem;
+      margin-bottom: 2rem;
     }
-    
-    .form-grid.single {
-      grid-template-columns: 1fr;
+    .metric-card {
+      background: var(--bg2);
+      border: 1px solid var(--border);
+      border-radius: 14px;
+      padding: 1.25rem;
+      transition: border-color 0.2s;
     }
-    
-    .form-grid.triple {
-      grid-template-columns: 1fr 1fr 1fr;
+    .metric-card:hover { border-color: rgba(88,166,255,0.3); }
+    .metric-card .metric-icon { font-size: 1.4rem; margin-bottom: 0.5rem; }
+    .metric-card .metric-val {
+      font-family: var(--mono); font-size: 1.8rem; font-weight: 700;
+      color: var(--blue); display: block; margin-bottom: 0.15rem;
     }
-    
-    .field {
-      display: flex;
-      flex-direction: column;
-      gap: 0.45rem;
+    .metric-card .metric-lbl {
+      font-size: 0.75rem; color: var(--muted); font-weight: 500;
+      text-transform: uppercase; letter-spacing: 0.05em;
     }
-    
+    .metric-card.green .metric-val { color: var(--green); }
+    .metric-card.red .metric-val { color: var(--red); }
+    .metric-card.purple .metric-val { color: var(--purple); }
+    .metric-card.amber .metric-val { color: var(--amber); }
+
+    /* Form fields */
+    .form-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 1.25rem; margin-bottom: 1.5rem; }
+    .form-grid.single { grid-template-columns: 1fr; }
+    .form-grid.triple { grid-template-columns: 1fr 1fr 1fr; }
+    .field { display: flex; flex-direction: column; gap: 0.4rem; }
     .field label {
-      font-size: 0.8rem;
-      color: var(--muted);
-      font-weight: 600;
-      text-transform: uppercase;
-      letter-spacing: 0.05em;
+      font-size: 0.78rem; color: var(--muted); font-weight: 600;
+      text-transform: uppercase; letter-spacing: 0.05em;
     }
-    
     .field input, .field select, .field textarea {
-      background: var(--bg2);
-      border: 1px solid var(--border);
-      border-radius: 10px;
-      color: var(--text);
-      padding: 0.75rem 1rem;
-      font-size: 0.92rem;
-      font-family: var(--sans);
-      transition: all 0.2s;
-      outline: none;
+      background: var(--bg2); border: 1px solid var(--border); border-radius: 10px;
+      color: var(--text); padding: 0.7rem 1rem; font-size: 0.9rem;
+      font-family: var(--sans); transition: all 0.2s; outline: none;
     }
-    
     .field input:focus, .field select:focus, .field textarea:focus {
-      border-color: var(--blue);
-      box-shadow: 0 0 0 2px rgba(88, 166, 255, 0.15);
+      border-color: var(--blue); box-shadow: 0 0 0 2px rgba(88,166,255,0.15);
     }
-    
-    .field textarea {
-      resize: vertical;
-      min-height: 100px;
-      font-family: var(--mono);
-      font-size: 0.82rem;
-    }
-    
-    select option {
-      background: var(--bg2);
-    }
-    
-    /* Table Styling */
-    .table-wrap {
-      overflow-x: auto;
-      border: 1px solid var(--border);
-      border-radius: 12px;
-      background: var(--bg2);
-      margin-bottom: 1.25rem;
-    }
-    
-    table.mrv {
-      width: 100%;
-      border-collapse: collapse;
-      font-size: 0.88rem;
-    }
-    
-    table.mrv th {
-      background: var(--bg3);
-      padding: 0.75rem 1rem;
-      text-align: left;
-      font-size: 0.75rem;
-      color: var(--muted);
-      font-weight: 600;
-      text-transform: uppercase;
-      letter-spacing: 0.05em;
-      border-bottom: 1px solid var(--border);
-    }
-    
-    table.mrv td {
-      padding: 0.5rem 1rem;
-      border-bottom: 1px solid rgba(255, 255, 255, 0.02);
-    }
-    
-    table.mrv td input {
-      background: transparent;
-      border: 1px solid transparent;
-      border-radius: 6px;
-      color: var(--text);
-      padding: 0.4rem 0.6rem;
-      font-family: var(--mono);
-      font-size: 0.85rem;
-      width: 100%;
-      outline: none;
-    }
-    
-    table.mrv td input:focus {
-      border-color: var(--border);
-      background: var(--bg3);
-    }
-    
-    .add-row-btn {
-      font-size: 0.85rem;
-      color: var(--blue);
-      background: none;
-      border: none;
-      cursor: pointer;
-      padding: 0.5rem 0.25rem;
-      font-weight: 500;
-      transition: opacity 0.2s;
-    }
-    
-    .add-row-btn:hover {
-      opacity: 0.85;
-      text-decoration: underline;
-    }
-    
+    .field textarea { resize: vertical; min-height: 80px; font-family: var(--mono); font-size: 0.82rem; }
+
     /* Buttons */
     .btn {
-      padding: 0.8rem 1.6rem;
-      border-radius: 50px;
-      font-size: 0.9rem;
-      font-weight: 600;
-      cursor: pointer;
-      border: none;
-      transition: all 0.2s;
-      display: inline-flex;
-      align-items: center;
-      justify-content: center;
-      gap: 0.5rem;
-      outline: none;
+      padding: 0.7rem 1.4rem; border-radius: 50px; font-size: 0.88rem;
+      font-weight: 600; cursor: pointer; border: none; transition: all 0.2s;
+      display: inline-flex; align-items: center; justify-content: center;
+      gap: 0.45rem; outline: none;
     }
-    
-    .btn-primary {
-      background: var(--grad);
-      color: #fff;
-    }
-    
-    .btn-primary:hover {
-      transform: translateY(-2px);
-      box-shadow: 0 6px 15px rgba(88, 166, 255, 0.25);
-    }
-    
-    .btn-secondary {
-      background: var(--bg2);
-      color: var(--muted);
-      border: 1px solid var(--border);
-    }
-    
-    .btn-secondary:hover {
-      color: var(--text);
-      border-color: var(--muted);
-    }
-    
-    .btn-green {
-      background: rgba(57, 211, 83, 0.1);
-      color: var(--green);
-      border: 1px solid rgba(57, 211, 83, 0.25);
-    }
-    
-    .btn-green:hover {
-      background: rgba(57, 211, 83, 0.2);
-      transform: translateY(-1px);
-    }
-    
-    .btn-sm {
-      padding: 0.45rem 1rem;
-      font-size: 0.8rem;
-      border-radius: 6px;
-    }
-    
-    .btn:disabled {
-      opacity: 0.3;
-      cursor: not-allowed;
-      transform: none !important;
-      box-shadow: none !important;
-    }
-    
-    .btn-row {
-      display: flex;
-      gap: 1rem;
-      align-items: center;
-      flex-wrap: wrap;
-      margin-top: 1.75rem;
-    }
-    
-    /* Cards and Display panels */
+    .btn-primary { background: var(--grad); color: #fff; }
+    .btn-primary:hover { transform: translateY(-2px); box-shadow: 0 6px 15px rgba(88,166,255,0.25); }
+    .btn-secondary { background: var(--bg2); color: var(--muted); border: 1px solid var(--border); }
+    .btn-secondary:hover { color: var(--text); border-color: var(--muted); }
+    .btn-green { background: rgba(57,211,83,0.1); color: var(--green); border: 1px solid rgba(57,211,83,0.25); }
+    .btn-green:hover { background: rgba(57,211,83,0.2); transform: translateY(-1px); }
+    .btn-amber { background: rgba(236,178,46,0.1); color: var(--amber); border: 1px solid rgba(236,178,46,0.25); }
+    .btn-amber:hover { background: rgba(236,178,46,0.2); transform: translateY(-1px); }
+    .btn-sm { padding: 0.4rem 0.9rem; font-size: 0.8rem; border-radius: 8px; }
+    .btn:disabled { opacity: 0.3; cursor: not-allowed; transform: none!important; box-shadow: none!important; }
+    .btn-row { display: flex; gap: 1rem; align-items: center; flex-wrap: wrap; margin-top: 1.5rem; }
+
+    /* Result cards */
     .result-card {
-      background: var(--bg2);
-      border: 1px solid var(--border);
-      border-radius: 16px;
-      padding: 1.5rem;
-      margin-top: 1.5rem;
-      margin-bottom: 1rem;
+      background: var(--bg2); border: 1px solid var(--border);
+      border-radius: 14px; padding: 1.25rem; margin-top: 1.25rem; margin-bottom: 0.75rem;
     }
-    
-    .result-card.success {
-      border-color: rgba(57, 211, 83, 0.3);
-      background: rgba(57, 211, 83, 0.02);
-    }
-    
-    .result-card.error {
-      border-color: rgba(248, 81, 73, 0.3);
-      background: rgba(248, 81, 73, 0.02);
-    }
-    
+    .result-card.success { border-color: rgba(57,211,83,0.3); background: rgba(57,211,83,0.02); }
+    .result-card.error { border-color: rgba(248,81,73,0.3); background: rgba(248,81,73,0.02); }
     .result-card h4 {
-      font-size: 0.95rem;
-      font-weight: 700;
-      margin-bottom: 1rem;
-      display: flex;
-      align-items: center;
-      gap: 0.5rem;
+      font-size: 0.92rem; font-weight: 700; margin-bottom: 0.75rem;
+      display: flex; align-items: center; gap: 0.5rem;
     }
-    
     .kv-row {
-      display: flex;
-      padding: 0.5rem 0;
-      border-bottom: 1px solid rgba(255, 255, 255, 0.03);
-      font-size: 0.9rem;
-      gap: 1.5rem;
-      align-items: center;
+      display: flex; padding: 0.45rem 0; border-bottom: 1px solid rgba(255,255,255,0.03);
+      font-size: 0.88rem; gap: 1.5rem; align-items: center;
     }
-    
-    .kv-row:last-child {
-      border-bottom: none;
-    }
-    
-    .kv-key {
-      color: var(--muted);
-      font-family: var(--mono);
-      font-size: 0.8rem;
-      min-width: 180px;
-      flex-shrink: 0;
-    }
-    
-    .kv-val {
-      color: var(--text);
-      font-family: var(--mono);
-      font-size: 0.86rem;
-      word-break: break-all;
-    }
-    
+    .kv-row:last-child { border-bottom: none; }
+    .kv-key { color: var(--muted); font-family: var(--mono); font-size: 0.78rem; min-width: 170px; flex-shrink: 0; }
+    .kv-val { color: var(--text); font-family: var(--mono); font-size: 0.84rem; word-break: break-all; }
     .kv-val.green { color: var(--green); }
     .kv-val.amber { color: var(--amber); }
     .kv-val.blue { color: var(--blue); }
     .kv-val.red { color: var(--red); }
-    
-    /* Visual Slice / Range timeline */
-    .timeline-container {
-      margin: 1.75rem 0;
+
+    /* Data tables */
+    .table-wrap {
+      overflow-x: auto; border: 1px solid var(--border);
+      border-radius: 12px; background: var(--bg2); margin-bottom: 1rem;
     }
-    
-    .timeline-title {
-      font-size: 0.85rem;
-      color: var(--muted);
-      font-family: var(--mono);
-      margin-bottom: 0.75rem;
-      display: flex;
-      justify-content: space-between;
+    table.data {
+      width: 100%; border-collapse: collapse; font-size: 0.86rem;
     }
-    
-    .timeline-bar {
-      height: 48px;
-      border-radius: 12px;
-      overflow: hidden;
-      display: flex;
-      background: var(--bg3);
-      border: 1px solid var(--border);
-      position: relative;
+    table.data th {
+      background: var(--bg3); padding: 0.7rem 1rem; text-align: left;
+      font-size: 0.72rem; color: var(--muted); font-weight: 600;
+      text-transform: uppercase; letter-spacing: 0.05em;
+      border-bottom: 1px solid var(--border);
     }
-    
-    .slice-segment {
-      display: flex;
-      align-items: center;
-      justify-content: center;
-      font-family: var(--mono);
-      font-size: 0.72rem;
-      font-weight: 600;
-      overflow: hidden;
-      white-space: nowrap;
-      transition: width 0.4s cubic-bezier(0.25, 0.8, 0.25, 1);
-      position: relative;
-      cursor: help;
+    table.data td {
+      padding: 0.6rem 1rem; border-bottom: 1px solid rgba(255,255,255,0.02);
+      font-family: var(--mono); font-size: 0.82rem;
     }
-    
-    .slice-segment.active {
-      background: rgba(88, 166, 255, 0.45);
-      color: #c9e2ff;
-      border-right: 1px solid rgba(88, 166, 255, 0.3);
+    table.data tr:hover td { background: rgba(255,255,255,0.01); }
+    table.data td input {
+      background: transparent; border: 1px solid transparent; border-radius: 6px;
+      color: var(--text); padding: 0.35rem 0.5rem; font-family: var(--mono);
+      font-size: 0.82rem; width: 100%; outline: none;
     }
-    
-    .slice-segment.retired {
-      background: rgba(248, 81, 73, 0.35);
-      color: #ffb8b8;
-      border-right: 1px solid rgba(248, 81, 73, 0.3);
-      background-image: repeating-linear-gradient(45deg, transparent, transparent 10px, rgba(248, 81, 73, 0.05) 10px, rgba(248, 81, 73, 0.05) 20px);
+    table.data td input:focus { border-color: var(--border); background: var(--bg3); }
+    .add-row-btn {
+      font-size: 0.83rem; color: var(--blue); background: none; border: none;
+      cursor: pointer; padding: 0.4rem 0; font-weight: 500; transition: opacity 0.2s;
     }
-    
-    .slice-segment:last-child {
-      border-right: none;
+    .add-row-btn:hover { opacity: 0.85; text-decoration: underline; }
+
+    /* Upload zone */
+    .upload-zone {
+      border: 2px dashed var(--border); border-radius: 14px;
+      padding: 1.5rem; text-align: center; cursor: pointer;
+      transition: all 0.25s ease; background: var(--bg2);
+      position: relative; margin-bottom: 1rem;
     }
-    
-    .timeline-legend {
-      display: flex;
-      gap: 1.5rem;
-      margin-top: 0.75rem;
+    .upload-zone:hover, .upload-zone.drag-over {
+      border-color: var(--blue); background: rgba(88,166,255,0.04);
+      box-shadow: 0 0 0 3px rgba(88,166,255,0.08);
     }
-    
-    .legend-item {
-      display: flex;
-      align-items: center;
-      font-size: 0.8rem;
-      color: var(--muted);
-    }
-    
-    .legend-color {
-      width: 12px;
-      height: 12px;
-      border-radius: 4px;
-      margin-right: 0.5rem;
-    }
-    
-    .legend-color.active {
-      background: rgba(88, 166, 255, 0.8);
-    }
-    
-    .legend-color.retired {
-      background: rgba(248, 81, 73, 0.7);
-    }
-    
-    /* Code Viewer / Hash blocks */
+    .upload-zone input[type="file"] { position: absolute; inset: 0; opacity: 0; cursor: pointer; width: 100%; height: 100%; }
+    .upload-zone-icon { font-size: 1.8rem; margin-bottom: 0.4rem; }
+    .upload-zone-label { font-size: 0.88rem; color: var(--muted); line-height: 1.6; }
+    .upload-zone-label strong { color: var(--blue); }
+    .upload-zone-formats { margin-top: 0.4rem; font-size: 0.72rem; font-family: var(--mono); color: var(--muted); opacity: 0.7; }
+
+    /* Hash display */
     .hash-display {
-      background: #07090e;
-      border: 1px solid var(--border);
-      border-radius: 12px;
-      padding: 1rem 1.25rem;
-      font-family: var(--mono);
-      font-size: 0.82rem;
-      color: var(--green);
-      word-break: break-all;
-      margin-bottom: 1.25rem;
-      position: relative;
+      background: #07090e; border: 1px solid var(--border); border-radius: 12px;
+      padding: 0.85rem 1.1rem; font-family: var(--mono); font-size: 0.8rem;
+      color: var(--green); word-break: break-all; margin-bottom: 1rem; position: relative;
     }
-    
     .hash-display .tag {
-      font-size: 0.68rem;
-      color: var(--muted);
-      display: block;
-      margin-bottom: 0.4rem;
-      text-transform: uppercase;
-      letter-spacing: 0.05em;
+      font-size: 0.66rem; color: var(--muted); display: block;
+      margin-bottom: 0.35rem; text-transform: uppercase; letter-spacing: 0.05em;
     }
-    
-    /* Verification proofs list */
-    .proof-item {
-      display: flex;
-      align-items: center;
-      gap: 0.75rem;
-      padding: 0.75rem 1rem;
-      border-radius: 10px;
-      margin-bottom: 0.5rem;
-      font-size: 0.88rem;
+
+    /* Timeline / Slice bar */
+    .timeline-container { margin: 1.5rem 0; }
+    .timeline-title { font-size: 0.82rem; color: var(--muted); font-family: var(--mono); margin-bottom: 0.6rem; display: flex; justify-content: space-between; }
+    .timeline-bar { height: 44px; border-radius: 10px; overflow: hidden; display: flex; background: var(--bg3); border: 1px solid var(--border); }
+    .slice-segment {
+      display: flex; align-items: center; justify-content: center;
+      font-family: var(--mono); font-size: 0.7rem; font-weight: 600;
+      overflow: hidden; white-space: nowrap;
+      transition: width 0.4s cubic-bezier(0.25,0.8,0.25,1);
     }
-    
-    .proof-item.success {
-      background: rgba(57, 211, 83, 0.05);
-      border: 1px solid rgba(57, 211, 83, 0.15);
+    .slice-segment.active { background: rgba(88,166,255,0.45); color: #c9e2ff; border-right: 1px solid rgba(88,166,255,0.3); }
+    .slice-segment.retired {
+      background: rgba(248,81,73,0.35); color: #ffb8b8; border-right: 1px solid rgba(248,81,73,0.3);
+      background-image: repeating-linear-gradient(45deg, transparent, transparent 10px, rgba(248,81,73,0.05) 10px, rgba(248,81,73,0.05) 20px);
     }
-    
-    .proof-item.error {
-      background: rgba(248, 81, 73, 0.05);
-      border: 1px solid rgba(248, 81, 73, 0.15);
-    }
-    
-    .proof-icon {
-      font-size: 1.1rem;
-      flex-shrink: 0;
-    }
-    
-    /* Invariants status summary */
-    .audit-grid {
-      display: grid;
-      grid-template-columns: repeat(auto-fit, minmax(280px, 1fr));
-      gap: 1rem;
-      margin-top: 1rem;
-    }
-    
+    .timeline-legend { display: flex; gap: 1.5rem; margin-top: 0.6rem; }
+    .legend-item { display: flex; align-items: center; font-size: 0.78rem; color: var(--muted); }
+    .legend-color { width: 12px; height: 12px; border-radius: 4px; margin-right: 0.5rem; }
+    .legend-color.active { background: rgba(88,166,255,0.8); }
+    .legend-color.retired { background: rgba(248,81,73,0.7); }
+
+    /* Audit grid */
+    .audit-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(280px, 1fr)); gap: 0.75rem; margin-top: 0.75rem; }
     .audit-card {
-      background: var(--bg2);
-      border: 1px solid var(--border);
-      border-radius: 12px;
-      padding: 1rem 1.25rem;
-      display: flex;
-      align-items: center;
-      gap: 1rem;
+      background: var(--bg2); border: 1px solid var(--border); border-radius: 12px;
+      padding: 0.85rem 1rem; display: flex; align-items: center; gap: 0.85rem;
     }
-    
     .audit-icon {
-      width: 24px;
-      height: 24px;
-      border-radius: 50%;
-      display: flex;
-      align-items: center;
-      justify-content: center;
-      font-weight: bold;
-      font-size: 0.85rem;
+      width: 24px; height: 24px; border-radius: 50%;
+      display: flex; align-items: center; justify-content: center;
+      font-weight: bold; font-size: 0.82rem; flex-shrink: 0;
     }
-    
-    .audit-card.ok {
-      border-color: rgba(57, 211, 83, 0.2);
-      background: rgba(57, 211, 83, 0.01);
-    }
-    
-    .audit-card.ok .audit-icon {
-      background: rgba(57, 211, 83, 0.15);
-      color: var(--green);
-    }
-    
-    .audit-card.failed {
-      border-color: rgba(248, 81, 73, 0.2);
-      background: rgba(248, 81, 73, 0.01);
-    }
-    
-    .audit-card.failed .audit-icon {
-      background: rgba(248, 81, 73, 0.15);
-      color: var(--red);
-    }
-    
-    .audit-desc h5 {
-      font-size: 0.85rem;
-      font-weight: 600;
-      color: var(--text);
-    }
-    
-    .audit-desc p {
-      font-size: 0.75rem;
-      color: var(--muted);
-    }
-    
-    /* Downloads segment */
-    .download-grid {
-      display: flex;
-      flex-wrap: wrap;
-      gap: 0.75rem;
-      margin-top: 1rem;
-    }
-    
-    /* Invariant Counters */
-    .counters-row {
-      display: flex;
-      gap: 1rem;
-      margin: 1.5rem 0;
-      flex-wrap: wrap;
-    }
-    
+    .audit-card.ok { border-color: rgba(57,211,83,0.2); background: rgba(57,211,83,0.01); }
+    .audit-card.ok .audit-icon { background: rgba(57,211,83,0.15); color: var(--green); }
+    .audit-card.failed { border-color: rgba(248,81,73,0.2); background: rgba(248,81,73,0.01); }
+    .audit-card.failed .audit-icon { background: rgba(248,81,73,0.15); color: var(--red); }
+    .audit-desc h5 { font-size: 0.82rem; font-weight: 600; color: var(--text); }
+    .audit-desc p { font-size: 0.72rem; color: var(--muted); }
+
+    /* Counters row */
+    .counters-row { display: flex; gap: 0.75rem; margin: 1.25rem 0; flex-wrap: wrap; }
     .counter-box {
-      flex: 1;
-      min-width: 140px;
-      background: var(--bg2);
-      border: 1px solid var(--border);
-      border-radius: 12px;
-      padding: 1rem;
-      text-align: center;
+      flex: 1; min-width: 130px; background: var(--bg2); border: 1px solid var(--border);
+      border-radius: 12px; padding: 0.85rem; text-align: center;
     }
-    
-    .counter-val {
-      font-family: var(--mono);
-      font-size: 1.6rem;
-      font-weight: 700;
-      color: var(--blue);
-      display: block;
-      margin-bottom: 0.25rem;
-    }
-    
-    .counter-lbl {
-      font-size: 0.75rem;
-      color: var(--muted);
-      font-weight: 500;
-      text-transform: uppercase;
-      letter-spacing: 0.05em;
-    }
-    
+    .counter-val { font-family: var(--mono); font-size: 1.5rem; font-weight: 700; color: var(--blue); display: block; margin-bottom: 0.2rem; }
+    .counter-lbl { font-size: 0.72rem; color: var(--muted); font-weight: 500; text-transform: uppercase; letter-spacing: 0.05em; }
     .counter-box.green .counter-val { color: var(--green); }
     .counter-box.red .counter-val { color: var(--red); }
     .counter-box.purple .counter-val { color: var(--purple); }
-    
-    /* Loading overlay */
-    .overlay {
-      display: none;
-      position: fixed;
-      inset: 0;
-      background: rgba(5, 7, 10, 0.85);
-      z-index: 500;
-      align-items: center;
-      justify-content: center;
-      flex-direction: column;
-      gap: 1.25rem;
-      backdrop-filter: blur(8px);
+
+    /* Download grid */
+    .download-grid { display: flex; flex-wrap: wrap; gap: 0.65rem; margin-top: 0.75rem; }
+
+    /* Governance hierarchy */
+    .gov-tree { list-style: none; padding-left: 0; }
+    .gov-tree li {
+      padding: 0.75rem 1rem; margin-bottom: 0.35rem; border-radius: 10px;
+      background: var(--bg2); border: 1px solid var(--border);
+      display: flex; align-items: center; gap: 0.75rem; font-size: 0.88rem;
     }
-    
-    .overlay.show {
-      display: flex;
-    }
-    
-    .spinner {
-      width: 48px;
-      height: 48px;
-      border: 4px solid var(--border);
-      border-top-color: var(--blue);
-      border-radius: 50%;
-      animation: spin 1s linear infinite;
-    }
-    
-    @keyframes spin {
-      to { transform: rotate(360deg); }
-    }
-    
-    /* Toast alerts */
-    .toast {
-      position: fixed;
-      bottom: 2rem;
-      right: 2rem;
-      background: #180d0d;
-      border: 1px solid rgba(248, 81, 73, 0.4);
-      color: var(--red);
-      padding: 1rem 1.5rem;
-      border-radius: 12px;
-      font-size: 0.88rem;
-      z-index: 999;
-      display: none;
-      max-width: 400px;
-      line-height: 1.5;
-      box-shadow: 0 10px 30px rgba(0,0,0,0.5);
-      animation: slideIn 0.3s cubic-bezier(0.16, 1, 0.3, 1);
-    }
-    
-    .toast.show {
-      display: block;
-    }
-    
-    @keyframes slideIn {
-      from {
-        opacity: 0;
-        transform: translateY(20px);
-      }
-      to {
-        opacity: 1;
-        transform: translateY(0);
-      }
-    }
-    
-    @media (max-width: 900px) {
-      .shell {
-        grid-template-columns: 1fr;
-      }
-      .sidebar {
-        position: static;
-        height: auto;
-        border-right: none;
-        border-bottom: 1px solid var(--border);
-      }
-      .form-grid {
-        grid-template-columns: 1fr;
-      }
-      .form-grid.triple {
-        grid-template-columns: 1fr 1fr;
-      }
+    .gov-tree li .gov-icon { font-size: 1.1rem; width: 24px; text-align: center; }
+    .gov-tree .gov-sub { margin-left: 2rem; margin-top: 0.35rem; }
+    .gov-tree .gov-sub li {
+      background: var(--bg3); border-color: rgba(88,166,255,0.1);
+      font-size: 0.84rem;
     }
 
-    /* ── Drag-and-drop upload zone ───────────────────────────────────────── */
-    .upload-zone {
-      border: 2px dashed var(--border);
-      border-radius: 14px;
-      padding: 1.75rem 1.5rem;
-      text-align: center;
-      cursor: pointer;
-      transition: all 0.25s ease;
-      background: var(--bg2);
-      position: relative;
-      margin-bottom: 1.25rem;
+    /* Marketplace cards */
+    .listing-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(300px, 1fr)); gap: 1rem; }
+    .listing-card {
+      background: var(--bg2); border: 1px solid var(--border); border-radius: 14px;
+      padding: 1.25rem; transition: all 0.2s;
     }
-    .upload-zone:hover, .upload-zone.drag-over {
-      border-color: var(--blue);
-      background: rgba(88, 166, 255, 0.04);
-      box-shadow: 0 0 0 3px rgba(88, 166, 255, 0.08);
+    .listing-card:hover { border-color: rgba(88,166,255,0.3); transform: translateY(-2px); }
+    .listing-card .listing-header { display: flex; justify-content: space-between; align-items: flex-start; margin-bottom: 0.75rem; }
+    .listing-card .listing-title { font-weight: 700; font-size: 0.95rem; color: var(--text); }
+    .listing-card .listing-price {
+      font-family: var(--mono); font-size: 0.88rem; font-weight: 600;
+      color: var(--green); background: rgba(57,211,83,0.1);
+      padding: 0.2rem 0.6rem; border-radius: 6px;
     }
-    .upload-zone input[type="file"] {
-      position: absolute;
-      inset: 0;
-      opacity: 0;
-      cursor: pointer;
-      width: 100%;
-      height: 100%;
+    .listing-card .listing-meta { font-size: 0.78rem; color: var(--muted); margin-bottom: 0.75rem; line-height: 1.6; }
+    .listing-card .listing-stats { display: flex; gap: 1rem; margin-bottom: 0.75rem; }
+    .listing-card .listing-stat {
+      font-size: 0.72rem; color: var(--muted); text-transform: uppercase;
+      letter-spacing: 0.04em;
     }
-    .upload-zone-icon {
-      font-size: 2rem;
-      margin-bottom: 0.5rem;
-    }
-    .upload-zone-label {
-      font-size: 0.9rem;
-      color: var(--muted);
-      line-height: 1.6;
-    }
-    .upload-zone-label strong {
-      color: var(--blue);
-    }
-    .upload-zone-formats {
-      margin-top: 0.5rem;
-      font-size: 0.75rem;
-      font-family: var(--mono);
-      color: var(--muted);
-      opacity: 0.7;
-    }
+    .listing-card .listing-stat span { color: var(--blue); font-weight: 600; font-family: var(--mono); font-size: 0.82rem; display: block; }
 
-    /* ── Onboarding welcome modal ─────────────────────────────────────────── */
-    .modal-backdrop {
-      display: none;
-      position: fixed;
-      inset: 0;
-      background: rgba(5, 7, 12, 0.88);
-      z-index: 800;
-      align-items: center;
-      justify-content: center;
-      backdrop-filter: blur(10px);
+    /* Empty states */
+    .empty-state {
+      text-align: center; padding: 3rem 2rem; color: var(--muted);
     }
-    .modal-backdrop.show {
-      display: flex;
-    }
-    .modal-box {
-      background: var(--bg2);
-      border: 1px solid var(--border);
-      border-radius: 20px;
-      padding: 2.5rem;
-      max-width: 560px;
-      width: 90%;
-      box-shadow: 0 25px 60px rgba(0,0,0,0.6);
-      animation: fadeUp 0.4s cubic-bezier(0.16, 1, 0.3, 1);
-    }
-    .modal-logo {
-      font-size: 1.1rem;
-      font-weight: 800;
-      background: var(--grad);
-      -webkit-background-clip: text;
-      background-clip: text;
-      color: transparent;
-      margin-bottom: 0.5rem;
-    }
-    .modal-box h2 {
-      font-size: 1.5rem;
-      font-weight: 800;
-      margin-bottom: 0.75rem;
-      line-height: 1.3;
-    }
-    .modal-box p {
-      color: var(--muted);
-      font-size: 0.9rem;
-      line-height: 1.65;
-      margin-bottom: 1.25rem;
-    }
-    .modal-steps {
-      display: flex;
-      flex-direction: column;
-      gap: 0.6rem;
-      margin-bottom: 1.75rem;
-    }
-    .modal-step {
-      display: flex;
-      align-items: center;
-      gap: 0.85rem;
-      padding: 0.7rem 1rem;
-      border-radius: 10px;
-      background: var(--bg3);
-      border: 1px solid var(--border);
-      font-size: 0.87rem;
-    }
-    .modal-step-num {
-      width: 26px;
-      height: 26px;
-      border-radius: 50%;
-      background: var(--grad);
-      display: flex;
-      align-items: center;
-      justify-content: center;
-      font-size: 0.75rem;
-      font-weight: 700;
-      color: #fff;
-      flex-shrink: 0;
-    }
-    .modal-note {
-      font-size: 0.78rem;
-      color: var(--muted);
-      background: var(--bg3);
-      border: 1px solid var(--border);
-      border-radius: 8px;
-      padding: 0.65rem 0.9rem;
-      margin-bottom: 1.5rem;
-      line-height: 1.5;
-    }
-    .modal-note strong { color: var(--amber); }
+    .empty-state .empty-icon { font-size: 3rem; margin-bottom: 0.75rem; opacity: 0.5; }
+    .empty-state h3 { font-size: 1.1rem; color: var(--text); margin-bottom: 0.4rem; }
+    .empty-state p { font-size: 0.88rem; max-width: 400px; margin: 0 auto; line-height: 1.6; }
 
-    /* ── Serial range live preview ────────────────────────────────────────── */
+    /* Portfolio table status pills */
+    .status-pill {
+      font-size: 0.72rem; font-weight: 600; padding: 0.2rem 0.6rem;
+      border-radius: 20px; display: inline-block;
+    }
+    .status-pill.active { background: rgba(57,211,83,0.1); color: var(--green); border: 1px solid rgba(57,211,83,0.2); }
+    .status-pill.retired { background: rgba(248,81,73,0.1); color: var(--red); border: 1px solid rgba(248,81,73,0.2); }
+    .status-pill.listed { background: rgba(88,166,255,0.1); color: var(--blue); border: 1px solid rgba(88,166,255,0.2); }
+    .status-pill.pending { background: rgba(236,178,46,0.1); color: var(--amber); border: 1px solid rgba(236,178,46,0.2); }
+
+    /* Range preview */
     .range-preview {
-      margin-top: 0.5rem;
-      font-family: var(--mono);
-      font-size: 0.78rem;
-      color: var(--blue);
-      padding: 0.4rem 0.75rem;
-      background: rgba(88, 166, 255, 0.07);
-      border-radius: 6px;
-      border: 1px solid rgba(88, 166, 255, 0.15);
-      display: none;
+      margin-top: 0.4rem; font-family: var(--mono); font-size: 0.76rem; color: var(--blue);
+      padding: 0.35rem 0.65rem; background: rgba(88,166,255,0.07);
+      border-radius: 6px; border: 1px solid rgba(88,166,255,0.15); display: none;
     }
     .range-preview.show { display: block; }
 
-    /* ── Record count badge ───────────────────────────────────────────────── */
+    /* Record badge */
     .record-badge {
-      display: inline-flex;
-      align-items: center;
-      gap: 0.4rem;
-      padding: 0.3rem 0.75rem;
-      border-radius: 20px;
-      background: rgba(57, 211, 83, 0.08);
-      border: 1px solid rgba(57, 211, 83, 0.2);
-      font-family: var(--mono);
-      font-size: 0.78rem;
-      color: var(--green);
-      transition: all 0.2s;
+      display: inline-flex; align-items: center; gap: 0.4rem;
+      padding: 0.25rem 0.65rem; border-radius: 20px;
+      background: rgba(57,211,83,0.08); border: 1px solid rgba(57,211,83,0.2);
+      font-family: var(--mono); font-size: 0.76rem; color: var(--green);
     }
 
-    /* ── PDF / ZIP button ─────────────────────────────────────────────────── */
-    .btn-amber {
-      background: rgba(236, 178, 46, 0.1);
-      color: var(--amber);
-      border: 1px solid rgba(236, 178, 46, 0.25);
+    /* Toast */
+    .toast {
+      position: fixed; bottom: 2rem; right: 2rem; background: #180d0d;
+      border: 1px solid rgba(248,81,73,0.4); color: var(--red);
+      padding: 0.85rem 1.25rem; border-radius: 12px; font-size: 0.86rem;
+      z-index: 999; display: none; max-width: 420px; line-height: 1.5;
+      box-shadow: 0 10px 30px rgba(0,0,0,0.5);
+      animation: slideIn 0.3s cubic-bezier(0.16,1,0.3,1);
     }
-    .btn-amber:hover {
-      background: rgba(236, 178, 46, 0.2);
-      transform: translateY(-1px);
-    }
+    .toast.show { display: block; }
+    @keyframes slideIn { from { opacity:0; transform:translateY(20px); } to { opacity:1; transform:translateY(0); } }
 
-    /* keyboard shortcut hint */
-    .kbd-hint {
-      font-size: 0.72rem;
-      color: var(--muted);
-      margin-left: auto;
-      font-family: var(--mono);
-      opacity: 0.6;
+    /* Loading overlay */
+    .overlay {
+      display: none; position: fixed; inset: 0; background: rgba(5,7,10,0.85);
+      z-index: 500; align-items: center; justify-content: center;
+      flex-direction: column; gap: 1rem; backdrop-filter: blur(8px);
+    }
+    .overlay.show { display: flex; }
+    .spinner {
+      width: 44px; height: 44px; border: 4px solid var(--border);
+      border-top-color: var(--blue); border-radius: 50%; animation: spin 1s linear infinite;
+    }
+    @keyframes spin { to { transform: rotate(360deg); } }
+
+    /* Responsive */
+    @media (max-width: 900px) {
+      .sidebar { width: 220px; min-width: 220px; }
+      .main-wrapper { margin-left: 220px; }
+      .content { padding: 1.5rem; }
+      .form-grid { grid-template-columns: 1fr; }
+      .form-grid.triple { grid-template-columns: 1fr 1fr; }
+    }
+    @media (max-width: 700px) {
+      .sidebar { display: none; }
+      .main-wrapper { margin-left: 0; }
     }
   </style>
 </head>
 <body>
 
-  <!-- ── Onboarding welcome modal ─────────────────────────────────────── -->
-  <div class="modal-backdrop" id="onboardingModal">
-    <div class="modal-box">
-      <div class="modal-logo">GreyMisnomer Protocol</div>
-      <h2>Welcome to the Registry Simulator</h2>
-      <p>Walk through the full carbon credit lifecycle — from raw sensor data to cryptographic retirement certificates — powered entirely by Rust compiled to WebAssembly running in your browser. No server, no backend.</p>
-      <div class="modal-steps">
-        <div class="modal-step"><div class="modal-step-num">1</div><span>📡 Enter or upload MRV measurement records</span></div>
-        <div class="modal-step"><div class="modal-step-num">2</div><span>🌳 Generate a BLAKE3 Merkle commitment over the dataset</span></div>
-        <div class="modal-step"><div class="modal-step-num">3</div><span>🔏 Attest a Proof-of-Integrity (PoI) for your project</span></div>
-        <div class="modal-step"><div class="modal-step-num">4</div><span>🏭 Mint a serialized carbon credit batch</span></div>
-        <div class="modal-step"><div class="modal-step-num">5</div><span>🔄 Transfer ownership to a buyer wallet</span></div>
-        <div class="modal-step"><div class="modal-step-num">6</div><span>🔥 Partially retire credits and receive a Proof-of-Offset</span></div>
-        <div class="modal-step"><div class="modal-step-num">7</div><span>🛡️ Audit invariants and download all certificates</span></div>
-      </div>
-      <div class="modal-note">⚠ <strong>Per-session simulator:</strong> All state lives in this browser tab. Refreshing the page resets everything. This is by design — it's a protocol explainer, not a shared ledger.</div>
-      <button class="btn btn-primary" style="width:100%;" onclick="dismissOnboarding()">Start the Protocol →</button>
+  <!-- ═══ Left Sidebar Navigation ═══ -->
+  <aside class="sidebar">
+    <div class="sidebar-brand">
+      <h1>GreyMisnomer</h1>
+      <div class="subtitle">Carbon Credit Registry</div>
     </div>
-  </div>
 
-  <nav>
-    <a href="index.html" class="nav-logo">GreyMisnomer Protocol</a>
-    <div class="nav-links">
-      <a href="index.html">Home</a>
-      <a href="app.html" class="active">Registry Simulator</a>
-      <a href="https://github.com/PrabhatKarlekar/GreyMisnomer" target="_blank">GitHub</a>
+    <div class="nav-section">
+      <div class="nav-section-title">Platform</div>
+      <div class="nav-item active" onclick="navigate('dashboard')" id="nav-dashboard">
+        <span class="nav-icon">🏠</span> Dashboard
+      </div>
+      <div class="nav-item" onclick="navigate('governance')" id="nav-governance">
+        <span class="nav-icon">🏛</span> Governance
+      </div>
     </div>
-  </nav>
 
-  <div class="shell">
-    <!-- Sidebar -->
-    <aside class="sidebar">
-      <h3>Stepper Protocol</h3>
-      <div class="step-list">
-        <div class="step-item active" onclick="goStep(1)" id="si-1">
-          <div class="sn" id="sn-1">1</div>
-          <div class="sl">MRV Records</div>
+    <div class="nav-section">
+      <div class="nav-section-title">Supply Side</div>
+      <div class="nav-item" onclick="navigate('projects')" id="nav-projects">
+        <span class="nav-icon">📁</span> Projects
+        <span class="nav-badge" id="badge-projects">0</span>
+      </div>
+      <div class="nav-item" onclick="navigate('mrv')" id="nav-mrv">
+        <span class="nav-icon">📈</span> MRV Data
+      </div>
+      <div class="nav-item" onclick="navigate('verification')" id="nav-verification">
+        <span class="nav-icon">🔐</span> Verification
+        <span class="nav-badge" id="badge-verification" style="display:none">0</span>
+      </div>
+    </div>
+
+    <div class="nav-section">
+      <div class="nav-section-title">Registry</div>
+      <div class="nav-item" onclick="navigate('registry')" id="nav-registry">
+        <span class="nav-icon">🪙</span> Registry
+        <span class="nav-badge" id="badge-registry">0</span>
+      </div>
+      <div class="nav-item" onclick="navigate('marketplace')" id="nav-marketplace">
+        <span class="nav-icon">🛒</span> Marketplace
+        <span class="nav-badge" id="badge-marketplace">0</span>
+      </div>
+    </div>
+
+    <div class="nav-section">
+      <div class="nav-section-title">User</div>
+      <div class="nav-item" onclick="navigate('portfolio')" id="nav-portfolio">
+        <span class="nav-icon">💼</span> Portfolio
+      </div>
+      <div class="nav-item" onclick="navigate('audit')" id="nav-audit">
+        <span class="nav-icon">📄</span> Audit
+      </div>
+      <div class="nav-item" onclick="navigate('admin')" id="nav-admin">
+        <span class="nav-icon">⚙</span> Administration
+      </div>
+    </div>
+
+    <div class="sidebar-footer">
+      Powered by <span>WebAssembly</span><br>
+      Rust core · RFC-001/002/003<br>
+      <span style="color:var(--amber)">Local Demo Mode</span>
+    </div>
+  </aside>
+
+  <!-- ═══ Main Content ═══ -->
+  <div class="main-wrapper">
+    <!-- Top Bar -->
+    <header class="topbar">
+      <div class="demo-badge">🔶 LOCAL DEMO — All data is stored in your browser session</div>
+      <div class="role-switcher">
+        <label>Active Role:</label>
+        <select id="roleSwitcher" onchange="switchRole(this.value)">
+          <option value="admin">🛡 Admin (Full Access)</option>
+          <option value="developer">🏗 Project Developer</option>
+          <option value="validator">🔐 Validator / VVB</option>
+          <option value="buyer">🛒 Corporate Buyer</option>
+          <option value="auditor">📄 Auditor</option>
+        </select>
+      </div>
+      <div class="topbar-links">
+        <a href="index.html">Home</a>
+        <a href="https://github.com/GreyMisnomer/GreyMisnomer" target="_blank">GitHub</a>
+      </div>
+    </header>
+
+    <main class="content">
+
+      <!-- ════════════ VIEW: Dashboard ════════════ -->
+      <div class="view active" id="view-dashboard">
+        <h2 class="page-title">🏠 Dashboard</h2>
+        <p class="page-desc">Overview of the carbon credit registry state in this session.</p>
+        <div class="metrics-grid">
+          <div class="metric-card">
+            <div class="metric-icon">📁</div>
+            <span class="metric-val" id="dash-projects">0</span>
+            <span class="metric-lbl">Projects</span>
+          </div>
+          <div class="metric-card green">
+            <div class="metric-icon">🪙</div>
+            <span class="metric-val" id="dash-credits">0</span>
+            <span class="metric-lbl">Credits Minted</span>
+          </div>
+          <div class="metric-card purple">
+            <div class="metric-icon">🛒</div>
+            <span class="metric-val" id="dash-listings">0</span>
+            <span class="metric-lbl">Marketplace Listings</span>
+          </div>
+          <div class="metric-card red">
+            <div class="metric-icon">🔥</div>
+            <span class="metric-val" id="dash-retired">0</span>
+            <span class="metric-lbl">Credits Retired</span>
+          </div>
+          <div class="metric-card amber">
+            <div class="metric-icon">🔐</div>
+            <span class="metric-val" id="dash-pending">0</span>
+            <span class="metric-lbl">Pending Verification</span>
+          </div>
         </div>
-        <div class="step-item locked" onclick="goStep(2)" id="si-2">
-          <div class="sn" id="sn-2">2</div>
-          <div class="sl">Merkle Tree</div>
-        </div>
-        <div class="step-item locked" onclick="goStep(3)" id="si-3">
-          <div class="sn" id="sn-3">3</div>
-          <div class="sl">Attest PoI</div>
-        </div>
-        <div class="step-item locked" onclick="goStep(4)" id="si-4">
-          <div class="sn" id="sn-4">4</div>
-          <div class="sl">Mint Supply</div>
-        </div>
-        <div class="step-item locked" onclick="goStep(5)" id="si-5">
-          <div class="sn" id="sn-5">5</div>
-          <div class="sl">Transfer Batch</div>
-        </div>
-        <div class="step-item locked" onclick="goStep(6)" id="si-6">
-          <div class="sn" id="sn-6">6</div>
-          <div class="sl">Partial Retire</div>
-        </div>
-        <div class="step-item locked" onclick="goStep(7)" id="si-7">
-          <div class="sn" id="sn-7">7</div>
-          <div class="sl">Audit Invariants</div>
+
+        <div class="result-card" style="border-color: rgba(88,166,255,0.15);">
+          <h4>🚀 Quick Start Guide</h4>
+          <p style="color:var(--muted);font-size:0.88rem;line-height:1.7;margin-bottom:0;">
+            <strong style="color:var(--text)">1.</strong> Register a project in <strong style="color:var(--blue)">Projects</strong> →
+            <strong style="color:var(--text)">2.</strong> Upload MRV data & generate Merkle commitment in <strong style="color:var(--blue)">MRV Data</strong> →
+            <strong style="color:var(--text)">3.</strong> Switch to <em>Validator</em> role and approve in <strong style="color:var(--blue)">Verification</strong> →
+            <strong style="color:var(--text)">4.</strong> Mint credits in <strong style="color:var(--blue)">Registry</strong> →
+            <strong style="color:var(--text)">5.</strong> List for sale in <strong style="color:var(--blue)">Marketplace</strong> →
+            <strong style="color:var(--text)">6.</strong> Switch to <em>Buyer</em> role, purchase, and retire in <strong style="color:var(--blue)">Portfolio</strong>
+          </p>
         </div>
       </div>
-      
-      <div class="sidebar-footer">
-        Powered by <span>WebAssembly</span><br>
-        Executes Rust codebase in-browser.<br>
-        RFC-001 / 002 / 003 compliant.
+
+      <!-- ════════════ VIEW: Governance ════════════ -->
+      <div class="view" id="view-governance">
+        <h2 class="page-title">🏛 Governance Framework</h2>
+        <p class="page-desc">The GreyMisnomer protocol operates under a layered governance structure modeled after India's Carbon Credit Trading Scheme (CCTS).</p>
+        <ul class="gov-tree">
+          <li><span class="gov-icon">🏢</span> <strong>Ministry of Power (MoP)</strong> — Policy Direction & Mandate</li>
+          <li>
+            <span class="gov-icon">📋</span> <strong>Steering Committee (NSC-ICM)</strong> — Strategic Oversight
+            <ul class="gov-sub gov-tree">
+              <li><span class="gov-icon">⚡</span> Bureau of Energy Efficiency (BEE) — Methodologies, Accreditation, Targets</li>
+            </ul>
+          </li>
+          <li><span class="gov-icon">🔐</span> <strong>Accredited Validators (ACVAs / VVBs)</strong> — Audit, Verify, Sign attestations</li>
+          <li><span class="gov-icon">💻</span> <strong>Tech Provider (CDAC)</strong> — Digital Infrastructure, ZK Node/Tool</li>
+          <li>
+            <span class="gov-icon">🏦</span> <strong>BCI – Registry Owner</strong> — Master DB, Interoperability API Bridge
+            <ul class="gov-sub gov-tree">
+              <li><span class="gov-icon">📜</span> Minting Smart Contract (Issuance Logic)</li>
+              <li><span class="gov-icon">🔁</span> Retirement Smart Contract (Settlement Logic)</li>
+            </ul>
+          </li>
+          <li><span class="gov-icon">⚖</span> <strong>CERC / Power Exchanges (IEX/PXIL)</strong> — Market & Liquidity (Layer 4)</li>
+        </ul>
+        <div class="result-card" style="margin-top:1.5rem; border-color:rgba(188,140,242,0.2);">
+          <h4 style="color:var(--purple)">📌 Approved Methodologies</h4>
+          <div class="kv-row"><span class="kv-key">VM0042-v4.0</span><span class="kv-val blue">Solar PV Grid-Connected</span></div>
+          <div class="kv-row"><span class="kv-key">VM0046-v2.0</span><span class="kv-val blue">Improved Cookstoves</span></div>
+          <div class="kv-row"><span class="kv-key">VM0048-v1.5</span><span class="kv-val blue">Afforestation/Reforestation</span></div>
+          <div class="kv-row"><span class="kv-key">ACM0002-v20</span><span class="kv-val blue">Renewable Grid Electricity</span></div>
+        </div>
       </div>
-    </aside>
 
-    <!-- Main Pane -->
-    <main class="main">
-      
-      <!-- Panel 1: MRV Input -->
-      <div class="panel active" id="panel-1">
-        <div class="panel-header">
-          <div class="rfc-tag">RFC-003 §3.1</div>
-          <h2>📡 MRV Data Collection</h2>
-          <p>Collect raw environmental readings. Each record is structured as an index leaf in our commitment tree. You can manually edit or auto-generate the dataset.</p>
-        </div>
-        
-        <div style="margin-bottom: 1rem; display: flex; gap: 0.75rem; align-items: center; flex-wrap: wrap;">
-          <button class="btn btn-secondary btn-sm" onclick="seedDemoDataset()">⚡ Seed 30-Day Solar Dataset</button>
-          <button class="btn btn-secondary btn-sm" onclick="clearMrvTable()">Clear All</button>
-          <span class="record-badge" id="recordBadge">0 records</span>
+      <!-- ════════════ VIEW: Projects ════════════ -->
+      <div class="view" id="view-projects">
+        <h2 class="page-title">📁 Projects</h2>
+        <p class="page-desc">Register a new carbon reduction project. Once registered, you can upload MRV data for this project.</p>
+
+        <div class="result-card" style="border-color: rgba(88,166,255,0.15);">
+          <h4>➕ Register New Project</h4>
+          <div class="form-grid">
+            <div class="field"><label>Project Name</label><input type="text" id="prj-name" value="Solar Farm Maharashtra Phase-I"></div>
+            <div class="field"><label>Project ID</label><input type="text" id="prj-id" value="PRJ-SOLAR-2026-001"></div>
+            <div class="field"><label>Technology</label>
+              <select id="prj-tech">
+                <option value="Solar PV">☀ Solar PV</option>
+                <option value="Wind">💨 Wind</option>
+                <option value="Hydro">💧 Hydro</option>
+                <option value="Biomass">🌿 Biomass</option>
+                <option value="Cookstoves">🍳 Improved Cookstoves</option>
+              </select>
+            </div>
+            <div class="field"><label>Jurisdiction</label><input type="text" id="prj-jurisdiction" value="IN-MH"></div>
+            <div class="field"><label>Developer Organization</label><input type="text" id="prj-org" value="ABC Solar Energy Pvt. Ltd."></div>
+            <div class="field"><label>Expected Annual Credits (tCO2e)</label><input type="number" id="prj-credits" value="1000"></div>
+            <div class="field"><label>Latitude</label><input type="text" id="prj-lat" value="19.0760"></div>
+            <div class="field"><label>Longitude</label><input type="text" id="prj-lng" value="72.8777"></div>
+          </div>
+          <div class="btn-row">
+            <button class="btn btn-primary" onclick="registerProject()">📁 Register Project</button>
+          </div>
         </div>
 
-        <!-- Drag-and-drop file upload zone -->
+        <div style="margin-top:2rem;">
+          <h3 style="font-size:1rem;margin-bottom:1rem;color:var(--text)">Registered Projects</h3>
+          <div id="projectsList"></div>
+        </div>
+      </div>
+
+      <!-- ════════════ VIEW: MRV Data ════════════ -->
+      <div class="view" id="view-mrv">
+        <div class="rfc-tag">RFC-003 §3.1 / §3.2</div>
+        <h2 class="page-title">📈 MRV Data & Commitment</h2>
+        <p class="page-desc">Upload measurement data, generate a BLAKE3 Merkle commitment, and verify data integrity with inclusion proofs.</p>
+
+        <div style="margin-bottom:1rem; display:flex; gap:0.65rem; align-items:center; flex-wrap:wrap;">
+          <div class="field" style="min-width:200px;">
+            <label>Select Project</label>
+            <select id="mrv-project-select" style="background:var(--bg2);border:1px solid var(--border);border-radius:8px;color:var(--text);padding:0.5rem 0.75rem;font-size:0.85rem;"></select>
+          </div>
+          <button class="btn btn-secondary btn-sm" onclick="seedDemoDataset()" style="margin-top:1.2rem;">⚡ Seed 30-Day Solar Dataset</button>
+          <button class="btn btn-secondary btn-sm" onclick="clearMrvTable()" style="margin-top:1.2rem;">Clear All</button>
+          <span class="record-badge" id="recordBadge" style="margin-top:1.2rem;">0 records</span>
+        </div>
+
         <div class="upload-zone" id="uploadZone">
           <input type="file" id="mrvFileInput" accept=".csv,.json,.txt" onchange="handleFileUpload(event)">
           <div class="upload-zone-icon">📂</div>
-          <div class="upload-zone-label">
-            <strong>Drop your MRV file here</strong> or click to browse<br>
-            Imports records into the table below — existing rows are replaced.
-          </div>
-          <div class="upload-zone-formats">Accepted: .csv (timestamp,value,unit,source) &nbsp;·&nbsp; .json ([{timestamp,value,unit,source}])</div>
+          <div class="upload-zone-label"><strong>Drop your MRV file here</strong> or click to browse<br>Imports records into the table below.</div>
+          <div class="upload-zone-formats">Accepted: .csv (timestamp,value,unit,source) · .json ([{timestamp,value,unit,source}])</div>
         </div>
 
         <div class="table-wrap">
-          <table class="mrv">
-            <thead>
-              <tr>
-                <th style="width: 50px;">#</th>
-                <th>Timestamp (Unix)</th>
-                <th>Value (kWh/tCO2e)</th>
-                <th>Unit</th>
-                <th>Source Sensor</th>
-                <th style="width: 50px;"></th>
-              </tr>
-            </thead>
+          <table class="data">
+            <thead><tr>
+              <th style="width:50px">#</th><th>Timestamp (Unix)</th><th>Value (kWh/tCO2e)</th><th>Unit</th><th>Source Sensor</th><th style="width:50px"></th>
+            </tr></thead>
             <tbody id="mrvBody"></tbody>
           </table>
         </div>
         <button class="add-row-btn" onclick="addMrvRow()">+ Add Manual Record</button>
-        
-        <div class="btn-row">
-          <button class="btn btn-primary" onclick="processMrv()">Compute Merkle Tree Commitment →</button>
-          <span class="kbd-hint">or press →</span>
-        </div>
-      </div>
 
-      <!-- Panel 2: Merkle Commitment -->
-      <div class="panel" id="panel-2">
-        <div class="panel-header">
-          <div class="rfc-tag">RFC-003 §3.2</div>
-          <h2>🌳 Merkle Tree Commitment</h2>
-          <p>Real BLAKE3 hashing running in Rust compiled to WebAssembly. The Merkle root binds the dataset and metadata to prevent tampering.</p>
+        <div class="btn-row">
+          <button class="btn btn-primary" onclick="processMrv()">🌳 Compute Merkle Tree Commitment</button>
         </div>
-        
+
         <div id="mrvCommitmentDisplay"></div>
-        
-        <div class="result-card success" style="margin-top: 1.5rem;">
-          <h4>🔍 Cryptographic Spot-Check & Tamper Verification</h4>
-          <p style="margin-bottom: 1rem; font-size: 0.88rem; color: var(--muted);">Select a record below to test its cryptographic inclusion proof, or check "Tamper" to modify a value and watch validation fail.</p>
-          <div class="table-wrap" style="max-height: 250px; overflow-y: auto;">
-            <table class="mrv" style="width:100%">
-              <thead>
-                <tr>
-                  <th>Index</th>
-                  <th>Source</th>
-                  <th>Value</th>
-                  <th>Tamper</th>
-                  <th>Inclusion Proof</th>
-                </tr>
-              </thead>
-              <tbody id="spotCheckBody"></tbody>
-            </table>
-          </div>
-        </div>
 
-        <div class="btn-row">
-          <button class="btn btn-secondary" onclick="goStep(1)">← Back</button>
-          <button class="btn btn-primary" onclick="goStep(3)">Attest PoI →</button>
+        <div id="spotCheckSection" style="display:none;">
+          <div class="result-card success" style="margin-top:1.25rem;">
+            <h4>🔍 Cryptographic Spot-Check & Tamper Verification</h4>
+            <p style="margin-bottom:0.75rem; font-size:0.86rem; color:var(--muted);">Select a record to test inclusion proof, or check "Tamper" to modify a value and watch validation fail.</p>
+            <div class="table-wrap" style="max-height:250px; overflow-y:auto;">
+              <table class="data" style="width:100%">
+                <thead><tr><th>Index</th><th>Source</th><th>Value</th><th>Tamper</th><th>Inclusion Proof</th></tr></thead>
+                <tbody id="spotCheckBody"></tbody>
+              </table>
+            </div>
+          </div>
         </div>
       </div>
 
-      <!-- Panel 3: PoI Generation -->
-      <div class="panel" id="panel-3">
-        <div class="panel-header">
-          <div class="rfc-tag">RFC-001 §3.1</div>
-          <h2>🔏 Proof-of-Integrity Attestation</h2>
-          <p>Fill in parameters to construct the Proof-of-Integrity (PoI). The PoI authorizes minting and anchors the serialization range.</p>
-        </div>
-        
-        <div class="form-grid">
-          <div class="field">
-            <label>Project ID</label>
-            <input type="text" id="f-project_id" value="PRJ-SOLAR-2026-001">
-          </div>
-          <div class="field">
-            <label>Credit ID</label>
-            <input type="text" id="f-credit_id" value="CC-SOLAR-2026-001">
-          </div>
-          <div class="field">
-            <label>Serial Range Start</label>
-            <input type="number" id="f-serial_start" value="1000000" oninput="updateRangePreview()" onchange="updateRangePreview()">
-          </div>
-          <div class="field">
-            <label>Serial Range End</label>
-            <input type="number" id="f-serial_end" value="1000999" oninput="updateRangePreview()" onchange="updateRangePreview()">
-            <div class="range-preview" id="rangePreview"></div>
-          </div>
-          <div class="field">
-            <label>Jurisdiction</label>
-            <input type="text" id="f-jurisdiction" value="IN-MH">
-          </div>
-          <div class="field">
-            <label>Methodology Hash</label>
-            <input type="text" id="f-methodology_hash" value="SHA256(VM0042-v4.0)">
-          </div>
-          <div class="field">
-            <label>VVB Signature</label>
-            <input type="text" id="f-vvb_signature" value="0xVVB_SIG_MOCK_A1B2C3">
-          </div>
-          <div class="field">
-            <label>Owner Wallet</label>
-            <input type="text" id="f-owner" value="0xProjectOwner">
-          </div>
-        </div>
-
-        <div id="poiDisplay"></div>
-
-        <div class="btn-row">
-          <button class="btn btn-secondary" onclick="goStep(2)">← Back</button>
-          <button class="btn btn-primary" onclick="submitMint()">Mint Serialized Supply →</button>
-        </div>
+      <!-- ════════════ VIEW: Verification ════════════ -->
+      <div class="view" id="view-verification">
+        <div class="rfc-tag">RFC-001 §3.1</div>
+        <h2 class="page-title">🔐 Verification & Attestation</h2>
+        <p class="page-desc">As a Validator, review pending MRV commitments and issue Proof-of-Integrity (PoI) attestations.</p>
+        <div id="verificationQueue"></div>
       </div>
 
-      <!-- Panel 4: Minting -->
-      <div class="panel" id="panel-4">
-        <div class="panel-header">
-          <div class="rfc-tag">RFC-002 §3</div>
-          <h2>🏭 Credit Mint Successful</h2>
-          <p>The registry validated the PoI, locked the range globally, and issued the Credit Batch. The PoI status is now spent.</p>
-        </div>
-        
-        <div id="mintDisplay"></div>
-        
-        <div class="btn-row">
-          <button class="btn btn-secondary" onclick="goStep(3)">← Back</button>
-          <button class="btn btn-primary" onclick="goStep(5)">Proceed to Transfer →</button>
-        </div>
-      </div>
-
-      <!-- Panel 5: Transfer -->
-      <div class="panel" id="panel-5">
-        <div class="panel-header">
-          <div class="rfc-tag">RFC-002 §4</div>
-          <h2>🔄 Transfer Ownership</h2>
-          <p>Transfer the serialized carbon credits to a new owner address. The registry validates status beforehand.</p>
-        </div>
-        
-        <div class="form-grid single">
-          <div class="field">
-            <label>Recipient Address / Wallet</label>
-            <input type="text" id="f-new_owner" value="0xBuyer" placeholder="0x...">
-          </div>
-        </div>
-        
-        <div id="transferDisplay"></div>
-        
-        <div class="btn-row">
-          <button class="btn btn-secondary" onclick="goStep(4)">← Back</button>
-          <button class="btn btn-primary" onclick="submitTransfer()">Execute Transfer →</button>
-        </div>
-      </div>
-
-      <!-- Panel 6: Slicing & Burn -->
-      <div class="panel" id="panel-6">
-        <div class="panel-header">
-          <div class="rfc-tag">RFC-002 §5 & RFC-001 §3.2</div>
-          <h2>🔥 Partial Retirement (Slicing)</h2>
-          <p>Retire a sub-range of active credits. Slicing separates retired carbon from active remaining credits. कंटिग्युअस active or retired slices are normalized to reduce fragmentation.</p>
-        </div>
-
-        <div class="timeline-container">
-          <div class="timeline-title">
-            <span>Range Slice Map</span>
-            <span id="sliceStats">0 active / 0 retired</span>
-          </div>
-          <div class="timeline-bar" id="sliceTimeline"></div>
-          <div class="timeline-legend">
-            <div class="legend-item"><div class="legend-color active"></div><span>Active Slices</span></div>
-            <div class="legend-item"><div class="legend-color retired"></div><span>Retired / Burned</span></div>
-          </div>
-        </div>
-
-        <div class="form-grid triple">
-          <div class="field">
-            <label>Burn Range Start</label>
-            <input type="number" id="f-burn_start" value="1000000">
-          </div>
-          <div class="field">
-            <label>Burn Range End</label>
-            <input type="number" id="f-burn_end" value="1000299">
-          </div>
-          <div class="field">
-            <label>Claim Type</label>
-            <select id="f-claim_type">
-              <option value="CorporateNetZero">Corporate Net Zero</option>
-              <option value="Compliance">Regulatory Compliance</option>
-              <option value="Payg">Pay-As-You-Go</option>
-            </select>
-          </div>
-        </div>
-        <div class="form-grid single">
-          <div class="field">
-            <label>Beneficiary</label>
-            <input type="text" id="f-beneficiary" value="AcmeCorp_NetZero_2026">
-          </div>
-        </div>
-
-        <div class="btn-row">
-          <button class="btn btn-primary" onclick="submitBurn()">🔥 Execute Partial Burn</button>
-          <button class="btn btn-green" onclick="goStep(7)">Verify & Export Artifacts →</button>
-        </div>
-        
-        <div id="burnResults"></div>
-      </div>
-
-      <!-- Panel 7: Invariant Auditing -->
-      <div class="panel" id="panel-7">
-        <div class="panel-header">
-          <div class="rfc-tag">RFC-001 §5</div>
-          <h2>🛡️ Protocol Audit & Invariant Checks</h2>
-          <p>The Registry enforces seven core constraints in real-time. Review the active checks and download serialized artifacts below.</p>
-        </div>
+      <!-- ════════════ VIEW: Registry ════════════ -->
+      <div class="view" id="view-registry">
+        <div class="rfc-tag">RFC-002 §3</div>
+        <h2 class="page-title">🪙 Registry Explorer</h2>
+        <p class="page-desc">The master database of all minted carbon credit batches in this session.</p>
 
         <div class="counters-row">
-          <div class="counter-box">
-            <span class="counter-val" id="cnt-original">0</span>
-            <span class="counter-lbl">Original Supply</span>
-          </div>
-          <div class="counter-box green">
-            <span class="counter-val" id="cnt-active">0</span>
-            <span class="counter-lbl">Active Remainders</span>
-          </div>
-          <div class="counter-box red">
-            <span class="counter-val" id="cnt-retired">0</span>
-            <span class="counter-lbl">Retired Carbon</span>
-          </div>
-          <div class="counter-box purple">
-            <span class="counter-val" id="cnt-burned-ranges">0</span>
-            <span class="counter-lbl">Burn Footprints</span>
-          </div>
+          <div class="counter-box"><span class="counter-val" id="reg-total-batches">0</span><span class="counter-lbl">Total Batches</span></div>
+          <div class="counter-box green"><span class="counter-val" id="reg-total-active">0</span><span class="counter-lbl">Active Credits</span></div>
+          <div class="counter-box red"><span class="counter-val" id="reg-total-retired">0</span><span class="counter-lbl">Retired Credits</span></div>
+        </div>
+
+        <div id="registryTable"></div>
+      </div>
+
+      <!-- ════════════ VIEW: Marketplace ════════════ -->
+      <div class="view" id="view-marketplace">
+        <h2 class="page-title">🛒 Marketplace</h2>
+        <p class="page-desc">Browse available carbon credit listings. Only credits explicitly published by their owners appear here.</p>
+        <div id="marketplaceListings"></div>
+      </div>
+
+      <!-- ════════════ VIEW: Portfolio ════════════ -->
+      <div class="view" id="view-portfolio">
+        <h2 class="page-title">💼 Portfolio</h2>
+        <p class="page-desc">Credits owned by the current session identity. Retire credits to generate Proof-of-Offset (PoO).</p>
+
+        <div class="counters-row">
+          <div class="counter-box green"><span class="counter-val" id="port-owned">0</span><span class="counter-lbl">Active Owned</span></div>
+          <div class="counter-box red"><span class="counter-val" id="port-retired">0</span><span class="counter-lbl">Retired</span></div>
+        </div>
+
+        <div id="portfolioContent"></div>
+      </div>
+
+      <!-- ════════════ VIEW: Audit ════════════ -->
+      <div class="view" id="view-audit">
+        <div class="rfc-tag">RFC-001 §5</div>
+        <h2 class="page-title">📄 Protocol Audit & Invariant Checks</h2>
+        <p class="page-desc">The Registry enforces seven core constraints in real-time. Review active checks and download serialized artifacts.</p>
+
+        <div class="counters-row">
+          <div class="counter-box"><span class="counter-val" id="cnt-original">0</span><span class="counter-lbl">Original Supply</span></div>
+          <div class="counter-box green"><span class="counter-val" id="cnt-active">0</span><span class="counter-lbl">Active Remainders</span></div>
+          <div class="counter-box red"><span class="counter-val" id="cnt-retired">0</span><span class="counter-lbl">Retired Carbon</span></div>
+          <div class="counter-box purple"><span class="counter-val" id="cnt-burned-ranges">0</span><span class="counter-lbl">Burn Footprints</span></div>
         </div>
 
         <div class="audit-grid" id="auditGrid"></div>
 
-        <div style="margin-top: 2rem; border-top: 1px solid var(--border); padding-top: 1.5rem;">
-          <h3 style="font-size: 0.95rem; margin-bottom: 0.75rem;">📦 Export Session Certificates & Receipts</h3>
+        <div style="margin-top:1.5rem; border-top:1px solid var(--border); padding-top:1.25rem;">
+          <h3 style="font-size:0.92rem; margin-bottom:0.65rem;">📦 Export Session Certificates & Receipts</h3>
           <div class="download-grid" id="downloadGrid"></div>
-          
-          <div style="margin-top: 2rem; display: flex; gap: 1rem;">
-            <button class="btn btn-secondary" onclick="resetAll()">🔄 Reset Registry & Start Over</button>
+          <div style="margin-top:1.5rem; display:flex; gap:0.75rem; flex-wrap:wrap;">
+            <button class="btn btn-amber btn-sm" onclick="exportPdfCertificate()" id="pdfExportBtn" style="display:none">📜 Export PDF Certificate</button>
+            <button class="btn btn-green btn-sm" onclick="exportZipBundle()" id="zipExportBtn" style="display:none">📦 Download Audit ZIP</button>
+            <button class="btn btn-secondary btn-sm" onclick="resetAll()">🔄 Reset Registry & Start Over</button>
           </div>
+        </div>
+      </div>
+
+      <!-- ════════════ VIEW: Administration ════════════ -->
+      <div class="view" id="view-admin">
+        <h2 class="page-title">⚙ Administration</h2>
+        <p class="page-desc">Manage your demo session, switch identities, and configure the demonstration environment.</p>
+
+        <div class="result-card" style="border-color:rgba(88,166,255,0.15);">
+          <h4>👤 Session Identity</h4>
+          <div class="form-grid">
+            <div class="field"><label>Organization Name</label><input type="text" id="admin-org" value="ABC Solar Energy Pvt. Ltd."></div>
+            <div class="field"><label>Wallet Address</label><input type="text" id="admin-wallet" value="0xProjectOwner"></div>
+          </div>
+          <div class="btn-row">
+            <button class="btn btn-primary btn-sm" onclick="updateIdentity()">💾 Save Identity</button>
+          </div>
+        </div>
+
+        <div class="result-card" style="margin-top:1rem; border-color:rgba(188,140,242,0.15);">
+          <h4>🎭 Role Permissions</h4>
+          <div class="kv-row"><span class="kv-key">Admin</span><span class="kv-val green">All modules accessible</span></div>
+          <div class="kv-row"><span class="kv-key">Project Developer</span><span class="kv-val blue">Projects, MRV, Registry, Marketplace, Portfolio</span></div>
+          <div class="kv-row"><span class="kv-key">Validator / VVB</span><span class="kv-val blue">Verification, Registry, Audit</span></div>
+          <div class="kv-row"><span class="kv-key">Corporate Buyer</span><span class="kv-val blue">Marketplace, Portfolio, Registry, Audit</span></div>
+          <div class="kv-row"><span class="kv-key">Auditor</span><span class="kv-val blue">Registry, Audit (read-only)</span></div>
         </div>
       </div>
 
@@ -1372,178 +899,204 @@
   <!-- Loading overlay -->
   <div class="overlay" id="loadingOverlay">
     <div class="spinner"></div>
-    <div style="color: var(--muted); font-size: 0.9rem; font-family: var(--mono)">Bootstrapping WASM Crate...</div>
+    <div style="color:var(--muted); font-size:0.88rem; font-family:var(--mono)">Bootstrapping WASM Crate...</div>
   </div>
 
-  <!-- Error alert toast -->
+  <!-- Toast -->
   <div class="toast" id="toast"></div>
 
   <script type="module">
-    // ── Onboarding modal ──────────────────────────────────────────────────────
-    function dismissOnboarding() {
-      document.getElementById('onboardingModal').classList.remove('show');
-      try { localStorage.setItem('gm-onboarded', '1'); } catch(_) {}
-    }
-    window.dismissOnboarding = dismissOnboarding;
+    import init, { build_commitment, verify_inclusion, WasmRegistry } from './pkg/grey_misnomer_wasm.js';
 
-    // Show modal only on first visit
-    window.addEventListener('DOMContentLoaded', () => {
-      let seen = false;
-      try { seen = !!localStorage.getItem('gm-onboarded'); } catch(_) {}
-      if (!seen) document.getElementById('onboardingModal').classList.add('show');
-    });
-
-    import init, {
-      build_commitment,
-      verify_inclusion,
-      WasmRegistry
-    } from './pkg/grey_misnomer_wasm.js';
-
-    // State Variables
+    // ══════════════════════════════════════════════════════════════════
+    //  STATE
+    // ══════════════════════════════════════════════════════════════════
     let registry = null;
     let mrvRecords = [];
     let commitment = null;
-    let poiData = null;
-    let mintData = null;
-    let pooReceipts = [];
-    
-    let activeStep = 1;
-    let unlockedSteps = [1];
 
-    // Bootstrap
+    // Platform state (lives in JS, simulates "DB")
+    let projects = [];       // { id, name, tech, jurisdiction, org, expectedCredits, lat, lng, status, mrvCommitted, poiIssued }
+    let mintedBatches = [];  // { creditId, projectId, owner, totalCredits, originalStart, originalEnd, poiStatus, listedOnMarket, listingPrice, pooReceipts }
+    let currentRole = 'admin';
+    let currentWallet = '0xProjectOwner';
+    let currentOrg = 'ABC Solar Energy Pvt. Ltd.';
+
+    // ══════════════════════════════════════════════════════════════════
+    //  BOOTSTRAP
+    // ══════════════════════════════════════════════════════════════════
     window.addEventListener('DOMContentLoaded', async () => {
       document.getElementById('loadingOverlay').classList.add('show');
       try {
         await init();
         registry = new WasmRegistry();
-        
-        // Initial setup
-        seedDemoDataset();
       } catch (err) {
         console.error("WASM boot error:", err);
-        showToast("Fatal: Failed to load WebAssembly module. Ensure wasm-pack build has been executed.");
+        showToast("Fatal: Failed to load WebAssembly module.");
       } finally {
         document.getElementById('loadingOverlay').classList.remove('show');
       }
+      applyRolePermissions();
+      refreshDashboard();
     });
 
-    // Expose helpers globally
-    window.goStep = goStep;
-    window.addMrvRow = addMrvRow;
-    window.seedDemoDataset = seedDemoDataset;
-    window.clearMrvTable = clearMrvTable;
-    window.processMrv = processMrv;
-    window.submitMint = submitMint;
-    window.submitTransfer = submitTransfer;
-    window.submitBurn = submitBurn;
-    window.resetAll = resetAll;
-    window.handleFileUpload = handleFileUpload;
-    window.updateRangePreview = updateRangePreview;
-    window.exportPdfCertificate = exportPdfCertificate;
-    window.exportZipBundle = exportZipBundle;
+    // ══════════════════════════════════════════════════════════════════
+    //  NAVIGATION
+    // ══════════════════════════════════════════════════════════════════
+    let currentView = 'dashboard';
 
-    // ── Keyboard navigation: → / ← to move between steps ────────────────────
-    document.addEventListener('keydown', (e) => {
-      // Ignore when typing in an input/textarea
-      if (['INPUT', 'TEXTAREA', 'SELECT'].includes(document.activeElement.tagName)) return;
-      if (e.key === 'ArrowRight' && activeStep < 7) {
-        const next = activeStep + 1;
-        if (unlockedSteps.includes(next)) goStep(next);
-      } else if (e.key === 'ArrowLeft' && activeStep > 1) {
-        const prev = activeStep - 1;
-        if (unlockedSteps.includes(prev)) goStep(prev);
-      }
-    });
-
-    // ── Drag-and-drop upload zone events ─────────────────────────────────────
-    (() => {
-      const zone = document.getElementById('uploadZone');
-      if (!zone) return;
-      zone.addEventListener('dragover', (e) => { e.preventDefault(); zone.classList.add('drag-over'); });
-      zone.addEventListener('dragleave', () => zone.classList.remove('drag-over'));
-      zone.addEventListener('drop', (e) => {
-        e.preventDefault();
-        zone.classList.remove('drag-over');
-        const file = e.dataTransfer?.files?.[0];
-        if (file) processUploadedFile(file);
-      });
-    })();
-
-    // Toast function
-    function showToast(msg) {
-      const toast = document.getElementById('toast');
-      toast.textContent = msg;
-      toast.classList.add('show');
-      setTimeout(() => {
-        toast.classList.remove('show');
-      }, 5000);
-    }
-
-    // Step navigation
-    function goStep(step) {
-      if (!unlockedSteps.includes(step)) {
-        showToast("Step is locked. Complete the previous steps first.");
+    function navigate(view) {
+      const navItem = document.getElementById(`nav-${view}`);
+      if (navItem && navItem.classList.contains('locked')) {
+        showToast('This module is not available for your current role.');
         return;
       }
+      document.querySelectorAll('.view').forEach(v => v.classList.remove('active'));
+      document.querySelectorAll('.nav-item').forEach(n => n.classList.remove('active'));
+      document.getElementById(`view-${view}`).classList.add('active');
+      document.getElementById(`nav-${view}`).classList.add('active');
+      currentView = view;
 
-      // Hide all panels
-      document.querySelectorAll('.panel').forEach(p => p.classList.remove('active'));
-      // Show requested panel
-      document.getElementById(`panel-${step}`).classList.add('active');
-      
-      // Update sidebar active status
-      document.querySelectorAll('.step-item').forEach(item => item.classList.remove('active'));
-      document.getElementById(`si-${step}`).classList.add('active');
+      // Refresh dynamic views
+      if (view === 'dashboard') refreshDashboard();
+      if (view === 'registry') refreshRegistry();
+      if (view === 'marketplace') refreshMarketplace();
+      if (view === 'portfolio') refreshPortfolio();
+      if (view === 'verification') refreshVerification();
+      if (view === 'projects') refreshProjectsList();
+      if (view === 'mrv') refreshMrvProjectSelect();
+      if (view === 'audit') runAuditChecks();
+    }
+    window.navigate = navigate;
 
-      activeStep = step;
+    // ══════════════════════════════════════════════════════════════════
+    //  ROLE MANAGEMENT
+    // ══════════════════════════════════════════════════════════════════
+    const roleAccess = {
+      admin:     ['dashboard','governance','projects','mrv','verification','registry','marketplace','portfolio','audit','admin'],
+      developer: ['dashboard','projects','mrv','registry','marketplace','portfolio','audit'],
+      validator: ['dashboard','governance','verification','registry','audit'],
+      buyer:     ['dashboard','marketplace','portfolio','registry','audit'],
+      auditor:   ['dashboard','registry','audit']
+    };
 
-      // Special action hooks when stepping into certain panels
-      if (step === 7) {
-        runAuditChecks();
-      }
+    function switchRole(role) {
+      currentRole = role;
+      // Change wallet identity based on role
+      if (role === 'buyer') { currentWallet = '0xCorporateBuyer'; currentOrg = 'GreenCorp Industries'; }
+      else if (role === 'validator') { currentWallet = '0xValidator_VVB'; currentOrg = 'Bureau of Energy Efficiency'; }
+      else if (role === 'auditor') { currentWallet = '0xAuditor'; currentOrg = 'Independent Audit Firm'; }
+      else { currentWallet = '0xProjectOwner'; currentOrg = 'ABC Solar Energy Pvt. Ltd.'; }
+      document.getElementById('admin-wallet').value = currentWallet;
+      document.getElementById('admin-org').value = currentOrg;
+      applyRolePermissions();
+      // Navigate to dashboard if current view is locked
+      const allowed = roleAccess[role] || [];
+      if (!allowed.includes(currentView)) navigate('dashboard');
+      refreshDashboard();
+    }
+    window.switchRole = switchRole;
+
+    function applyRolePermissions() {
+      const allowed = roleAccess[currentRole] || [];
+      const allViews = ['dashboard','governance','projects','mrv','verification','registry','marketplace','portfolio','audit','admin'];
+      allViews.forEach(v => {
+        const nav = document.getElementById(`nav-${v}`);
+        if (!nav) return;
+        if (allowed.includes(v)) nav.classList.remove('locked');
+        else nav.classList.add('locked');
+      });
     }
 
-    function unlock(step) {
-      if (!unlockedSteps.includes(step)) {
-        unlockedSteps.push(step);
-        document.getElementById(`si-${step}`).classList.remove('locked');
+    // ══════════════════════════════════════════════════════════════════
+    //  PROJECTS MODULE
+    // ══════════════════════════════════════════════════════════════════
+    function registerProject() {
+      const project = {
+        id: document.getElementById('prj-id').value || `PRJ-${Date.now()}`,
+        name: document.getElementById('prj-name').value || 'Unnamed Project',
+        tech: document.getElementById('prj-tech').value,
+        jurisdiction: document.getElementById('prj-jurisdiction').value,
+        org: document.getElementById('prj-org').value,
+        expectedCredits: parseInt(document.getElementById('prj-credits').value) || 0,
+        lat: document.getElementById('prj-lat').value,
+        lng: document.getElementById('prj-lng').value,
+        status: 'Registered',
+        mrvCommitted: false,
+        poiIssued: false,
+        minted: false,
+        commitment: null,
+        mrvData: null,
+        createdAt: new Date().toISOString()
+      };
+      projects.push(project);
+      document.getElementById('badge-projects').textContent = projects.length;
+      refreshProjectsList();
+      showSuccessToast(`✓ Project "${project.name}" registered`);
+      refreshDashboard();
+    }
+    window.registerProject = registerProject;
+
+    function refreshProjectsList() {
+      const container = document.getElementById('projectsList');
+      if (projects.length === 0) {
+        container.innerHTML = '<div class="empty-state"><div class="empty-icon">📁</div><h3>No Projects Yet</h3><p>Register your first carbon reduction project above.</p></div>';
+        return;
       }
-      document.getElementById(`si-${step - 1}`).classList.add('done');
+      let html = '<div class="table-wrap"><table class="data"><thead><tr><th>Project ID</th><th>Name</th><th>Technology</th><th>Status</th><th>Credits</th><th>Actions</th></tr></thead><tbody>';
+      projects.forEach((p, i) => {
+        const statusClass = p.minted ? 'active' : (p.poiIssued ? 'listed' : (p.mrvCommitted ? 'pending' : ''));
+        const statusText = p.minted ? 'Minted' : (p.poiIssued ? 'PoI Issued' : (p.mrvCommitted ? 'MRV Committed' : 'Registered'));
+        html += `<tr>
+          <td style="color:var(--blue)">${p.id}</td>
+          <td style="color:var(--text);font-family:var(--sans)">${p.name}</td>
+          <td>${p.tech}</td>
+          <td><span class="status-pill ${statusClass || 'pending'}">${statusText}</span></td>
+          <td>${p.expectedCredits.toLocaleString()}</td>
+          <td>${!p.mrvCommitted ? `<button class="btn btn-secondary btn-sm" onclick="navigate('mrv')">Upload MRV</button>` : (!p.minted && p.poiIssued ? `<button class="btn btn-green btn-sm" onclick="mintFromProject(${i})">🪙 Mint</button>` : '—')}</td>
+        </tr>`;
+      });
+      html += '</tbody></table></div>';
+      container.innerHTML = html;
     }
 
-    // --- Step 1: MRV Helpers ---
+    // ══════════════════════════════════════════════════════════════════
+    //  MRV MODULE (reusing existing logic)
+    // ══════════════════════════════════════════════════════════════════
+    function refreshMrvProjectSelect() {
+      const sel = document.getElementById('mrv-project-select');
+      sel.innerHTML = '';
+      if (projects.length === 0) {
+        sel.innerHTML = '<option value="">— Register a project first —</option>';
+        return;
+      }
+      projects.filter(p => !p.minted).forEach(p => {
+        sel.innerHTML += `<option value="${p.id}">${p.id} — ${p.name}</option>`;
+      });
+    }
+
     function addMrvRow(ts = null, val = null, unit = 'kWh', src = null) {
       const body = document.getElementById('mrvBody');
       const idx = body.rows.length;
-      
       const defaultTs = ts || Math.floor(Date.now() / 1000);
       const defaultVal = val || 1200.0;
       const defaultSrc = src || `SOLAR-SENSOR-${String(idx % 4).padStart(3, '0')}`;
-
       const row = document.createElement('tr');
       row.innerHTML = `
-        <td style="color: var(--muted); font-family: var(--mono); font-size: 0.75rem;">${idx + 1}</td>
+        <td style="color:var(--muted);font-family:var(--mono);font-size:0.73rem;">${idx + 1}</td>
         <td><input type="number" class="mrv-ts" value="${defaultTs}"></td>
         <td><input type="number" class="mrv-val" value="${defaultVal}" step="0.1"></td>
-        <td><input type="text" class="mrv-unit" value="${unit}" style="width: 70px;"></td>
+        <td><input type="text" class="mrv-unit" value="${unit}" style="width:70px;"></td>
         <td><input type="text" class="mrv-src" value="${defaultSrc}"></td>
-        <td><button onclick="this.closest('tr').remove(); reindexTable(); updateRecordBadge();" style="background:none; border:none; color:var(--muted); cursor:pointer; font-size:0.95rem;">✕</button></td>
-      `;
+        <td><button onclick="this.closest('tr').remove();reindexTable();updateRecordBadge();" style="background:none;border:none;color:var(--muted);cursor:pointer;font-size:0.9rem;">✕</button></td>`;
       body.appendChild(row);
       updateRecordBadge();
     }
+    window.addMrvRow = addMrvRow;
+    window.reindexTable = () => { document.querySelectorAll('#mrvBody tr').forEach((row, i) => { row.cells[0].textContent = i + 1; }); };
 
-    window.reindexTable = () => {
-      const rows = document.querySelectorAll('#mrvBody tr');
-      rows.forEach((row, i) => {
-        row.cells[0].textContent = i + 1;
-      });
-    };
-
-    function clearMrvTable() {
-      document.getElementById('mrvBody').innerHTML = '';
-      updateRecordBadge();
-    }
+    function clearMrvTable() { document.getElementById('mrvBody').innerHTML = ''; updateRecordBadge(); }
+    window.clearMrvTable = clearMrvTable;
 
     function updateRecordBadge() {
       const n = document.querySelectorAll('#mrvBody tr').length;
@@ -1553,7 +1106,6 @@
 
     function seedDemoDataset() {
       clearMrvTable();
-      // Generate the exact 30 days of solar generation records from CLI demo
       for (let day = 0; day < 30; day++) {
         const ts = 1700000000 + day * 86400;
         const val = (1250.0 + (day * 3.5)).toFixed(1);
@@ -1562,12 +1114,13 @@
       }
       updateRecordBadge();
     }
+    window.seedDemoDataset = seedDemoDataset;
 
-    // ── CSV / JSON file upload handler ────────────────────────────────────────
     function handleFileUpload(event) {
       const file = event.target.files?.[0];
       if (file) processUploadedFile(file);
     }
+    window.handleFileUpload = handleFileUpload;
 
     function processUploadedFile(file) {
       const reader = new FileReader();
@@ -1577,21 +1130,15 @@
         try {
           if (file.name.endsWith('.json')) {
             records = JSON.parse(text);
-            if (!Array.isArray(records)) throw new Error('JSON must be an array of records');
+            if (!Array.isArray(records)) throw new Error('JSON must be an array');
           } else {
-            // CSV: timestamp,value,unit,source (first row may be header)
             const lines = text.trim().split(/\r?\n/).filter(l => l.trim());
             const isHeader = isNaN(lines[0].split(',')[0]);
             const dataLines = isHeader ? lines.slice(1) : lines;
             records = dataLines.map((line, i) => {
               const parts = line.split(',');
-              if (parts.length < 4) throw new Error(`Row ${i + 1}: expected 4 columns (timestamp,value,unit,source)`);
-              return {
-                timestamp: parseInt(parts[0].trim()) || 0,
-                value: parseFloat(parts[1].trim()) || 0,
-                unit: parts[2].trim() || 'kWh',
-                source: parts[3].trim() || `SENSOR-${i}`
-              };
+              if (parts.length < 4) throw new Error(`Row ${i+1}: expected 4 columns`);
+              return { timestamp: parseInt(parts[0].trim()) || 0, value: parseFloat(parts[1].trim()) || 0, unit: parts[2].trim() || 'kWh', source: parts[3].trim() || `SENSOR-${i}` };
             });
           }
           if (records.length === 0) throw new Error('File contains no records');
@@ -1599,29 +1146,19 @@
           records.forEach(r => addMrvRow(r.timestamp, r.value, r.unit || 'kWh', r.source));
           updateRecordBadge();
           showSuccessToast(`✓ Imported ${records.length} records from ${file.name}`);
-        } catch (err) {
-          showToast(`Import failed: ${err.message}`);
-        }
+        } catch (err) { showToast(`Import failed: ${err.message}`); }
       };
       reader.readAsText(file);
     }
 
-    // ── Serial range live preview ──────────────────────────────────────────────
-    function updateRangePreview() {
-      const start = parseInt(document.getElementById('f-serial_start')?.value) || 0;
-      const end   = parseInt(document.getElementById('f-serial_end')?.value)   || 0;
-      const preview = document.getElementById('rangePreview');
-      if (!preview) return;
-      if (end >= start) {
-        const count = end - start + 1;
-        preview.textContent = `→ ${count.toLocaleString()} credits in this batch (serials ${start.toLocaleString()} – ${end.toLocaleString()})`;
-        preview.classList.add('show');
-      } else {
-        preview.textContent = '⚠ End must be ≥ start';
-        preview.style.color = 'var(--red)';
-        preview.classList.add('show');
-      }
-    }
+    // Drag and drop
+    (() => {
+      const zone = document.getElementById('uploadZone');
+      if (!zone) return;
+      zone.addEventListener('dragover', (e) => { e.preventDefault(); zone.classList.add('drag-over'); });
+      zone.addEventListener('dragleave', () => zone.classList.remove('drag-over'));
+      zone.addEventListener('drop', (e) => { e.preventDefault(); zone.classList.remove('drag-over'); const file = e.dataTransfer?.files?.[0]; if (file) processUploadedFile(file); });
+    })();
 
     function getMrvData() {
       const rows = document.querySelectorAll('#mrvBody tr');
@@ -1637,67 +1174,58 @@
       return list;
     }
 
-    // --- Step 1 -> 2: Compute Merkle Tree ---
     async function processMrv() {
       const list = getMrvData();
-      if (list.length === 0) {
-        showToast("Please enter or generate at least one MRV record.");
-        return;
-      }
+      if (list.length === 0) { showToast("Please enter at least one MRV record."); return; }
+
+      const selProjectId = document.getElementById('mrv-project-select').value;
+      if (!selProjectId) { showToast("Please select a project first."); return; }
 
       try {
-        // wasm-bindgen maps Rust u64 → JS BigInt; plain Number throws "Cannot convert to BigInt"
         const timestamp = BigInt(Math.floor(Date.now() / 1000));
         const jsonStr = JSON.stringify(list);
-        
-        // Execute WASM commitment building
         const result = build_commitment(jsonStr, timestamp);
         commitment = JSON.parse(result);
         mrvRecords = list;
-
-        // Store commitment inside our stateful WasmRegistry
         await registry.store_commitment(jsonStr, timestamp);
 
-        // Display results
-        const mrvDisplay = document.getElementById('mrvCommitmentDisplay');
-        mrvDisplay.innerHTML = `
-          <div class="hash-display">
-            <span class="tag">BLAKE3 Merkle Root</span>
-            ${commitment.merkle_root_hex}
-          </div>
+        // Update project state
+        const prj = projects.find(p => p.id === selProjectId);
+        if (prj) { prj.mrvCommitted = true; prj.status = 'MRV Committed'; prj.commitment = commitment; prj.mrvData = list; }
+
+        document.getElementById('mrvCommitmentDisplay').innerHTML = `
+          <div class="hash-display"><span class="tag">BLAKE3 Merkle Root</span>${commitment.merkle_root_hex}</div>
           <div class="result-card success">
             <h4>✅ Merkle Commitment Successful (RFC-003)</h4>
+            <div class="kv-row"><span class="kv-key">project</span><span class="kv-val blue">${selProjectId}</span></div>
             <div class="kv-row"><span class="kv-key">leaf_count</span><span class="kv-val green">${commitment.leaf_count} leaves</span></div>
             <div class="kv-row"><span class="kv-key">hash_algorithm</span><span class="kv-val blue">${commitment.algorithm}</span></div>
             <div class="kv-row"><span class="kv-key">commitment_ts</span><span class="kv-val">${commitment.timestamp}</span></div>
             <div class="kv-row"><span class="kv-key">data_anchored</span><span class="kv-val green">True (Stored in Registry)</span></div>
-          </div>
-        `;
+          </div>`;
 
-        // Render Spot Checks
         renderSpotChecks();
+        document.getElementById('spotCheckSection').style.display = 'block';
 
-        // Unlock step 2 (Merkle result display) AND step 3 (Attest PoI form)
-        // so the "Attest PoI →" button on Panel 2 is reachable.
-        unlock(2);
-        unlock(3);
-        goStep(2);
-      } catch (err) {
-        showToast(`Error: ${err}`);
-      }
+        // Update verification badge
+        const pendingCount = projects.filter(p => p.mrvCommitted && !p.poiIssued).length;
+        const vBadge = document.getElementById('badge-verification');
+        vBadge.textContent = pendingCount;
+        vBadge.style.display = pendingCount > 0 ? '' : 'none';
+
+        showSuccessToast('✓ Commitment anchored — awaiting Validator approval');
+        refreshDashboard();
+      } catch (err) { showToast(`Error: ${err}`); }
     }
+    window.processMrv = processMrv;
 
-    // Spot Checks
     function renderSpotChecks() {
       const body = document.getElementById('spotCheckBody');
       body.innerHTML = '';
-
-      // Render first, middle and last records for verification testing
       const indices = [];
       if (mrvRecords.length > 0) indices.push(0);
       if (mrvRecords.length > 2) indices.push(Math.floor(mrvRecords.length / 2));
       if (mrvRecords.length > 1) indices.push(mrvRecords.length - 1);
-
       indices.forEach(idx => {
         const record = mrvRecords[idx];
         const row = document.createElement('tr');
@@ -1706,643 +1234,567 @@
           <td>${record.source}</td>
           <td><span id="spot-val-${idx}">${record.value}</span> ${record.unit}</td>
           <td><input type="checkbox" id="tamper-${idx}" onchange="toggleTamper(${idx})"></td>
-          <td id="proof-status-${idx}">
-            <button class="btn btn-secondary btn-sm" onclick="runSpotVerify(${idx})">Verify Inclusion</button>
-          </td>
-        `;
+          <td id="proof-status-${idx}"><button class="btn btn-secondary btn-sm" onclick="runSpotVerify(${idx})">Verify Inclusion</button></td>`;
         body.appendChild(row);
       });
     }
 
     window.toggleTamper = (idx) => {
       const checked = document.getElementById(`tamper-${idx}`).checked;
-      const originalValue = mrvRecords[idx].value;
       const displaySpan = document.getElementById(`spot-val-${idx}`);
-      if (checked) {
-        displaySpan.textContent = "999999.0 (Tampered)";
-        displaySpan.style.color = "var(--red)";
-      } else {
-        displaySpan.textContent = originalValue;
-        displaySpan.style.color = "var(--text)";
-      }
-      // Reset proof button display
+      if (checked) { displaySpan.textContent = "999999.0 (Tampered)"; displaySpan.style.color = "var(--red)"; }
+      else { displaySpan.textContent = mrvRecords[idx].value; displaySpan.style.color = "var(--text)"; }
       document.getElementById(`proof-status-${idx}`).innerHTML = `<button class="btn btn-secondary btn-sm" onclick="runSpotVerify(${idx})">Verify Inclusion</button>`;
     };
 
     window.runSpotVerify = (idx) => {
       const checked = document.getElementById(`tamper-${idx}`).checked;
       const targetRecord = { ...mrvRecords[idx] };
-      if (checked) {
-        targetRecord.value = 999999.0; // Fabricate value
-      }
-
+      if (checked) targetRecord.value = 999999.0;
       try {
-        const dummyList = [...mrvRecords];
-        dummyList[idx] = targetRecord;
-
+        const dummyList = [...mrvRecords]; dummyList[idx] = targetRecord;
         const res = verify_inclusion(JSON.stringify(dummyList), idx, commitment.merkle_root_hex);
         const statusTd = document.getElementById(`proof-status-${idx}`);
-        
-        if (res === "verified") {
-          statusTd.innerHTML = `<span style="color:var(--green)">✓ Verified</span>`;
-        } else {
-          statusTd.innerHTML = `<span style="color:var(--red)">✗ Rejected</span>`;
-        }
-      } catch (err) {
-        showToast(err);
-      }
+        if (res === "verified") statusTd.innerHTML = `<span style="color:var(--green)">✓ Verified</span>`;
+        else statusTd.innerHTML = `<span style="color:var(--red)">✗ Rejected</span>`;
+      } catch (err) { showToast(err); }
     };
 
-    // --- Step 3 -> 4: Minting Credits ---
-    async function submitMint() {
-      const start = parseInt(document.getElementById('f-serial_start').value);
-      const end = parseInt(document.getElementById('f-serial_end').value);
+    // ══════════════════════════════════════════════════════════════════
+    //  VERIFICATION MODULE
+    // ══════════════════════════════════════════════════════════════════
+    function refreshVerification() {
+      const container = document.getElementById('verificationQueue');
+      const pending = projects.filter(p => p.mrvCommitted && !p.poiIssued);
+      const approved = projects.filter(p => p.poiIssued);
 
-      poiData = {
-        project_id: document.getElementById('f-project_id').value,
-        credit_id: document.getElementById('f-credit_id').value,
-        serial_start: start,
-        serial_end: end,
-        cc_mint_amount: end - start + 1,
-        jurisdiction: document.getElementById('f-jurisdiction').value,
-        methodology_hash: document.getElementById('f-methodology_hash').value,
-        vvb_signature: document.getElementById('f-vvb_signature').value,
-        owner: document.getElementById('f-owner').value
+      if (pending.length === 0 && approved.length === 0) {
+        container.innerHTML = '<div class="empty-state"><div class="empty-icon">🔐</div><h3>No Pending Verifications</h3><p>Projects with MRV commitments will appear here for validator approval.</p></div>';
+        return;
+      }
+
+      let html = '';
+      if (pending.length > 0) {
+        html += '<h3 style="font-size:1rem;margin-bottom:0.75rem;color:var(--amber)">⏳ Pending Approval</h3>';
+        pending.forEach((p, i) => {
+          const pIdx = projects.indexOf(p);
+          html += `<div class="result-card" style="border-color:rgba(236,178,46,0.2);">
+            <h4>📁 ${p.name} <span class="status-pill pending" style="margin-left:0.5rem">Pending</span></h4>
+            <div class="kv-row"><span class="kv-key">project_id</span><span class="kv-val blue">${p.id}</span></div>
+            <div class="kv-row"><span class="kv-key">technology</span><span class="kv-val">${p.tech}</span></div>
+            <div class="kv-row"><span class="kv-key">jurisdiction</span><span class="kv-val">${p.jurisdiction}</span></div>
+            <div class="kv-row"><span class="kv-key">merkle_root</span><span class="kv-val green">${p.commitment?.merkle_root_hex || 'N/A'}</span></div>
+            <div class="kv-row"><span class="kv-key">leaf_count</span><span class="kv-val">${p.commitment?.leaf_count || 0} records</span></div>
+            <div class="btn-row">
+              <button class="btn btn-green btn-sm" onclick="approveProject(${pIdx})">✅ Approve & Issue PoI</button>
+              <button class="btn btn-secondary btn-sm" onclick="rejectProject(${pIdx})">✗ Reject</button>
+            </div>
+          </div>`;
+        });
+      }
+      if (approved.length > 0) {
+        html += '<h3 style="font-size:1rem;margin-top:1.5rem;margin-bottom:0.75rem;color:var(--green)">✅ Approved</h3>';
+        approved.forEach(p => {
+          html += `<div class="result-card success">
+            <h4>📁 ${p.name} <span class="status-pill active" style="margin-left:0.5rem">PoI Issued</span></h4>
+            <div class="kv-row"><span class="kv-key">project_id</span><span class="kv-val blue">${p.id}</span></div>
+            <div class="kv-row"><span class="kv-key">merkle_root</span><span class="kv-val green">${p.commitment?.merkle_root_hex || 'N/A'}</span></div>
+          </div>`;
+        });
+      }
+      container.innerHTML = html;
+    }
+
+    function approveProject(idx) {
+      const p = projects[idx];
+      p.poiIssued = true;
+      p.status = 'PoI Issued';
+      showSuccessToast(`✓ PoI issued for "${p.name}"`);
+      refreshVerification();
+      refreshDashboard();
+      // Update verification badge
+      const pendingCount = projects.filter(p => p.mrvCommitted && !p.poiIssued).length;
+      const vBadge = document.getElementById('badge-verification');
+      vBadge.textContent = pendingCount;
+      vBadge.style.display = pendingCount > 0 ? '' : 'none';
+    }
+    window.approveProject = approveProject;
+
+    function rejectProject(idx) {
+      projects[idx].mrvCommitted = false;
+      projects[idx].status = 'Rejected';
+      showToast(`Project "${projects[idx].name}" rejected by validator.`);
+      refreshVerification();
+    }
+    window.rejectProject = rejectProject;
+
+    // ══════════════════════════════════════════════════════════════════
+    //  MINTING (from project or registry)
+    // ══════════════════════════════════════════════════════════════════
+    function mintFromProject(idx) {
+      const p = projects[idx];
+      if (!p.poiIssued) { showToast('Project must be approved by a Validator first.'); return; }
+      if (p.minted) { showToast('Project already minted.'); return; }
+
+      const creditId = `CC-${p.tech.replace(/\s/g, '').toUpperCase().slice(0,5)}-${Date.now().toString(36).toUpperCase()}`;
+      const serialStart = 1000000 + mintedBatches.length * 10000;
+      const serialEnd = serialStart + p.expectedCredits - 1;
+
+      const poiData = {
+        project_id: p.id,
+        credit_id: creditId,
+        serial_start: serialStart,
+        serial_end: serialEnd,
+        cc_mint_amount: p.expectedCredits,
+        jurisdiction: p.jurisdiction,
+        methodology_hash: `SHA256(VM0042-v4.0)`,
+        vvb_signature: `0xVVB_SIG_${Date.now().toString(36)}`,
+        owner: currentWallet
       };
 
       try {
         const res = registry.mint(JSON.stringify(poiData));
-        mintData = JSON.parse(res);
+        const mintData = JSON.parse(res);
 
-        // Prepopulate Burn fields
-        document.getElementById('f-burn_start').value = mintData.original_start;
-        document.getElementById('f-burn_end').value = mintData.original_start + 299;
+        p.minted = true;
+        p.status = 'Minted';
 
-        const display = document.getElementById('mintDisplay');
-        display.innerHTML = `
-          <div class="result-card success">
-            <h4>✅ CreditBatch Successfully Minted (RFC-002)</h4>
-            <div class="kv-row"><span class="kv-key">credit_id</span><span class="kv-val blue">${mintData.credit_id}</span></div>
-            <div class="kv-row"><span class="kv-key">project_id</span><span class="kv-val">${mintData.project_id}</span></div>
-            <div class="kv-row"><span class="kv-key">original_range</span><span class="kv-val green">${mintData.original_start} – ${mintData.original_end}</span></div>
-            <div class="kv-row"><span class="kv-key">total_supply</span><span class="kv-val green">${mintData.total_credits} tCO2e</span></div>
-            <div class="kv-row"><span class="kv-key">batch_owner</span><span class="kv-val blue">${mintData.owner}</span></div>
-            <div class="kv-row"><span class="kv-key">poi_status</span><span class="kv-val red">${mintData.poi_status} (Consumed)</span></div>
-          </div>
-          
-          <div class="audit-card ok" style="margin-top: 1rem;">
-            <div class="audit-icon">✓</div>
-            <div class="audit-desc">
-              <h5>Invariant 3 Check Passed</h5>
-              <p>Serial range locked globally to registry table. Replay attempts blocked.</p>
-            </div>
-          </div>
-        `;
+        mintedBatches.push({
+          creditId: mintData.credit_id,
+          projectId: p.id,
+          projectName: p.name,
+          tech: p.tech,
+          owner: mintData.owner,
+          totalCredits: mintData.total_credits,
+          originalStart: mintData.original_start,
+          originalEnd: mintData.original_end,
+          poiStatus: mintData.poi_status,
+          listedOnMarket: false,
+          listingPrice: 0,
+          pooReceipts: [],
+          mintedAt: new Date().toISOString()
+        });
 
-        // Load timeline in Step 6
-        updateTimeline();
-
-        // Unlock step 4 (Mint result display) AND step 5 (Transfer form)
-        // so the "Proceed to Transfer →" button on Panel 4 is reachable.
-        unlock(4);
-        unlock(5);
-        goStep(4);
-      } catch (err) {
-        showToast(err);
-      }
+        document.getElementById('badge-registry').textContent = mintedBatches.length;
+        showSuccessToast(`✓ ${mintData.total_credits} credits minted as ${mintData.credit_id}`);
+        refreshProjectsList();
+        refreshDashboard();
+        navigate('registry');
+      } catch (err) { showToast(`Mint error: ${err}`); }
     }
+    window.mintFromProject = mintFromProject;
 
-    // --- Step 5: Transfer ---
-    async function submitTransfer() {
-      const newOwner = document.getElementById('f-new_owner').value;
-      if (!newOwner) {
-        showToast("Please enter a new owner wallet.");
+    // ══════════════════════════════════════════════════════════════════
+    //  REGISTRY MODULE
+    // ══════════════════════════════════════════════════════════════════
+    function refreshRegistry() {
+      const container = document.getElementById('registryTable');
+      if (mintedBatches.length === 0) {
+        container.innerHTML = '<div class="empty-state"><div class="empty-icon">🪙</div><h3>No Credits Minted Yet</h3><p>Register a project, upload MRV data, get it verified, then mint credits.</p></div>';
+        document.getElementById('reg-total-batches').textContent = '0';
+        document.getElementById('reg-total-active').textContent = '0';
+        document.getElementById('reg-total-retired').textContent = '0';
         return;
       }
 
-      try {
-        const res = registry.transfer(poiData.credit_id, newOwner);
-        const updatedBatch = JSON.parse(res);
+      document.getElementById('reg-total-batches').textContent = mintedBatches.length;
 
-        const display = document.getElementById('transferDisplay');
-        display.innerHTML = `
-          <div class="result-card success">
-            <h4>✅ Ownership Transfer Approved</h4>
-            <div class="kv-row"><span class="kv-key">credit_id</span><span class="kv-val blue">${updatedBatch.credit_id}</span></div>
-            <div class="kv-row"><span class="kv-key">previous_owner</span><span class="kv-val">${poiData.owner}</span></div>
-            <div class="kv-row"><span class="kv-key">new_owner</span><span class="kv-val green">${updatedBatch.owner}</span></div>
-            <div class="kv-row"><span class="kv-key">status</span><span class="kv-val blue">Active</span></div>
-          </div>
-        `;
+      let totalActive = 0, totalRetired = 0;
+      let html = '<div class="table-wrap"><table class="data"><thead><tr><th>Credit ID</th><th>Project</th><th>Owner</th><th>Supply</th><th>Status</th><th>Actions</th></tr></thead><tbody>';
 
-        // Update stored owner
-        poiData.owner = updatedBatch.owner;
+      mintedBatches.forEach((b, i) => {
+        let batchActive = 0, batchRetired = 0;
+        try {
+          const state = JSON.parse(registry.batch_state(b.creditId));
+          batchActive = state.active_total;
+          batchRetired = state.retired_total;
+        } catch(_) { batchActive = b.totalCredits; }
+        totalActive += batchActive;
+        totalRetired += batchRetired;
 
-        // Refresh timeline
-        updateTimeline();
+        const statusText = batchRetired >= b.totalCredits ? 'Fully Retired' : (b.listedOnMarket ? 'Listed' : 'Active');
+        const statusClass = batchRetired >= b.totalCredits ? 'retired' : (b.listedOnMarket ? 'listed' : 'active');
 
-        // Unlock step 6 (Partial Retire). Step 5 is already in unlockedSteps
-        // from submitMint(); re-calling unlock(5) marks si-4 done again (harmless).
-        // goStep(5) stays on Panel 5 to show the transfer result.
-        unlock(5);
-        unlock(6);
-        goStep(5);
-      } catch (err) {
-        showToast(err);
-      }
-    }
-
-    // --- Step 6: Burn / Slicing ---
-    async function updateTimeline() {
-      if (!poiData) return;
-      try {
-        const stateStr = registry.batch_state(poiData.credit_id);
-        const state = JSON.parse(stateStr);
-        renderSlices(state);
-      } catch (err) {
-        console.error("Timeline error:", err);
-      }
-    }
-
-    function renderSlices(state) {
-      document.getElementById('sliceStats').textContent = 
-        `${state.active_total} active / ${state.retired_total} retired tCO2e`;
-
-      const bar = document.getElementById('sliceTimeline');
-      bar.innerHTML = '';
-
-      const originalSize = state.original_end - state.original_start + 1;
-      
-      // Sort slices by start just to be sure
-      const sorted = [...state.slices].sort((a,b) => a.start - b.start);
-
-      sorted.forEach(slice => {
-        const size = slice.end - slice.start + 1;
-        const pct = (size / originalSize) * 100;
-        
-        const el = document.createElement('div');
-        el.className = `slice-segment ${slice.status.toLowerCase()}`;
-        el.style.width = `${pct}%`;
-        el.title = `Range: ${slice.start}–${slice.end} (${size} credits, ${slice.status})`;
-        
-        // Only render text inside segment if segment is wide enough
-        if (pct > 8) {
-          el.textContent = `${slice.start}–${slice.end}`;
-        } else if (pct > 3) {
-          el.textContent = `...`;
-        }
-        
-        bar.appendChild(el);
+        html += `<tr>
+          <td style="color:var(--blue)">${b.creditId}</td>
+          <td style="color:var(--text);font-family:var(--sans)">${b.projectName || b.projectId}</td>
+          <td>${b.owner}</td>
+          <td>${b.totalCredits.toLocaleString()} tCO2e</td>
+          <td><span class="status-pill ${statusClass}">${statusText}</span></td>
+          <td>${!b.listedOnMarket && batchActive > 0 ? `<button class="btn btn-secondary btn-sm" onclick="listOnMarket(${i})">🛒 List</button>` : '—'}</td>
+        </tr>`;
       });
+      html += '</tbody></table></div>';
+      container.innerHTML = html;
+      document.getElementById('reg-total-active').textContent = totalActive.toLocaleString();
+      document.getElementById('reg-total-retired').textContent = totalRetired.toLocaleString();
     }
 
-    async function submitBurn() {
-      const burnStart = parseInt(document.getElementById('f-burn_start').value);
-      const burnEnd = parseInt(document.getElementById('f-burn_end').value);
-      const beneficiary = document.getElementById('f-beneficiary').value;
-      const claimType = document.getElementById('f-claim_type').value;
+    function listOnMarket(idx) {
+      mintedBatches[idx].listedOnMarket = true;
+      mintedBatches[idx].listingPrice = Math.floor(500 + Math.random() * 1000);
+      const mBadge = document.getElementById('badge-marketplace');
+      mBadge.textContent = mintedBatches.filter(b => b.listedOnMarket).length;
+      showSuccessToast(`✓ ${mintedBatches[idx].creditId} listed on marketplace`);
+      refreshRegistry();
+      refreshDashboard();
+    }
+    window.listOnMarket = listOnMarket;
 
-      if (isNaN(burnStart) || isNaN(burnEnd) || burnEnd < burnStart) {
-        showToast("Invalid burn range.");
+    // ══════════════════════════════════════════════════════════════════
+    //  MARKETPLACE MODULE
+    // ══════════════════════════════════════════════════════════════════
+    function refreshMarketplace() {
+      const container = document.getElementById('marketplaceListings');
+      const listings = mintedBatches.filter(b => b.listedOnMarket);
+
+      if (listings.length === 0) {
+        container.innerHTML = '<div class="empty-state"><div class="empty-icon">🛒</div><h3>No Listings Available</h3><p>Minted credits must be published to the marketplace by their owners.</p></div>';
         return;
       }
-      if (!beneficiary) {
-        showToast("Please enter a beneficiary.");
+
+      let html = '<div class="listing-grid">';
+      listings.forEach((b) => {
+        const bIdx = mintedBatches.indexOf(b);
+        let activeCredits = b.totalCredits;
+        try { const state = JSON.parse(registry.batch_state(b.creditId)); activeCredits = state.active_total; } catch(_){}
+
+        html += `<div class="listing-card">
+          <div class="listing-header">
+            <div class="listing-title">${b.projectName || b.creditId}</div>
+            <div class="listing-price">₹${b.listingPrice}/tCO2e</div>
+          </div>
+          <div class="listing-meta">
+            <strong>${b.tech}</strong> · ${b.creditId}<br>
+            Seller: ${b.owner}
+          </div>
+          <div class="listing-stats">
+            <div class="listing-stat">Available<span>${activeCredits.toLocaleString()}</span></div>
+            <div class="listing-stat">Total<span>${b.totalCredits.toLocaleString()}</span></div>
+          </div>
+          ${activeCredits > 0 ? `<button class="btn btn-primary btn-sm" style="width:100%" onclick="purchaseCredit(${bIdx})">🛒 Purchase & Transfer</button>` : '<span class="status-pill retired">Sold Out</span>'}
+        </div>`;
+      });
+      html += '</div>';
+      container.innerHTML = html;
+    }
+
+    function purchaseCredit(bIdx) {
+      const batch = mintedBatches[bIdx];
+      const previousOwner = batch.owner;
+      try {
+        const res = registry.transfer(batch.creditId, currentWallet);
+        const updated = JSON.parse(res);
+        batch.owner = updated.owner;
+        showSuccessToast(`✓ Credits transferred from ${previousOwner} to ${currentWallet}`);
+        refreshMarketplace();
+        refreshDashboard();
+      } catch (err) { showToast(`Transfer error: ${err}`); }
+    }
+    window.purchaseCredit = purchaseCredit;
+
+    // ══════════════════════════════════════════════════════════════════
+    //  PORTFOLIO MODULE
+    // ══════════════════════════════════════════════════════════════════
+    function refreshPortfolio() {
+      const container = document.getElementById('portfolioContent');
+      const owned = mintedBatches.filter(b => b.owner === currentWallet);
+
+      let totalOwned = 0, totalRetired = 0;
+      owned.forEach(b => {
+        try {
+          const state = JSON.parse(registry.batch_state(b.creditId));
+          totalOwned += state.active_total;
+          totalRetired += state.retired_total;
+        } catch(_) { totalOwned += b.totalCredits; }
+      });
+      document.getElementById('port-owned').textContent = totalOwned.toLocaleString();
+      document.getElementById('port-retired').textContent = totalRetired.toLocaleString();
+
+      if (owned.length === 0) {
+        container.innerHTML = '<div class="empty-state"><div class="empty-icon">💼</div><h3>No Credits in Portfolio</h3><p>Purchase credits from the Marketplace to see them here.</p></div>';
         return;
       }
 
-      const burnReq = {
-        credit_id: poiData.credit_id,
-        burn_start: burnStart,
-        burn_end: burnEnd,
-        beneficiary,
-        claim_type: claimType
-      };
+      let html = '';
+      owned.forEach((b) => {
+        const bIdx = mintedBatches.indexOf(b);
+        let batchState = null;
+        try { batchState = JSON.parse(registry.batch_state(b.creditId)); } catch(_){}
+        const activeCredits = batchState ? batchState.active_total : b.totalCredits;
 
+        html += `<div class="result-card" style="border-color:rgba(88,166,255,0.15);">
+          <h4>🪙 ${b.creditId} — ${b.projectName || b.projectId}</h4>
+          <div class="kv-row"><span class="kv-key">technology</span><span class="kv-val">${b.tech}</span></div>
+          <div class="kv-row"><span class="kv-key">total_supply</span><span class="kv-val">${b.totalCredits.toLocaleString()} tCO2e</span></div>
+          <div class="kv-row"><span class="kv-key">active</span><span class="kv-val green">${activeCredits.toLocaleString()}</span></div>
+          <div class="kv-row"><span class="kv-key">retired</span><span class="kv-val red">${batchState ? batchState.retired_total.toLocaleString() : '0'}</span></div>`;
+
+        if (activeCredits > 0) {
+          const retireStart = batchState?.slices?.find(s => s.status === 'Active')?.start || b.originalStart;
+          const retireEnd = Math.min(retireStart + 299, batchState?.slices?.find(s => s.status === 'Active')?.end || b.originalEnd);
+          html += `
+          <div style="margin-top:1rem;padding-top:0.75rem;border-top:1px solid var(--border);">
+            <h4 style="font-size:0.88rem;margin-bottom:0.75rem;">🔥 Retire Credits (Generate PoO)</h4>
+            <div class="form-grid triple">
+              <div class="field"><label>Burn Start</label><input type="number" id="burn-start-${bIdx}" value="${retireStart}"></div>
+              <div class="field"><label>Burn End</label><input type="number" id="burn-end-${bIdx}" value="${retireEnd}"></div>
+              <div class="field"><label>Claim Type</label>
+                <select id="burn-claim-${bIdx}">
+                  <option value="CorporateNetZero">Corporate Net Zero</option>
+                  <option value="Compliance">Regulatory Compliance</option>
+                  <option value="Payg">Pay-As-You-Go</option>
+                </select>
+              </div>
+            </div>
+            <div class="form-grid single">
+              <div class="field"><label>Beneficiary</label><input type="text" id="burn-beneficiary-${bIdx}" value="${currentOrg}"></div>
+            </div>
+            <button class="btn btn-primary btn-sm" onclick="retireCredits(${bIdx})">🔥 Execute Retirement</button>
+          </div>`;
+        }
+
+        // Show PoO receipts
+        if (b.pooReceipts.length > 0) {
+          html += '<div style="margin-top:1rem;">';
+          b.pooReceipts.forEach((poo, pi) => {
+            html += `<div class="result-card success" style="margin-top:0.5rem;">
+              <h4>🔥 PoO Receipt #${pi+1}</h4>
+              <div class="kv-row"><span class="kv-key">serial_range</span><span class="kv-val">${poo.serial_start} – ${poo.serial_end}</span></div>
+              <div class="kv-row"><span class="kv-key">amount</span><span class="kv-val green">${poo.cc_amount} tCO2e</span></div>
+              <div class="kv-row"><span class="kv-key">beneficiary</span><span class="kv-val blue">${poo.beneficiary}</span></div>
+              <div class="kv-row"><span class="kv-key">burn_tx_hash</span><span class="kv-val">${poo.burn_tx_hash}</span></div>
+            </div>`;
+          });
+          html += '</div>';
+        }
+        html += '</div>';
+      });
+      container.innerHTML = html;
+    }
+
+    function retireCredits(bIdx) {
+      const batch = mintedBatches[bIdx];
+      const burnStart = parseInt(document.getElementById(`burn-start-${bIdx}`).value);
+      const burnEnd = parseInt(document.getElementById(`burn-end-${bIdx}`).value);
+      const beneficiary = document.getElementById(`burn-beneficiary-${bIdx}`).value;
+      const claimType = document.getElementById(`burn-claim-${bIdx}`).value;
+
+      if (isNaN(burnStart) || isNaN(burnEnd) || burnEnd < burnStart) { showToast("Invalid burn range."); return; }
+      if (!beneficiary) { showToast("Please enter a beneficiary."); return; }
+
+      const burnReq = { credit_id: batch.creditId, burn_start: burnStart, burn_end: burnEnd, beneficiary, claim_type: claimType };
       try {
         const res = registry.burn(JSON.stringify(burnReq));
         const poo = JSON.parse(res);
-        pooReceipts.push(poo);
-
-        // Update Timeline
-        updateTimeline();
-
-        // Add result card
-        const burnContainer = document.getElementById('burnResults');
-        const card = document.createElement('div');
-        card.className = 'result-card success';
-        card.style.marginTop = '1rem';
-        card.innerHTML = `
-          <h4>🔥 Proof-of-Offset Issued — Invariant 5 checked</h4>
-          <div class="kv-row"><span class="kv-key">poo_status</span><span class="kv-val green">${poo.status} (Finalized)</span></div>
-          <div class="kv-row"><span class="kv-key">serial_range</span><span class="kv-val">${poo.serial_start} – ${poo.serial_end}</span></div>
-          <div class="kv-row"><span class="kv-key">retired_amount</span><span class="kv-val green">${poo.cc_amount} tCO2e</span></div>
-          <div class="kv-row"><span class="kv-key">beneficiary</span><span class="kv-val blue">${poo.beneficiary}</span></div>
-          <div class="kv-row"><span class="kv-key">claim_type</span><span class="kv-val">${poo.claim_type}</span></div>
-          <div class="kv-row"><span class="kv-key">burn_tx_hash</span><span class="kv-val">${poo.burn_tx_hash}</span></div>
-          <div class="kv-row"><span class="kv-key">amounts_consistent</span><span class="kv-val green">${poo.amounts_consistent}</span></div>
-        `;
-        burnContainer.insertBefore(card, burnContainer.firstChild);
-
-        // Prepopulate next active segment for convenience
-        const stateStr = registry.batch_state(poiData.credit_id);
-        const state = JSON.parse(stateStr);
-        const activeSlices = state.slices.filter(s => s.status === "Active");
-        if (activeSlices.length > 0) {
-          // Pre-fill next active slice start/end
-          document.getElementById('f-burn_start').value = activeSlices[0].start;
-          document.getElementById('f-burn_end').value = activeSlices[0].end;
-        }
-
-        // Unlock step 7 (Audit & Invariants) so the sidebar link and
-        // "Verify & Export Artifacts →" button on Panel 6 are reachable.
-        unlock(6);
-        unlock(7);
-      } catch (err) {
-        showToast(err);
-      }
+        batch.pooReceipts.push(poo);
+        showSuccessToast(`✓ ${poo.cc_amount} tCO2e retired — PoO issued`);
+        refreshPortfolio();
+        refreshDashboard();
+      } catch (err) { showToast(`Retirement error: ${err}`); }
     }
+    window.retireCredits = retireCredits;
 
-    // --- Step 7: Audit & Downloads ---
+    // ══════════════════════════════════════════════════════════════════
+    //  AUDIT MODULE
+    // ══════════════════════════════════════════════════════════════════
     function runAuditChecks() {
-      if (!poiData) return;
+      if (mintedBatches.length === 0) {
+        document.getElementById('auditGrid').innerHTML = '<div class="empty-state"><div class="empty-icon">📄</div><h3>No Audit Data</h3><p>Complete a full lifecycle (MRV → Mint → Retire) to see invariant checks.</p></div>';
+        return;
+      }
+      const firstBatch = mintedBatches[0];
       try {
-        const stateStr = registry.batch_state(poiData.credit_id);
+        const stateStr = registry.batch_state(firstBatch.creditId);
         const state = JSON.parse(stateStr);
         const fullStateStr = registry.full_state();
         const fullState = JSON.parse(fullStateStr);
 
-        // Update Counters
         document.getElementById('cnt-original').textContent = state.original_end - state.original_start + 1;
         document.getElementById('cnt-active').textContent = state.active_total;
         document.getElementById('cnt-retired').textContent = state.retired_total;
         document.getElementById('cnt-burned-ranges').textContent = fullState.burned_range_count;
 
-        // Invariants check results
         const grid = document.getElementById('auditGrid');
         grid.innerHTML = '';
+        grid.appendChild(auditCard("1", "PoI is Mandatory for Minting", "Minting fails if no valid Proof-of-Integrity is supplied.", true));
+        const inv2Ok = (state.original_end - state.original_start + 1) <= firstBatch.totalCredits;
+        grid.appendChild(auditCard("2", "Supply Authorized Cap Limit", "Minted credits must be <= authorized PoI quantity.", inv2Ok));
+        grid.appendChild(auditCard("3", "Global Serial Locking Uniqueness", "Overlapping active serial ranges rejected.", true));
+        grid.appendChild(auditCard("4", "Burn Irreversibility (Spent Forever)", "Retired ranges blacklisted globally.", true));
+        grid.appendChild(auditCard("5", "PoO Uniqueness (Double-spending prevented)", "Retirements matching burned footprints rejected.", true));
+        grid.appendChild(auditCard("6", "PoO Non-Transferability", "Proof-of-Offset receipts bind permanently.", true));
+        const inv7Ok = firstBatch.poiStatus === "USED";
+        grid.appendChild(auditCard("7", "PoI Single-use Consumed State", "PoI marked used, blocking replay.", inv7Ok));
 
-        // Invariant 1: PoI required
-        const inv1Ok = poiData !== null;
-        grid.appendChild(auditCard("1", "PoI is Mandatory for Minting", 
-          "Minting fails if no valid Proof-of-Integrity is supplied.", inv1Ok));
-
-        // Invariant 2: Supply limit
-        const inv2Ok = (state.original_end - state.original_start + 1) <= poiData.cc_mint_amount;
-        grid.appendChild(auditCard("2", "Supply Authorized Cap Limit", 
-          "Minted credits must be <= authorized PoI quantity limit.", inv2Ok));
-
-        // Invariant 3: Serialization Range Uniqueness
-        grid.appendChild(auditCard("3", "Global Serial Locking uniqueness", 
-          "Mints of overlapping active serial ranges throw error and reject.", true));
-
-        // Invariant 4: Burn Irreversibility
-        grid.appendChild(auditCard("4", "Burn Irreversibility (Spent Forever)", 
-          "Locked/retired ranges are blacklisted globally. Re-mints blocked.", true));
-
-        // Invariant 5: PoO receipt uniqueness
-        grid.appendChild(auditCard("5", "PoO Uniqueness (Double-spending prevented)", 
-          "Retirements matching already-burned footprints immediately reject.", true));
-
-        // Invariant 6: PoO non-transferability
-        grid.appendChild(auditCard("6", "PoO Non-Transferability (Receipt locked)", 
-          "Proof-of-Offset receipts bind permanent owner / beneficiary at generation.", true));
-
-        // Invariant 7: PoI single use
-        const inv7Ok = mintData && mintData.poi_status === "USED";
-        grid.appendChild(auditCard("7", "PoI Single-use Consumed State", 
-          "PoI marked used in-memory and blocks historical transaction replay.", inv7Ok));
-
-        // Setup Downloads
-        setupDownloads();
-      } catch (err) {
-        console.error("Audit error:", err);
-      }
+        setupDownloads(firstBatch, state, fullState);
+      } catch (err) { console.error("Audit error:", err); }
     }
 
     function auditCard(num, name, desc, pass) {
       const card = document.createElement('div');
       card.className = `audit-card ${pass ? 'ok' : 'failed'}`;
-      card.innerHTML = `
-        <div class="audit-icon">${pass ? '✓' : '✗'}</div>
-        <div class="audit-desc">
-          <h5>Invariant ${num}: ${name}</h5>
-          <p>${desc}</p>
-        </div>
-      `;
+      card.innerHTML = `<div class="audit-icon">${pass ? '✓' : '✗'}</div><div class="audit-desc"><h5>Invariant ${num}: ${name}</h5><p>${desc}</p></div>`;
       return card;
     }
 
-    function setupDownloads() {
+    function setupDownloads(batch, state, fullState) {
       const grid = document.getElementById('downloadGrid');
       grid.innerHTML = '';
-
-      // Export MRV dataset
       grid.appendChild(downloadBtn("mrv_records.json", mrvRecords, "📡 MRV Records"));
-      
-      // Export PoI
-      if (poiData) {
-        grid.appendChild(downloadBtn("poi_certificate.json", poiData, "🔏 Proof-of-Integrity"));
-      }
-
-      // Export credit batch
-      if (poiData) {
-        try {
-          const state = JSON.parse(registry.batch_state(poiData.credit_id));
-          grid.appendChild(downloadBtn("credit_batch.json", state, "📦 Credit Batch Slices"));
-        } catch (e) {}
-      }
-
-      // Export individual Proof of Offset receipts
-      pooReceipts.forEach((poo, i) => {
-        grid.appendChild(downloadBtn(`poo_receipt_${poo.serial_start}_${poo.serial_end}.json`, poo, `🔥 Proof-of-Offset #${i+1}`));
-      });
-      
-      // Full Registry state
-      try {
-        const full = JSON.parse(registry.full_state());
-        grid.appendChild(downloadBtn("registry_full_state.json", full, "👑 Global Registry State"));
-      } catch(e) {}
-
-      // Show PDF + ZIP buttons if we have enough state
-      if (poiData && mintData) {
-        document.getElementById('pdfExportBtn').style.display = '';
-        document.getElementById('zipExportBtn').style.display = '';
-      }
+      if (commitment) grid.appendChild(downloadBtn("merkle_commitment.json", commitment, "🌳 Merkle Commitment"));
+      grid.appendChild(downloadBtn("credit_batch.json", state, "📦 Credit Batch"));
+      batch.pooReceipts.forEach((poo, i) => { grid.appendChild(downloadBtn(`poo_receipt_${i+1}.json`, poo, `🔥 PoO #${i+1}`)); });
+      grid.appendChild(downloadBtn("registry_full_state.json", fullState, "👑 Full Registry State"));
+      document.getElementById('pdfExportBtn').style.display = '';
+      document.getElementById('zipExportBtn').style.display = '';
     }
 
     function downloadBtn(filename, obj, label) {
       const dataStr = "data:text/json;charset=utf-8," + encodeURIComponent(JSON.stringify(obj, null, 2));
       const a = document.createElement('a');
       a.className = 'btn btn-secondary btn-sm';
-      a.href = dataStr;
-      a.download = filename;
-      a.innerHTML = `💾 Download ${label}`;
+      a.href = dataStr; a.download = filename;
+      a.innerHTML = `💾 ${label}`;
       return a;
     }
 
-    // ── PDF Certificate export (jsPDF) ────────────────────────────────────────
+    // ══════════════════════════════════════════════════════════════════
+    //  ADMIN / IDENTITY
+    // ══════════════════════════════════════════════════════════════════
+    function updateIdentity() {
+      currentWallet = document.getElementById('admin-wallet').value;
+      currentOrg = document.getElementById('admin-org').value;
+      showSuccessToast(`✓ Identity updated to ${currentOrg} (${currentWallet})`);
+    }
+    window.updateIdentity = updateIdentity;
+
+    // ══════════════════════════════════════════════════════════════════
+    //  DASHBOARD REFRESH
+    // ══════════════════════════════════════════════════════════════════
+    function refreshDashboard() {
+      document.getElementById('dash-projects').textContent = projects.length;
+      let totalCredits = 0, totalRetired = 0;
+      mintedBatches.forEach(b => {
+        totalCredits += b.totalCredits;
+        try { const s = JSON.parse(registry.batch_state(b.creditId)); totalRetired += s.retired_total; } catch(_){}
+      });
+      document.getElementById('dash-credits').textContent = totalCredits.toLocaleString();
+      document.getElementById('dash-retired').textContent = totalRetired.toLocaleString();
+      document.getElementById('dash-listings').textContent = mintedBatches.filter(b => b.listedOnMarket).length;
+      document.getElementById('dash-pending').textContent = projects.filter(p => p.mrvCommitted && !p.poiIssued).length;
+      document.getElementById('badge-projects').textContent = projects.length;
+      document.getElementById('badge-registry').textContent = mintedBatches.length;
+      document.getElementById('badge-marketplace').textContent = mintedBatches.filter(b => b.listedOnMarket).length;
+    }
+
+    // ══════════════════════════════════════════════════════════════════
+    //  PDF EXPORT
+    // ══════════════════════════════════════════════════════════════════
     function exportPdfCertificate() {
-      if (!poiData || !mintData || !commitment) {
-        showToast('Complete the full workflow first to generate a PDF.');
-        return;
-      }
+      if (mintedBatches.length === 0) { showToast('Complete the full workflow first.'); return; }
+      const batch = mintedBatches[0];
       try {
         const { jsPDF } = window.jspdf;
         const doc = new jsPDF({ unit: 'mm', format: 'a4' });
         const ts = new Date().toISOString();
-
-        // ── Header ──────────────────────────────────────────────────────────
-        doc.setFillColor(10, 13, 20);
-        doc.rect(0, 0, 210, 40, 'F');
-        doc.setTextColor(88, 166, 255);
-        doc.setFontSize(20);
-        doc.setFont('helvetica', 'bold');
+        doc.setFillColor(10, 13, 20); doc.rect(0, 0, 210, 40, 'F');
+        doc.setTextColor(88, 166, 255); doc.setFontSize(20); doc.setFont('helvetica', 'bold');
         doc.text('GreyMisnomer Protocol', 15, 18);
-        doc.setFontSize(11);
-        doc.setTextColor(188, 140, 242);
+        doc.setFontSize(11); doc.setTextColor(188, 140, 242);
         doc.text('Carbon Credit Registry — Session Certificate', 15, 27);
-        doc.setFontSize(8);
-        doc.setTextColor(132, 146, 166);
-        doc.text(`Generated: ${ts}`, 15, 34);
-
-        // ── Section helper ──────────────────────────────────────────────────
+        doc.setFontSize(8); doc.setTextColor(132, 146, 166); doc.text(`Generated: ${ts}`, 15, 34);
         let y = 52;
-        const sectionTitle = (title) => {
-          doc.setFillColor(22, 28, 43);
-          doc.rect(10, y - 5, 190, 9, 'F');
-          doc.setFontSize(10);
-          doc.setFont('helvetica', 'bold');
-          doc.setTextColor(88, 166, 255);
-          doc.text(title, 14, y);
-          y += 9;
-        };
-        const field = (key, value) => {
-          doc.setFontSize(9);
-          doc.setFont('helvetica', 'bold');
-          doc.setTextColor(132, 146, 166);
-          doc.text(key, 14, y);
-          doc.setFont('courier', 'normal');
-          doc.setTextColor(240, 242, 245);
-          const lines = doc.splitTextToSize(String(value), 130);
-          doc.text(lines, 70, y);
-          y += lines.length * 5.5 + 1;
-          if (y > 270) { doc.addPage(); y = 20; }
-        };
-
-        // ── MRV Commitment ──────────────────────────────────────────────────
-        sectionTitle('RFC-003 · MRV Commitment (BLAKE3 Merkle)');
-        field('Merkle Root', commitment.merkle_root_hex);
-        field('Leaf Count', `${commitment.leaf_count} records`);
-        field('Hash Algorithm', commitment.algorithm);
-        field('Commitment TS', commitment.timestamp);
-        y += 3;
-
-        // ── Proof-of-Integrity ───────────────────────────────────────────────
-        sectionTitle('RFC-001 · Proof-of-Integrity (PoI)');
-        field('Project ID', poiData.project_id);
-        field('Credit ID', poiData.credit_id);
-        field('Jurisdiction', poiData.jurisdiction);
-        field('Methodology Hash', poiData.methodology_hash);
-        field('VVB Signature', poiData.vvb_signature);
-        field('Owner Wallet', poiData.owner);
-        field('Serial Range', `${poiData.serial_start} – ${poiData.serial_end}`);
-        field('Authorized Supply', `${poiData.cc_mint_amount} tCO₂e`);
-        y += 3;
-
-        // ── Credit Batch ─────────────────────────────────────────────────────
-        sectionTitle('RFC-002 · Minted Credit Batch');
-        field('Credit ID', mintData.credit_id);
-        field('Project ID', mintData.project_id);
-        field('Original Range', `${mintData.original_start} – ${mintData.original_end}`);
-        field('Total Credits', `${mintData.total_credits} tCO₂e`);
-        field('Batch Owner', mintData.owner);
-        field('PoI Status', mintData.poi_status + ' (consumed)');
-        y += 3;
-
-        // ── PoO Receipts ──────────────────────────────────────────────────────
-        if (pooReceipts.length > 0) {
-          sectionTitle(`RFC-001 · Proof-of-Offset Receipts (${pooReceipts.length})`);
-          pooReceipts.forEach((poo, i) => {
-            field(`Receipt #${i + 1}`, `${poo.serial_start} – ${poo.serial_end} | ${poo.cc_amount} tCO₂e | ${poo.claim_type}`);
-            field('Beneficiary', poo.beneficiary);
-            field('Burn TX Hash', poo.burn_tx_hash);
-            y += 2;
-          });
-        }
-
-        // ── Footer ───────────────────────────────────────────────────────────
+        const sectionTitle = (title) => { doc.setFillColor(22, 28, 43); doc.rect(10, y - 5, 190, 9, 'F'); doc.setFontSize(10); doc.setFont('helvetica', 'bold'); doc.setTextColor(88, 166, 255); doc.text(title, 14, y); y += 9; };
+        const field = (key, value) => { doc.setFontSize(9); doc.setFont('helvetica', 'bold'); doc.setTextColor(132, 146, 166); doc.text(key, 14, y); doc.setFont('courier', 'normal'); doc.setTextColor(240, 242, 245); const lines = doc.splitTextToSize(String(value), 130); doc.text(lines, 70, y); y += lines.length * 5.5 + 1; if (y > 270) { doc.addPage(); y = 20; } };
+        if (commitment) { sectionTitle('RFC-003 · MRV Commitment'); field('Merkle Root', commitment.merkle_root_hex); field('Leaf Count', `${commitment.leaf_count} records`); y += 3; }
+        sectionTitle('RFC-002 · Minted Credit Batch'); field('Credit ID', batch.creditId); field('Project', batch.projectName); field('Range', `${batch.originalStart} – ${batch.originalEnd}`); field('Credits', `${batch.totalCredits} tCO₂e`); field('Owner', batch.owner); y += 3;
+        if (batch.pooReceipts.length > 0) { sectionTitle(`RFC-001 · PoO Receipts (${batch.pooReceipts.length})`); batch.pooReceipts.forEach((poo, i) => { field(`#${i+1}`, `${poo.serial_start}–${poo.serial_end} | ${poo.cc_amount} tCO₂e`); field('Beneficiary', poo.beneficiary); y += 2; }); }
         const pageCount = doc.getNumberOfPages();
-        for (let i = 1; i <= pageCount; i++) {
-          doc.setPage(i);
-          doc.setFontSize(7.5);
-          doc.setTextColor(132, 146, 166);
-          doc.text('GreyMisnomer · Per-session simulator · Rust/WASM · RFC-001/002/003', 14, 289);
-          doc.text(`Page ${i} of ${pageCount}`, 185, 289, { align: 'right' });
-        }
-
-        doc.save(`greymisnomer_certificate_${poiData.credit_id}.pdf`);
-      } catch (err) {
-        showToast(`PDF generation failed: ${err.message}`);
-        console.error(err);
-      }
+        for (let i = 1; i <= pageCount; i++) { doc.setPage(i); doc.setFontSize(7.5); doc.setTextColor(132, 146, 166); doc.text('GreyMisnomer · Platform Demonstrator', 14, 289); doc.text(`Page ${i} of ${pageCount}`, 185, 289, { align: 'right' }); }
+        doc.save(`greymisnomer_certificate_${batch.creditId}.pdf`);
+      } catch (err) { showToast(`PDF failed: ${err.message}`); }
     }
+    window.exportPdfCertificate = exportPdfCertificate;
 
-    // ── ZIP bundle export (browser CompressionStream) ─────────────────────────
+    // ══════════════════════════════════════════════════════════════════
+    //  ZIP EXPORT
+    // ══════════════════════════════════════════════════════════════════
     async function exportZipBundle() {
-      if (!poiData) {
-        showToast('Complete the full workflow first.');
-        return;
-      }
-      // Build a simple ZIP using JSZip-free technique: just pack JSON files
-      // into a flat .zip using the CompressionStream API (Chrome 80+, Firefox 113+)
-      // Fallback: offer a multi-file download if CompressionStream unavailable.
+      if (mintedBatches.length === 0) { showToast('Complete the full workflow first.'); return; }
       try {
         const files = {};
         files['mrv_records.json'] = JSON.stringify(mrvRecords, null, 2);
         if (commitment) files['merkle_commitment.json'] = JSON.stringify(commitment, null, 2);
-        if (poiData) files['poi_certificate.json'] = JSON.stringify(poiData, null, 2);
-        if (mintData) files['credit_batch_mint.json'] = JSON.stringify(mintData, null, 2);
-        pooReceipts.forEach((poo, i) => {
-          files[`poo_receipt_${i+1}_${poo.serial_start}_${poo.serial_end}.json`] = JSON.stringify(poo, null, 2);
+        mintedBatches.forEach(b => {
+          try { files[`batch_${b.creditId}.json`] = JSON.stringify(JSON.parse(registry.batch_state(b.creditId)), null, 2); } catch(_){}
+          b.pooReceipts.forEach((poo, i) => { files[`poo_${b.creditId}_${i+1}.json`] = JSON.stringify(poo, null, 2); });
         });
-        try {
-          const full = JSON.parse(registry.full_state());
-          files['registry_full_state.json'] = JSON.stringify(full, null, 2);
-        } catch(_) {}
-
-        // Build a minimal ZIP binary
+        try { files['registry_full_state.json'] = JSON.stringify(JSON.parse(registry.full_state()), null, 2); } catch(_){}
         const zipBytes = buildZip(files);
         const blob = new Blob([zipBytes], { type: 'application/zip' });
         const url = URL.createObjectURL(blob);
-        const a = document.createElement('a');
-        a.href = url;
-        a.download = `greymisnomer_audit_${poiData.credit_id}_${Date.now()}.zip`;
-        a.click();
+        const a = document.createElement('a'); a.href = url; a.download = `greymisnomer_audit_${Date.now()}.zip`; a.click();
         setTimeout(() => URL.revokeObjectURL(url), 5000);
         showSuccessToast('✓ Audit ZIP downloaded');
-      } catch (err) {
-        showToast(`ZIP export failed: ${err.message}`);
-        console.error(err);
-      }
+      } catch (err) { showToast(`ZIP failed: ${err.message}`); }
     }
+    window.exportZipBundle = exportZipBundle;
 
-    // Minimal ZIP builder (STORE method, no compression — universally compatible)
     function buildZip(files) {
       const encoder = new TextEncoder();
-      const parts = [];
-      const centralDir = [];
+      const parts = [], centralDir = [];
       let offset = 0;
-
-      const crc32 = (data) => {
-        let crc = -1;
-        const table = buildCrcTable();
-        for (const b of data) crc = (crc >>> 8) ^ table[(crc ^ b) & 0xff];
-        return (crc ^ -1) >>> 0;
-      };
-
-      const buildCrcTable = () => {
-        if (buildCrcTable._t) return buildCrcTable._t;
-        const t = new Uint32Array(256);
-        for (let i = 0; i < 256; i++) {
-          let c = i;
-          for (let j = 0; j < 8; j++) c = (c & 1) ? (0xedb88320 ^ (c >>> 1)) : (c >>> 1);
-          t[i] = c;
-        }
-        return (buildCrcTable._t = t);
-      };
-
+      const crc32 = (data) => { let crc = -1; const table = buildCrcTable(); for (const b of data) crc = (crc >>> 8) ^ table[(crc ^ b) & 0xff]; return (crc ^ -1) >>> 0; };
+      const buildCrcTable = () => { if (buildCrcTable._t) return buildCrcTable._t; const t = new Uint32Array(256); for (let i = 0; i < 256; i++) { let c = i; for (let j = 0; j < 8; j++) c = (c & 1) ? (0xedb88320 ^ (c >>> 1)) : (c >>> 1); t[i] = c; } return (buildCrcTable._t = t); };
       const u32 = (n) => { const b = new Uint8Array(4); new DataView(b.buffer).setUint32(0, n, true); return b; };
       const u16 = (n) => { const b = new Uint8Array(2); new DataView(b.buffer).setUint16(0, n, true); return b; };
       const str = (s) => encoder.encode(s);
-
       for (const [name, content] of Object.entries(files)) {
-        const data = encoder.encode(content);
-        const nameBytes = str(name);
-        const crc = crc32(data);
-        const localHeader = new Uint8Array([
-          ...u32(0x04034b50), // local file header sig
-          ...u16(20),         // version needed
-          ...u16(0),          // flags
-          ...u16(0),          // compression: STORE
-          ...u16(0), ...u16(0), // mod time/date
-          ...u32(crc),        // CRC-32
-          ...u32(data.length),// compressed size
-          ...u32(data.length),// uncompressed size
-          ...u16(nameBytes.length),
-          ...u16(0),          // extra length
-          ...nameBytes,
-          ...data
-        ]);
+        const data = encoder.encode(content); const nameBytes = str(name); const crc = crc32(data);
+        const localHeader = new Uint8Array([...u32(0x04034b50), ...u16(20), ...u16(0), ...u16(0), ...u16(0), ...u16(0), ...u32(crc), ...u32(data.length), ...u32(data.length), ...u16(nameBytes.length), ...u16(0), ...nameBytes, ...data]);
         parts.push(localHeader);
-
-        centralDir.push(new Uint8Array([
-          ...u32(0x02014b50), // central dir sig
-          ...u16(20), ...u16(20), ...u16(0), ...u16(0),
-          ...u16(0), ...u16(0),
-          ...u32(crc),
-          ...u32(data.length), ...u32(data.length),
-          ...u16(nameBytes.length), ...u16(0), ...u16(0),
-          ...u16(0), ...u16(0), ...u32(0),
-          ...u32(offset),
-          ...nameBytes
-        ]));
+        centralDir.push(new Uint8Array([...u32(0x02014b50), ...u16(20), ...u16(20), ...u16(0), ...u16(0), ...u16(0), ...u16(0), ...u32(crc), ...u32(data.length), ...u32(data.length), ...u16(nameBytes.length), ...u16(0), ...u16(0), ...u16(0), ...u16(0), ...u32(0), ...u32(offset), ...nameBytes]));
         offset += localHeader.length;
       }
-
       const cdSize = centralDir.reduce((s, b) => s + b.length, 0);
-      const eocd = new Uint8Array([
-        ...u32(0x06054b50),
-        ...u16(0), ...u16(0),
-        ...u16(centralDir.length), ...u16(centralDir.length),
-        ...u32(cdSize), ...u32(offset),
-        ...u16(0)
-      ]);
-
+      const eocd = new Uint8Array([...u32(0x06054b50), ...u16(0), ...u16(0), ...u16(centralDir.length), ...u16(centralDir.length), ...u32(cdSize), ...u32(offset), ...u16(0)]);
       const total = [...parts, ...centralDir, eocd].reduce((s, b) => s + b.length, 0);
-      const out = new Uint8Array(total);
-      let pos = 0;
+      const out = new Uint8Array(total); let pos = 0;
       for (const b of [...parts, ...centralDir, eocd]) { out.set(b, pos); pos += b.length; }
       return out;
     }
 
-    // ── Success toast (green variant) ─────────────────────────────────────────
+    // ══════════════════════════════════════════════════════════════════
+    //  TOASTS & RESET
+    // ══════════════════════════════════════════════════════════════════
+    function showToast(msg) {
+      const toast = document.getElementById('toast');
+      toast.style.background = '#180d0d'; toast.style.borderColor = 'rgba(248,81,73,0.4)'; toast.style.color = 'var(--red)';
+      toast.textContent = msg; toast.classList.add('show');
+      setTimeout(() => { toast.classList.remove('show'); }, 5000);
+    }
     function showSuccessToast(msg) {
       const toast = document.getElementById('toast');
-      toast.style.background = '#0d1f0d';
-      toast.style.borderColor = 'rgba(57, 211, 83, 0.4)';
-      toast.style.color = 'var(--green)';
-      toast.textContent = msg;
-      toast.classList.add('show');
-      setTimeout(() => {
-        toast.classList.remove('show');
-        toast.style.background = '';
-        toast.style.borderColor = '';
-        toast.style.color = '';
-      }, 3500);
+      toast.style.background = '#0d1f0d'; toast.style.borderColor = 'rgba(57,211,83,0.4)'; toast.style.color = 'var(--green)';
+      toast.textContent = msg; toast.classList.add('show');
+      setTimeout(() => { toast.classList.remove('show'); toast.style.background = ''; toast.style.borderColor = ''; toast.style.color = ''; }, 3500);
     }
 
-    // --- Reset ---
     function resetAll() {
-      if (confirm("Reset the registry state? All current session records and burns will be cleared.")) {
+      if (confirm("Reset entire session? All projects, credits, and data will be cleared.")) {
         registry = new WasmRegistry();
-        mrvRecords = [];
-        commitment = null;
-        poiData = null;
-        mintData = null;
-        pooReceipts = [];
-        
-        unlockedSteps = [1];
-        document.querySelectorAll('.step-item').forEach((item, i) => {
-          item.classList.remove('done');
-          if (i > 0) item.classList.add('locked');
-        });
-        document.getElementById('burnResults').innerHTML = '';
-        
-        seedDemoDataset();
-        goStep(1);
+        mrvRecords = []; commitment = null;
+        projects = []; mintedBatches = [];
+        document.getElementById('mrvCommitmentDisplay').innerHTML = '';
+        document.getElementById('spotCheckSection').style.display = 'none';
+        document.getElementById('mrvBody').innerHTML = '';
+        refreshDashboard();
+        navigate('dashboard');
+        showSuccessToast('✓ Registry reset complete');
       }
     }
+    window.resetAll = resetAll;
   </script>
 </body>
 </html>
