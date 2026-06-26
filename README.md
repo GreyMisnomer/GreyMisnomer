@@ -72,10 +72,12 @@ The WASM core mathematically prevents:
 ## 📂 Project Structure
 - [`src/`](./src/) — Rust protocol core (`grey-misnomer-core`) and WASM bindings (`grey-misnomer-wasm`).
 - [`docs/`](./docs/) — The static WebAssembly front-end and interactive simulator.
-- [`architecture/`](./architecture/) — Protocol design documents and system architecture.
-- [`research/`](./research/) — Background research and RFCs on digital carbon markets.
+- [`architecture/`](./architecture/) — Architectural documents and system diagrams.
+- [`research/`](./research/) — Papers, references, standards, and specifications.
+- [`governance/`](./governance/) — Voluntary market rules, standards, policy definitions & compliance docs.
+- [`deployments/`](./deployments/) — Docker, IaC, K8s, and Terraform scripts (infrastructure).
+- [`poc/`](./poc/) — Experimental proof-of-concept implementations.
 - [`tests/`](./tests/) — Integration and unit tests for the core registry logic.
-- [`governance/`](./governance/) — Policy and governance frameworks.
 - [`roadmap/`](./roadmap/) — Future project milestones and features.
 
 ---
