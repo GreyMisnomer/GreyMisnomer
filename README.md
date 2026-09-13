@@ -1,11 +1,14 @@
-# GreyMisnomer
-
-> **A zero-trust, immutably-auditable carbon credit registry that runs entirely in the browser.**
+﻿<div align="center">
+  <h1>🌍 GreyMisnomer</h1>
+  <p><b>A zero-trust, immutably-auditable carbon credit registry running entirely in the browser.</b></p>
+  
+  [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](LICENSE)
+  [![Status](https://img.shields.io/badge/Status-Alpha-orange)]()
+</div>
 
 Like Bitcoin Core, but for carbon credits. GreyMisnomer solves the opacity and double-counting issues in voluntary carbon markets by moving the core registry logic—including Merkle proofs, invariants, and credit batching—into a cryptographically verifiable WebAssembly module.
 
-[![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](LICENSE)
-[![Status](https://img.shields.io/badge/Status-Alpha-orange)]()
+**Not a marketplace. A settlement layer.**
 
 ---
 
@@ -16,7 +19,20 @@ The entire 7-step protocol (MRV data upload → Merkle Commitment → Minting �
 
 ---
 
-## 🎯 Vision
+## 📋 Table of Contents
+- [Vision](#-vision)
+- [Architecture](#-architecture)
+- [Invariants Enforced](#-invariants-enforced)
+- [Project Structure](#-project-structure)
+- [Getting Started (Local Development)](#-getting-started-local-development)
+- [Documentation & Links](#-documentation--links)
+- [Tech Stack](#-tech-stack)
+- [Contributing](#-contributing)
+- [License](#-license)
+
+---
+
+## 👁️ Vision
 
 Build **registry-first infrastructure** for carbon markets where:
 - **Registry > Market**: Separation of credit legitimacy from price discovery
@@ -24,29 +40,28 @@ Build **registry-first infrastructure** for carbon markets where:
 - **Proof-of-Offset (PoO)**: Irreversible consumption receipt
 - **Serialization**: Every credit uniquely tracked
 
-**Not a marketplace. A settlement layer.**
-
 ---
 
-## 🏗 Architecture
+## 🏗️ Architecture
 
 GreyMisnomer moves the state machine out of a trusted backend and into the client browser:
 
-```mermaid
+`mermaid
 graph LR
     A[Rust Protocol Core] -->|wasm-pack| B(WebAssembly Module)
     B -->|Loaded by| C[app.html Simulator]
     C -->|Generates| D[ZIP Audit Artifacts]
     C -->|Verifies| E[Merkle Proofs]
-```
+`
 
-1. **Rust Library (`grey-misnomer-core`)**: Implements the strict RFC invariants, BLAKE3 hashing, and supply arithmetic.
-2. **WASM Bindings (`grey-misnomer-wasm`)**: Exposes the Rust state machine to JavaScript.
-3. **Web Interface (`docs/app.html`)**: A 100% client-side simulator where project developers can walk through the lifecycle of a carbon credit and export their cryptographic proofs as JSON/PDF artifacts.
+1. **Rust Library (grey-misnomer-core)**: Implements the strict RFC invariants, BLAKE3 hashing, and supply arithmetic.
+2. **WASM Bindings (grey-misnomer-wasm)**: Exposes the Rust state machine to JavaScript.
+3. **Web Interface (docs/app.html)**: A 100% client-side simulator where project developers can walk through the lifecycle of a carbon credit and export their cryptographic proofs as JSON/PDF artifacts.
 
 ---
 
-## 📜 Invariants Enforced
+## 🛡️ Invariants Enforced
+
 The WASM core mathematically prevents:
 - **Replay attacks**: A Proof-of-Integrity (PoI) can only be minted into credits exactly once.
 - **Supply inflation**: Minted amounts must exactly match the length of the serial number range.
@@ -55,68 +70,67 @@ The WASM core mathematically prevents:
 
 ---
 
-## 📂 Project Structure
-- [`src/`](./src/) — Rust protocol core (`grey-misnomer-core`) and WASM bindings (`grey-misnomer-wasm`).
-- [`docs/`](./docs/) — The static WebAssembly front-end and interactive simulator.
-- [`architecture/`](./architecture/) — Architectural documents and system diagrams.
-- [`research/`](./research/) — Papers, references, standards, and specifications.
-- [`governance/`](./governance/) — Voluntary market rules, standards, policy definitions & compliance docs.
-- [`deployments/`](./deployments/) — Docker, IaC, K8s, and Terraform scripts (infrastructure).
-- [`poc/`](./poc/) — Experimental proof-of-concept implementations.
-- [`tests/`](./tests/) — Integration and unit tests for the core registry logic.
-- [`roadmap/`](./roadmap/) — Future project milestones and features.
+## 📁 Project Structure
+
+- src/ — Rust protocol core (grey-misnomer-core) and WASM bindings (grey-misnomer-wasm).
+- docs/ — The static WebAssembly front-end and interactive simulator.
+- rchitecture/ — System architecture diagrams and design documents.
+- esearch/ — Papers, references, standards, and specifications.
+- governance/ — Voluntary market rules, standards, and policy definitions.
+- deployments/ — Infrastructure deployment scripts.
+- poc/ — Experimental proof-of-concept implementations.
+- 	ests/ — Integration and unit tests for the core registry logic.
+- oadmap/ — Future project milestones and features.
 
 ---
 
-## 🚀 Quick Start (Local Development)
+## 🚀 Getting Started (Local Development)
 
 If you want to run the simulator locally and compile the Rust protocol yourself:
 
-**Prerequisites:**
-- Rust (`rustup default stable`)
-- `wasm32-unknown-unknown` target
-- `wasm-pack`
-- Node.js (for `http-server`)
+### Prerequisites
+- Rust (ustup default stable)
+- wasm32-unknown-unknown target (ustup target add wasm32-unknown-unknown)
+- wasm-pack
+- Node.js (for http-server)
 
-**1. Clone the repository**
-```bash
+### 1. Clone the repository
+\\\ash
 git clone https://github.com/GreyMisnomer/GreyMisnomer.git
 cd GreyMisnomer
-```
+\\\
 
-**2. Build the WASM module**
-```bash
+### 2. Build the WASM module
+\\\ash
 cd src/wasm
 wasm-pack build --target web --out-dir ../../docs/pkg --out-name grey_misnomer_wasm
-```
+\\\
 
-**3. Serve the web app**
-```bash
+### 3. Serve the web app
+\\\ash
 cd ../../docs
-npx http-server -p 8080 --cors -c-1
-```
-Open `http://localhost:8080` in your browser.
+npx -y http-server -p 8080 --cors -c-1
+\\\
+Open http://localhost:8080/app.html in your browser.
 
 ---
 
-## 🔗 Links & Documentation
+## 📚 Documentation & Links
 
 - **Website/Simulator**: https://greymisnomer.github.io/GreyMisnomer/
 - **Discord**: https://discord.gg/CZXXPJUNM
 - **Reddit**: https://reddit.com/r/GreyMisnomer
-- **Whitepaper**: [Design Document](architecture/desgin_document_v2.pdf)
+- **Whitepaper**: [Design Document](architecture/design_document_v2.pdf)
 - **Q&A**: [Questions & Answers](architecture/qna_document_v1.pdf)
 - **Diagrams**: [System Architecture](architecture/diagrams/)
 
 ---
 
-## 🏗️ Current Phase: Foundation (Year 0-1)
+## 🛠️ Tech Stack
 
-**Status**: Architecture finalization  
-**Timeline**: Q1-Q4 2026  
-**Focus**: Design specs, prototypes, governance
-
-See [Roadmap](roadmap/README.md)
+- **Core Protocol**: Rust
+- **Web Runtime**: WebAssembly (WASM)
+- **Client Application**: Vanilla JavaScript, HTML5, CSS3
 
 ---
 
@@ -128,23 +142,14 @@ See [Roadmap](roadmap/README.md)
 - Backward compatibility is sacred
 - Security > Performance > UX
 
-See [CONTRIBUTING.md](CONTRIBUTING.md)
+See [CONTRIBUTING.md](CONTRIBUTING.md) and [CODE_OF_CONDUCT.md](CODE_OF_CONDUCT.md) for details.
 
 ---
 
-## 🛠️ Tech Stack
-
-- **Core**: Rust (registry, verification)
-- **Contracts**: Solidity (EVM compatibility)
-- **Data**: Python (MRV analysis)
-- **Docs**: Markdown → WebAssembly
-
----
-
-## 📜 License
+## 📄 License
 
 [MIT License](LICENSE) - Open, permissive, production-ready.
 
 ---
 
-**Built for climate integrity** 🌍
+**Built for climate integrity** 🌱
