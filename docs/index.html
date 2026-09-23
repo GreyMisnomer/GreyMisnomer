@@ -1,100 +1,170 @@
-<!DOCTYPE html>
+﻿<!DOCTYPE html>
 <html lang="en">
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>GreyMisnomer</title>
-    <meta name="description" content="Architecting verifiable systems in the grey zones: policy, cryptography, and climate-tech for voluntary international carbon markets.">
+    <title>GreyMisnomer | The Settlement Layer for Carbon Markets</title>
+    <meta name="description" content="Zero-trust, cryptographically verifiable carbon credit registry powered by Rust & WebAssembly.">
     <link rel="stylesheet" href="css/style.css">
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;600;800&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
 </head>
 <body>
-    <!-- Particle Background -->
     <div id="particles-js"></div>
     
-    <!-- Main Container -->
     <div class="container">
-        <!-- Interactive Title -->
-        <div class="title-container">
-            <h1 class="main-title" id="greyTitle">Grey<span class="mislign">M</span>isnomer</h1>
-            <div class="subtitle typewriter">Operating in the spaces between</div>
-        </div>
-
-        <!-- Core Principles -->
-        <div class="principles">
-            <div class="principle-card" data-tilt>
-                <div class="icon">⚖️</div>
-                <h3>Policy + Technology</h3>
-                <p>Where regulation meets implementation</p>
-            </div>
-            <div class="principle-card" data-tilt>
-                <div class="icon">🔗</div>
-                <h3>Trust + Verification</h3>
-                <p>ZKPs, blockchain, auditable systems</p>
-            </div>
-            <div class="principle-card" data-tilt>
-                <div class="icon">🌍</div>
-                <h3>Scalable Infrastructure</h3>
-                <p>National to international markets</p>
-            </div>
-        </div>
-
-        <!-- Call to Action -->
-        <div class="cta-section">
-            <a href="app.html" class="btn primary-btn" style="background: var(--blue); border-color: var(--blue); color: white;">
-                <span>⚡ Launch Platform Demonstrator</span>
+        <!-- NAVIGATION BAR -->
+        <nav class="navbar fade-in-up">
+            <a href="#" class="nav-brand">
+                <span class="text-gradient">Grey</span>Misnomer
             </a>
-            <a href="https://github.com/GreyMisnomer/GreyMisnomer" class="btn github-btn" target="_blank">
-                <span>🚀 View on GitHub</span>
-            </a>
-            <a href="#about" class="btn secondary-btn" onclick="toggleAbout()">
-                <span>📚 Learn More</span>
-            </a>
-        </div>
+            <div class="nav-links">
+                <a href="#how-it-works" class="nav-link">Platform</a>
+                <a href="https://github.com/GreyMisnomer/GreyMisnomer" target="_blank" class="nav-link">Documentation</a>
+                <a href="https://github.com/GreyMisnomer/GreyMisnomer" target="_blank" class="nav-link">GitHub</a>
+            </div>
+            <a href="app.html" class="btn btn-primary">Launch App →</a>
+        </nav>
 
-        <!-- About Section (Initially Hidden) -->
-        <div id="about" class="about-section">
-            <h2>Building the Future of Voluntary Carbon Markets</h2>
-            <div class="about-grid">
-                <div class="about-card">
-                    <h3>🔬 Research-Driven</h3>
-                    <p>Architecture-first approach to complex policy-tech ecosystems</p>
+        <!-- HERO SECTION -->
+        <header class="hero fade-in-up delay-1">
+            <h1><span class="text-gradient">The Settlement Layer</span><br>for Carbon Markets</h1>
+            <p>Zero-trust, cryptographically verifiable carbon credit registry.<br>Powered by Rust & WebAssembly.</p>
+            <div class="hero-ctas">
+                <a href="app.html" class="btn btn-primary">Launch Platform</a>
+                <a href="https://github.com/GreyMisnomer/GreyMisnomer" target="_blank" class="btn btn-ghost">
+                    <svg height="20" width="20" viewBox="0 0 16 16" fill="currentColor"><path d="M8 0C3.58 0 0 3.58 0 8c0 3.54 2.29 6.53 5.47 7.59.4.07.55-.17.55-.38 0-.19-.01-.82-.01-1.49-2.01.37-2.53-.49-2.69-.94-.09-.23-.48-.94-.82-1.13-.28-.15-.68-.52-.01-.53.63-.01 1.08.58 1.23.82.72 1.21 1.87.87 2.33.66.07-.52.28-.87.51-1.07-1.78-.2-3.64-.89-3.64-3.95 0-.87.31-1.59.82-2.15-.08-.2-.36-1.02.08-2.12 0 0 .67-.21 2.2.82.64-.18 1.32-.27 2-.27.68 0 1.36.09 2 .27 1.53-1.04 2.2-.82 2.2-.82.44 1.1.16 1.92.08 2.12.51.56.82 1.27.82 2.15 0 3.07-1.87 3.75-3.65 3.95.29.25.54.73.54 1.48 0 1.07-.01 1.93-.01 2.2 0 .21.15.46.55.38A8.013 8.013 0 0016 8c0-4.42-3.58-8-8-8z"></path></svg>
+                    View on GitHub
+                </a>
+            </div>
+        </header>
+
+        <!-- HOW IT WORKS -->
+        <section id="how-it-works" class="flow-section fade-in-up delay-2">
+            <div class="section-header">
+                <h2>How It Works</h2>
+            </div>
+            <div class="flow-grid">
+                <div class="flow-card">
+                    <h3>Register & Verify</h3>
+                    <p>(MRV Data + Merkle Proof)</p>
                 </div>
-                <div class="about-card">
-                    <h3>🔐 Cryptography-First</h3>
-                    <p>Zero-knowledge proofs, verifiable credentials, leakage-free design</p>
+                <div class="flow-arrow left">→</div>
+                <div class="flow-card">
+                    <h3>Mint Credits</h3>
+                    <p>(PoI Validation)</p>
                 </div>
-                <div class="about-card">
-                    <h3>🌐 Interoperable</h3>
-                    <p>Cross-border, multi-registry, compliance-by-design systems</p>
-                </div>
-                <div class="about-card">
-                    <h3>⚡ Production-Ready</h3>
-                    <p>SDLC, CI/CD, containerization from day one</p>
+                <div class="flow-arrow right">→</div>
+                <div class="flow-card">
+                    <h3>Trade & Retire</h3>
+                    <p>(PoO Settlement)</p>
                 </div>
             </div>
-            <div class="tech-stack">
-                <span class="tech-tag">Blockchain</span>
-                <span class="tech-tag">ZKPs</span>
-                <span class="tech-tag">Digital MRV</span>
-                <span class="tech-tag">API-First</span>
-                <span class="tech-tag">Docker</span>
-                <span class="tech-tag">Terraform</span>
-            </div>
-        </div>
+        </section>
 
-        <!-- Footer -->
-        <footer class="footer">
-            <p>GreyMisnomer – Open Source • Verifiable • Evolving</p>
-            <p>&copy; <span id="currentYear"></span> GreyMisnomer Initiative. All specifications open for collaboration.</p>
+        <!-- KEY FEATURES -->
+        <section class="features-section fade-in-up delay-3">
+            <div class="section-header">
+                <h2>Key Features</h2>
+            </div>
+            <div class="features-grid">
+                <div class="feature-card">
+                    <div class="feature-icon">🌳</div>
+                    <h3>BLAKE3 Merkle Proofs</h3>
+                    <p>All MRV data is cryptographically committed to a BLAKE3 Merkle tree. Only the root hash is required for minting, preserving data privacy.</p>
+                </div>
+                <div class="feature-card">
+                    <div class="feature-icon">🛡️</div>
+                    <h3>7 Protocol Invariants</h3>
+                    <p>The WASM core strictly enforces seven invariants, mathematically preventing double-spending, replay attacks, and supply inflation.</p>
+                </div>
+                <div class="feature-card">
+                    <div class="feature-icon">👤</div>
+                    <h3>Role-Based Access</h3>
+                    <p>Strict segregation of duties between Project Developers, Validators (VVBs), Corporate Buyers, and Independent Auditors.</p>
+                </div>
+                <div class="feature-card">
+                    <div class="feature-icon">📄</div>
+                    <h3>Audit Export (PDF/ZIP)</h3>
+                    <p>Generate irreversible Proof-of-Offset (PoO) certificates in PDF format or download full cryptographic state dumps as ZIP archives.</p>
+                </div>
+            </div>
+        </section>
+
+        <!-- ROLES -->
+        <section class="roles-section fade-in-up delay-3">
+            <div class="section-header">
+                <h2 style="margin-bottom:0.5rem">Ecosystem Roles</h2>
+            </div>
+            <div class="roles-grid">
+                <div class="role-card role-dev">
+                    <h3>Project Developer</h3>
+                    <ul>
+                        <li>Register projects</li>
+                        <li>Upload MRV datasets</li>
+                        <li>Mint validated credits</li>
+                    </ul>
+                </div>
+                <div class="role-card role-buyer">
+                    <h3>Corporate Buyer</h3>
+                    <ul>
+                        <li>Purchase from marketplace</li>
+                        <li>Manage portfolio</li>
+                        <li>Retire credits for PoO</li>
+                    </ul>
+                </div>
+                <div class="role-card role-auditor">
+                    <h3>Independent Auditor</h3>
+                    <ul>
+                        <li>Review registry state</li>
+                        <li>Verify PoI/PoO integrity</li>
+                        <li>Export audit artifacts</li>
+                    </ul>
+                </div>
+            </div>
+        </section>
+
+        <!-- FOOTER -->
+        <footer class="footer fade-in-up delay-3">
+            <div class="footer-left">
+                <div class="nav-brand" style="font-size:1rem;">GreyMisnomer</div>
+                <span style="color:var(--muted); font-size:0.9rem;">© 2026</span>
+            </div>
+            <div class="footer-links">
+                <a href="#how-it-works">Platform</a>
+                <a href="https://github.com/GreyMisnomer/GreyMisnomer" target="_blank">Documentation</a>
+                <a href="https://github.com/GreyMisnomer/GreyMisnomer" target="_blank">GitHub</a>
+                <a style="display:inline-flex; align-items:center; gap:0.5rem; background:var(--bg2); padding:0.2rem 0.5rem; border-radius:4px; border:1px solid var(--border);" href="https://github.com/GreyMisnomer/GreyMisnomer/blob/main/LICENSE" target="_blank">
+                    <svg height="16" width="16" viewBox="0 0 16 16" fill="currentColor"><path d="M8.75.75V2h-1.5V.75a.75.75 0 011.5 0zM6.12 3.22l-1.06-1.06a.75.75 0 00-1.06 1.06l1.06 1.06a.75.75 0 001.06-1.06zm4.82 0a.75.75 0 00-1.06-1.06l-1.06 1.06a.75.75 0 001.06 1.06l1.06-1.06zM8 4a4 4 0 100 8 4 4 0 000-8zM.75 8.75H2v-1.5H.75a.75.75 0 000 1.5zm14.5 0H14v-1.5h1.25a.75.75 0 000 1.5zM3.22 11.06l-1.06 1.06a.75.75 0 001.06 1.06l1.06-1.06a.75.75 0 00-1.06-1.06zm9.56 0a.75.75 0 001.06 1.06l1.06-1.06a.75.75 0 00-1.06-1.06l-1.06 1.06zM8.75 15.25V14h-1.5v1.25a.75.75 0 001.5 0z"></path></svg>
+                    MIT License
+                </a>
+            </div>
         </footer>
     </div>
 
-    <!-- Scripts -->
     <script src="https://cdn.jsdelivr.net/particles.js/2.0.0/particles.min.js"></script>
-    <script src="https://cdn.jsdelivr.net/npm/vanilla-tilt@1.7.0/dist/vanilla-tilt.min.js"></script>
-    <script src="js/script.js"></script>
+    <script>
+        // Initialize simple particle background
+        particlesJS("particles-js", {
+            "particles": {
+                "number": { "value": 40 },
+                "color": { "value": "#bc8cf2" },
+                "shape": { "type": "circle" },
+                "opacity": { "value": 0.3 },
+                "size": { "value": 2 },
+                "line_linked": {
+                    "enable": true,
+                    "distance": 150,
+                    "color": "#58a6ff",
+                    "opacity": 0.2,
+                    "width": 1
+                },
+                "move": { "enable": true, "speed": 1 }
+            },
+            "interactivity": { "events": { "onhover": { "enable": false } } },
+            "retina_detect": true
+        });
+    </script>
 </body>
 </html>
