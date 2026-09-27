@@ -1,10 +1,10 @@
-﻿<!DOCTYPE html>
+<!DOCTYPE html>
 <html lang="en">
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>GreyMisnomer â€” Carbon Credit Registry Platform</title>
-  <meta name="description" content="Enterprise carbon credit registry platform. Manage projects, MRV data, verification, minting, marketplace trading, and retirement â€” powered by Rust compiled to WebAssembly.">
+  <title>GreyMisnomer — Carbon Credit Registry Platform</title>
+  <meta name="description" content="Enterprise carbon credit registry platform. Manage projects, MRV data, verification, minting, marketplace trading, and retirement — powered by Rust compiled to WebAssembly.">
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
   <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800&family=JetBrains+Mono:wght@400;500;600&display=swap" rel="stylesheet">
@@ -15,8 +15,8 @@
 </head>
 <body>
 
-  <!-- â•â•â• Left Sidebar Navigation â•â•â• -->
-  ï»¿  <!-- Left Sidebar Navigation -->
+  <!-- ═══ Left Sidebar Navigation ═══ -->
+  ﻿  <!-- Left Sidebar Navigation -->
   <aside class="sidebar">
     <div class="sidebar-brand">
       <img src="GreyMisnomer_Logos/logo_256x256.png" alt="GreyMisnomer Logo" style="height: 48px; margin-bottom: 8px; border-radius: 8px;">
@@ -27,24 +27,24 @@
     <div class="nav-section">
       <div class="nav-section-title">Platform</div>
       <div class="nav-item active" onclick="navigate('dashboard')" id="nav-dashboard">
-        <span class="nav-icon">ðŸ“Š</span> Dashboard
+        <span class="nav-icon">📊</span> Dashboard
       </div>
       <div class="nav-item" onclick="navigate('governance')" id="nav-governance">
-        <span class="nav-icon">ðŸ›ï¸</span> Governance
+        <span class="nav-icon">🏛️</span> Governance
       </div>
     </div>
 
     <div class="nav-section">
       <div class="nav-section-title">Supply Side</div>
       <div class="nav-item" onclick="navigate('projects')" id="nav-projects">
-        <span class="nav-icon">ðŸŒ³</span> Projects
+        <span class="nav-icon">🌳</span> Projects
         <span class="nav-badge" id="badge-projects">0</span>
       </div>
       <div class="nav-item" onclick="navigate('mrv')" id="nav-mrv">
-        <span class="nav-icon">ðŸ“¡</span> MRV Data
+        <span class="nav-icon">📡</span> MRV Data
       </div>
       <div class="nav-item" onclick="navigate('verification')" id="nav-verification">
-        <span class="nav-icon">âœ…</span> Verification
+        <span class="nav-icon">✅</span> Verification
         <span class="nav-badge" id="badge-verification" style="display:none">0</span>
       </div>
     </div>
@@ -52,11 +52,11 @@
     <div class="nav-section">
       <div class="nav-section-title">Registry</div>
       <div class="nav-item" onclick="navigate('registry')" id="nav-registry">
-        <span class="nav-icon">ðŸ“¦</span> Registry
+        <span class="nav-icon">📦</span> Registry
         <span class="nav-badge" id="badge-registry">0</span>
       </div>
       <div class="nav-item" onclick="navigate('marketplace')" id="nav-marketplace">
-        <span class="nav-icon">ðŸ›’</span> Marketplace
+        <span class="nav-icon">🛒</span> Marketplace
         <span class="nav-badge" id="badge-marketplace">0</span>
       </div>
     </div>
@@ -64,13 +64,13 @@
     <div class="nav-section">
       <div class="nav-section-title">User</div>
       <div class="nav-item" onclick="navigate('portfolio')" id="nav-portfolio">
-        <span class="nav-icon">ðŸ’¼</span> Portfolio
+        <span class="nav-icon">💼</span> Portfolio
       </div>
       <div class="nav-item" onclick="navigate('audit')" id="nav-audit">
-        <span class="nav-icon">ðŸ”Ž</span> Audit
+        <span class="nav-icon">🔎</span> Audit
       </div>
       <div class="nav-item" onclick="navigate('admin')" id="nav-admin">
-        <span class="nav-icon">âš™ï¸</span> Administration
+        <span class="nav-icon">⚙️</span> Administration
       </div>
     </div>
 
@@ -81,21 +81,21 @@
   </aside>
 
 
-  <!-- â•â•â• Main Content â•â•â• -->
+  <!-- ═══ Main Content ═══ -->
   <div class="main-wrapper">
     <!-- Top Bar -->
-    ï»¿    <!-- Top Bar -->
+    ﻿    <!-- Top Bar -->
     <header class="topbar">
-      <div class="demo-badge">ðŸ”¥ LOCAL DEMO - Session State</div>
+      <div class="demo-badge">🔥 LOCAL DEMO - Session State</div>
       <div style="display:flex; gap: 2rem; align-items:center;">
         <div class="role-switcher">
           <label>Role:</label>
           <select id="roleSwitcher" onchange="switchRole(this.value)">
-            <option value="admin">âš™ï¸ Admin (Full Access)</option>
-            <option value="developer">ðŸ—ï¸ Project Developer</option>
-            <option value="validator">âœ… Validator / VVB</option>
-            <option value="buyer">ðŸ’¼ Corporate Buyer</option>
-            <option value="auditor">ðŸ”Ž Auditor</option>
+            <option value="admin">⚙️ Admin (Full Access)</option>
+            <option value="developer">🏗️ Project Developer</option>
+            <option value="validator">✅ Validator / VVB</option>
+            <option value="buyer">💼 Corporate Buyer</option>
+            <option value="auditor">🔎 Auditor</option>
           </select>
         </div>
         <div class="topbar-links">
@@ -108,8 +108,8 @@
 
     <main class="content">
 
-      <!-- â•â•â•â•â•â•â•â•â•â•â•â• VIEW: Dashboard â•â•â•â•â•â•â•â•â•â•â•â• -->
-      ï»¿      <!-- ðŸ“Š VIEW: Dashboard -->
+      <!-- ════════════ VIEW: Dashboard ════════════ -->
+      ﻿      <!-- 📊 VIEW: Dashboard -->
       <div class="view active" id="view-dashboard">
         <h2 class="page-title">Dashboard</h2>
         <p class="page-desc">Overview of the carbon credit registry state in this session.</p>
@@ -169,31 +169,31 @@
       </div>
 
 
-<!-- â•â•â•â•â•â•â•â•â•â•â•â• VIEW: Governance â•â•â•â•â•â•â•â•â•â•â•â• -->
+<!-- ════════════ VIEW: Governance ════════════ -->
       <div class="view" id="view-governance">
-        <h2 class="page-title">ðŸ› Governance Framework</h2>
+        <h2 class="page-title">🏛 Governance Framework</h2>
         <p class="page-desc">The GreyMisnomer protocol operates under a layered governance structure modeled after India's Carbon Credit Trading Scheme (CCTS).</p>
         <ul class="gov-tree">
-          <li><span class="gov-icon">ðŸ¢</span> <strong>Ministry of Power (MoP)</strong> â€” Policy Direction & Mandate</li>
+          <li><span class="gov-icon">🏢</span> <strong>Ministry of Power (MoP)</strong> — Policy Direction & Mandate</li>
           <li>
-            <span class="gov-icon">ðŸ“‹</span> <strong>Steering Committee (NSC-ICM)</strong> â€” Strategic Oversight
+            <span class="gov-icon">📋</span> <strong>Steering Committee (NSC-ICM)</strong> — Strategic Oversight
             <ul class="gov-sub gov-tree">
-              <li><span class="gov-icon">âš¡</span> Bureau of Energy Efficiency (BEE) â€” Methodologies, Accreditation, Targets</li>
+              <li><span class="gov-icon">⚡</span> Bureau of Energy Efficiency (BEE) — Methodologies, Accreditation, Targets</li>
             </ul>
           </li>
-          <li><span class="gov-icon">ðŸ”</span> <strong>Accredited Validators (ACVAs / VVBs)</strong> â€” Audit, Verify, Sign attestations</li>
-          <li><span class="gov-icon">ðŸ’»</span> <strong>Tech Provider (CDAC)</strong> â€” Digital Infrastructure, ZK Node/Tool</li>
+          <li><span class="gov-icon">🔐</span> <strong>Accredited Validators (ACVAs / VVBs)</strong> — Audit, Verify, Sign attestations</li>
+          <li><span class="gov-icon">💻</span> <strong>Tech Provider (CDAC)</strong> — Digital Infrastructure, ZK Node/Tool</li>
           <li>
-            <span class="gov-icon">ðŸ¦</span> <strong>BCI â€“ Registry Owner</strong> â€” Master DB, Interoperability API Bridge
+            <span class="gov-icon">🏦</span> <strong>BCI – Registry Owner</strong> — Master DB, Interoperability API Bridge
             <ul class="gov-sub gov-tree">
-              <li><span class="gov-icon">ðŸ“œ</span> Minting Smart Contract (Issuance Logic)</li>
-              <li><span class="gov-icon">ðŸ”</span> Retirement Smart Contract (Settlement Logic)</li>
+              <li><span class="gov-icon">📜</span> Minting Smart Contract (Issuance Logic)</li>
+              <li><span class="gov-icon">🔁</span> Retirement Smart Contract (Settlement Logic)</li>
             </ul>
           </li>
-          <li><span class="gov-icon">âš–</span> <strong>CERC / Power Exchanges (IEX/PXIL)</strong> â€” Market & Liquidity (Layer 4)</li>
+          <li><span class="gov-icon">⚖</span> <strong>CERC / Power Exchanges (IEX/PXIL)</strong> — Market & Liquidity (Layer 4)</li>
         </ul>
         <div class="result-card" style="margin-top:1.5rem; border-color:rgba(188,140,242,0.2);">
-          <h4 style="color:var(--purple)">ðŸ“Œ Approved Methodologies</h4>
+          <h4 style="color:var(--purple)">📌 Approved Methodologies</h4>
           <div class="kv-row"><span class="kv-key">VM0042-v4.0</span><span class="kv-val blue">Solar PV Grid-Connected</span></div>
           <div class="kv-row"><span class="kv-key">VM0046-v2.0</span><span class="kv-val blue">Improved Cookstoves</span></div>
           <div class="kv-row"><span class="kv-key">VM0048-v1.5</span><span class="kv-val blue">Afforestation/Reforestation</span></div>
@@ -201,8 +201,8 @@
         </div>
       </div>
 
-      <!-- â•â•â•â•â•â•â•â•â•â•â•â• VIEW: Projects â•â•â•â•â•â•â•â•â•â•â•â• -->
-      ï»¿      <!-- ðŸŒ³ VIEW: Projects -->
+      <!-- ════════════ VIEW: Projects ════════════ -->
+      ﻿      <!-- 🌳 VIEW: Projects -->
       <div class="view" id="view-projects">
         <h2 class="page-title">Projects</h2>
         <p class="page-desc">Register a new carbon reduction project. Once registered, you can upload MRV data for this project.</p>
@@ -214,11 +214,11 @@
             <div class="field"><label>Project ID</label><input type="text" id="prj-id" value="PRJ-SOLAR-2026-001" class="input-modern"></div>
             <div class="field"><label>Technology</label>
               <select id="prj-tech" class="input-modern">
-                <option value="Solar PV">â˜€ï¸ Solar PV</option>
-                <option value="Wind">ðŸŒ¬ï¸ Wind</option>
-                <option value="Hydro">ðŸ’§ Hydro</option>
-                <option value="Biomass">ðŸŒ¿ Biomass</option>
-                <option value="Cookstoves">ðŸ”¥ Improved Cookstoves</option>
+                <option value="Solar PV">☀️ Solar PV</option>
+                <option value="Wind">🌬️ Wind</option>
+                <option value="Hydro">💧 Hydro</option>
+                <option value="Biomass">🌿 Biomass</option>
+                <option value="Cookstoves">🔥 Improved Cookstoves</option>
               </select>
             </div>
             <div class="field"><label>Jurisdiction</label><input type="text" id="prj-jurisdiction" value="IN-MH" class="input-modern"></div>
@@ -239,7 +239,7 @@
       </div>
 
 
-ï»¿      <!-- ðŸ“¡ VIEW: MRV Data -->
+﻿      <!-- 📡 VIEW: MRV Data -->
       <div class="view" id="view-mrv">
         <div class="rfc-tag">RFC-003 3.1 / 3.2</div>
         <h2 class="page-title">MRV Data & Commitment</h2>
@@ -250,16 +250,16 @@
             <label style="margin-bottom:0.4rem;display:block">Select Project</label>
             <select id="mrv-project-select" class="input-modern"></select>
           </div>
-          <button class="btn btn-secondary btn-sm" onclick="seedDemoDataset()" style="background:var(--bg2);border:1px solid var(--border);color:var(--text);padding:0.6rem 1rem;border-radius:6px;cursor:pointer;">ðŸŒ± Seed Demo Dataset</button>
+          <button class="btn btn-secondary btn-sm" onclick="seedDemoDataset()" style="background:var(--bg2);border:1px solid var(--border);color:var(--text);padding:0.6rem 1rem;border-radius:6px;cursor:pointer;">🌱 Seed Demo Dataset</button>
           <button class="btn btn-secondary btn-sm" onclick="clearMrvTable()" style="background:transparent;border:1px solid var(--border);color:var(--muted);padding:0.6rem 1rem;border-radius:6px;cursor:pointer;">Clear All</button>
           <span class="record-badge" id="recordBadge" style="background:rgba(88,166,255,0.1);color:var(--blue);padding:0.5rem 1rem;border-radius:20px;font-size:0.85rem;font-weight:600;margin-left:auto;">0 records</span>
         </div>
 
         <div class="upload-zone" id="uploadZone">
           <input type="file" id="mrvFileInput" accept=".csv,.json,.txt" onchange="handleFileUpload(event)">
-          <div class="upload-zone-icon">ðŸ“„</div>
+          <div class="upload-zone-icon">📄</div>
           <div style="font-size:1.1rem;margin-bottom:0.5rem"><strong>Drop your MRV file here</strong> or click to browse</div>
-          <div style="color:var(--muted);font-size:0.85rem">Accepted: .csv (timestamp,value,unit,source) â€¢ .json ([{timestamp,value,unit,source}])</div>
+          <div style="color:var(--muted);font-size:0.85rem">Accepted: .csv (timestamp,value,unit,source) • .json ([{timestamp,value,unit,source}])</div>
         </div>
 
         <div class="table-wrap">
@@ -273,14 +273,14 @@
         <button onclick="addMrvRow()" style="background:transparent;border:1px dashed var(--border);color:var(--muted);width:100%;padding:0.75rem;border-radius:8px;margin-top:1rem;cursor:pointer;transition:all 0.2s;">+ Add Manual Record</button>
 
         <div style="margin-top:2rem;display:flex;justify-content:flex-end">
-          <button class="btn btn-primary" onclick="processMrv()">ðŸ” Compute Merkle Tree Commitment</button>
+          <button class="btn btn-primary" onclick="processMrv()">🔐 Compute Merkle Tree Commitment</button>
         </div>
 
         <div id="mrvCommitmentDisplay" style="margin-top:2rem"></div>
 
         <div id="spotCheckSection" style="display:none;margin-top:2rem">
           <div class="result-card" style="border-color:var(--green)">
-            <h4 style="color:var(--green);margin-bottom:1rem">âœ… Cryptographic Spot-Check & Tamper Verification</h4>
+            <h4 style="color:var(--green);margin-bottom:1rem">✅ Cryptographic Spot-Check & Tamper Verification</h4>
             <p style="margin-bottom:1rem; font-size:0.86rem; color:var(--muted);">Select a record to test inclusion proof, or check "Tamper" to modify a value and watch validation fail.</p>
             <div class="table-wrap" style="max-height:250px; overflow-y:auto;">
               <table class="data">
@@ -293,7 +293,7 @@
       </div>
 
 
-ï»¿      <!-- âœ… VIEW: Verification -->
+﻿      <!-- ✅ VIEW: Verification -->
       <div class="view" id="view-verification">
         <div class="rfc-tag">RFC-001 3.1</div>
         <h2 class="page-title">Verification & Attestation</h2>
@@ -302,7 +302,7 @@
       </div>
 
 
-ï»¿      <!-- ðŸ“¦ VIEW: Registry -->
+﻿      <!-- 📦 VIEW: Registry -->
       <div class="view" id="view-registry">
         <div class="rfc-tag">RFC-002 3</div>
         <h2 class="page-title">Registry Explorer</h2>
@@ -327,21 +327,21 @@
       </div>
 
 
-<!-- ðŸ›’ VIEW: Marketplace -->
+<!-- 🛒 VIEW: Marketplace -->
       <div class="view" id="view-marketplace">
         <h2 class="page-title">Marketplace</h2>
         <p class="page-desc">Browse available carbon credit listings. Only credits explicitly published by their owners appear here.</p>
         
         <div class="marketplace-header">
           <div class="search-bar">
-            <span>ðŸ”</span>
+            <span>🔍</span>
             <input type="text" placeholder="Search by Project ID, Tech...">
           </div>
           <div class="filters">
             <button class="filter-chip active">All</button>
-            <button class="filter-chip">â˜€ï¸ Solar</button>
-            <button class="filter-chip">ðŸŒ¿ Biomass</button>
-            <button class="filter-chip">ðŸ”¥ Cookstoves</button>
+            <button class="filter-chip">☀️ Solar</button>
+            <button class="filter-chip">🌿 Biomass</button>
+            <button class="filter-chip">🔥 Cookstoves</button>
           </div>
         </div>
 
@@ -349,7 +349,7 @@
       </div>
 
 
-ï»¿      <!-- ðŸ’¼ VIEW: Portfolio -->
+﻿      <!-- 💼 VIEW: Portfolio -->
       <div class="view" id="view-portfolio">
         <h2 class="page-title">Portfolio</h2>
         <p class="page-desc">Credits owned by the current session identity. Retire credits to generate Proof-of-Offset (PoO).</p>
@@ -369,7 +369,7 @@
       </div>
 
 
-ï»¿      <!-- ðŸ”Ž VIEW: Audit -->
+﻿      <!-- 🔎 VIEW: Audit -->
       <div class="view" id="view-audit">
         <div class="rfc-tag">RFC-001 5</div>
         <h2 class="page-title">Protocol Audit & Invariant Checks</h2>
@@ -398,19 +398,19 @@
 
         <div class="result-card" style="margin-top:2rem; border-color:var(--purple)">
           <h3 style="font-size:1.1rem; margin-bottom:1rem; display:flex; align-items:center; gap:0.5rem">
-            <span>ðŸ“¥</span> Export Session Certificates & Receipts
+            <span>📥</span> Export Session Certificates & Receipts
           </h3>
           <div class="download-grid" id="downloadGrid"></div>
           <div style="margin-top:1.5rem; display:flex; gap:1rem; flex-wrap:wrap;">
-            <button class="btn btn-primary btn-sm" onclick="exportPdfCertificate()" id="pdfExportBtn" style="display:none;background:var(--amber)">ðŸ“„ Export PDF Certificate</button>
-            <button class="btn btn-primary btn-sm" onclick="exportZipBundle()" id="zipExportBtn" style="display:none;background:var(--green)">ðŸ“¦ Download Audit ZIP</button>
-            <button class="btn btn-ghost btn-sm" onclick="resetAll()">ðŸ”„ Reset Registry & Start Over</button>
+            <button class="btn btn-primary btn-sm" onclick="exportPdfCertificate()" id="pdfExportBtn" style="display:none;background:var(--amber)">📄 Export PDF Certificate</button>
+            <button class="btn btn-primary btn-sm" onclick="exportZipBundle()" id="zipExportBtn" style="display:none;background:var(--green)">📦 Download Audit ZIP</button>
+            <button class="btn btn-ghost btn-sm" onclick="resetAll()">🔄 Reset Registry & Start Over</button>
           </div>
         </div>
       </div>
 
 
-ï»¿      <!-- âš™ï¸ VIEW: Administration -->
+﻿      <!-- ⚙️ VIEW: Administration -->
       <div class="view" id="view-admin">
         <h2 class="page-title">Administration</h2>
         <p class="page-desc">Manage your demo session, switch identities, and configure the demonstration environment.</p>
@@ -422,7 +422,7 @@
             <div class="field"><label>Wallet Address</label><input type="text" id="admin-wallet" value="0xProjectOwner" class="input-modern"></div>
           </div>
           <div class="btn-row" style="margin-top:1.5rem;display:flex;justify-content:flex-end">
-            <button class="btn btn-primary btn-sm" onclick="updateIdentity()">ðŸ’¾ Save Identity</button>
+            <button class="btn btn-primary btn-sm" onclick="updateIdentity()">💾 Save Identity</button>
           </div>
         </div>
 
@@ -454,5 +454,3 @@
   <script type="module" src="js/app.js"></script>
 </body>
 </html>
-
-
