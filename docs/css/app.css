@@ -1,4 +1,4 @@
-﻿/* APP LAYOUT & CORE STYLES */
+/* APP LAYOUT & CORE STYLES */
 body {
   display: flex;
   margin: 0;
@@ -442,3 +442,38 @@ body {
 }
 .status-pending { background: rgba(236,178,46,0.15); color: var(--amber); }
 .status-approved { background: rgba(57,211,83,0.15); color: var(--green); }
+
+/* ── Toast Notification ── */
+.toast {
+  position: fixed;
+  top: 24px;
+  right: 24px;
+  max-width: 420px;
+  padding: 14px 22px;
+  border-radius: 10px;
+  border: 1px solid rgba(248,81,73,0.4);
+  background: #180d0d;
+  color: var(--red);
+  font-size: 0.9rem;
+  font-weight: 500;
+  z-index: 9999;
+  opacity: 0;
+  transform: translateX(100%);
+  pointer-events: none;
+  transition: opacity 0.35s ease, transform 0.35s cubic-bezier(0.4,0,0.2,1);
+  box-shadow: 0 8px 32px rgba(0,0,0,0.4);
+}
+.toast.show {
+  opacity: 1;
+  transform: translateX(0);
+  pointer-events: auto;
+}
+/* ── Locked Nav Items (RBAC) ── */
+.nav-item.locked {
+  opacity: 0.35;
+  cursor: not-allowed;
+  pointer-events: auto;  /* allow click so toast fires */
+}
+.nav-item.locked:hover {
+  background: transparent;
+}
