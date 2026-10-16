@@ -43,6 +43,10 @@ pub enum RegistryError {
     #[error("invalid state transition: {from} -> {to}")]
     InvalidStateTransition { from: String, to: String },
 
+    // A credit with this credit_id has already been minted
+    #[error("a credit batch with this credit_id already exists")]
+    DuplicateCreditId,
+
     // General: referenced a credit_id or project_id that doesn't exist in the registry
     #[error("entity not found: {id}")]
     NotFound { id: String },

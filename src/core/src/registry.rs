@@ -60,6 +60,11 @@ impl Registry {
             return Err(RegistryError::SupplyExceeded);
         }
 
+        // Prevent duplicate credit_id (Bug 3)
+        if self.credits.iter().any(|c| c.credit_id == poi.credit_id) {
+            return Err(RegistryError::DuplicateCreditId);
+        }
+
         let batch = CreditBatch {
             project_id: poi.project_id.clone(),
             credit_id: poi.credit_id.clone(),
@@ -401,5 +406,16 @@ mod tests {
         // After normalization -> should merge into ONE slice
         assert_eq!(retired.len(), 1);
         assert_eq!(retired[0].range, SerialRange::new(200, 399).unwrap());
+    }
+
+    #[test]
+    fn cannot_mint_duplicate_credit_id() {
+        let mut registry = Registry::new();
+        let mut poi_a = make_poi("CC-1", 0, 49);
+        let mut poi_b = make_poi("CC-1", 50, 99); // Non-overlapping serials, but duplicate credit_id!
+
+        registry.mint(&mut poi_a, "Alice".to_string()).unwrap();
+        let result = registry.mint(&mut poi_b, "Bob".to_string());
+        assert_eq!(result.unwrap_err(), RegistryError::DuplicateCreditId);
     }
 }
