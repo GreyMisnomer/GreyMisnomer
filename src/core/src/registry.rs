@@ -3,6 +3,7 @@ use crate::error::RegistryError;
 use crate::poi::PoI;
 use crate::poo::{ClaimType, PoO, PoOStatus};
 use crate::serial::SerialRange;
+use std::collections::HashSet;
 
 // The Registry serves as the central state machine and source of truth for the entire GreyMisnomer protocol.
 // It manages the global lifecycle of all Carbon Credits, ensuring compliance with RFC-001, RFC-002, and RFC-003.
@@ -12,6 +13,8 @@ pub struct Registry {
     pub credits: Vec<CreditBatch>,
     // Globally immutable append-only record of all retired/burned ranges (Invariant 4 & 5)
     pub burned_ranges: Vec<SerialRange>,
+    // Set of all MRV data roots (merkle roots) that have been minted, preventing double-counting (Bug 9)
+    pub used_data_roots: HashSet<[u8; 32]>,
 }
 
 impl Registry {
@@ -65,6 +68,14 @@ impl Registry {
             return Err(RegistryError::DuplicateCreditId);
         }
 
+        // Prevent duplicate data_root (Bug 9: double-counting prevention)
+        if self
+            .used_data_roots
+            .contains(&poi.mrv_commitment.merkle_root)
+        {
+            return Err(RegistryError::DuplicateDataRoot);
+        }
+
         let batch = CreditBatch {
             project_id: poi.project_id.clone(),
             credit_id: poi.credit_id.clone(),
@@ -76,6 +87,7 @@ impl Registry {
             owner,
         };
 
+        self.used_data_roots.insert(poi.mrv_commitment.merkle_root);
         poi.status = crate::poi::PoIStatus::Used;
         self.credits.push(batch.clone());
         Ok(batch)
@@ -197,10 +209,15 @@ mod tests {
     use crate::project::MarketScope;
 
     fn make_poi(credit_id: &str, start: u64, end: u64) -> PoI {
+        let mut root = [0u8; 32];
+        let bytes = credit_id.as_bytes();
+        let len = bytes.len().min(32);
+        root[..len].copy_from_slice(&bytes[..len]);
+
         PoI {
             project_id: "PRJ-001".to_string(),
             mrv_commitment: MRVCommitment {
-                merkle_root: [0; 32],
+                merkle_root: root,
                 hash_algorithm: "BLAKE3".to_string(),
                 leaf_count: 1,
                 timestamp: 0,
@@ -419,5 +436,17 @@ mod tests {
         registry.mint(&mut poi_a, "Alice".to_string()).unwrap();
         let result = registry.mint(&mut poi_b, "Bob".to_string());
         assert_eq!(result.unwrap_err(), RegistryError::DuplicateCreditId);
+    }
+
+    #[test]
+    fn cannot_mint_duplicate_data_root() {
+        let mut registry = Registry::new();
+        let mut poi_a = make_poi("CC-1", 0, 49);
+        let mut poi_b = make_poi("CC-2", 50, 99); // different credit_id, non-overlapping serials!
+        poi_b.mrv_commitment.merkle_root = poi_a.mrv_commitment.merkle_root; // but same MRV data root!
+
+        registry.mint(&mut poi_a, "Alice".to_string()).unwrap();
+        let result = registry.mint(&mut poi_b, "Bob".to_string());
+        assert_eq!(result.unwrap_err(), RegistryError::DuplicateDataRoot);
     }
 }

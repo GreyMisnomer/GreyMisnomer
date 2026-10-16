@@ -54,4 +54,10 @@ pub enum RegistryError {
     // Integer overflow in arithmetic calculation
     #[error("integer overflow in serial range calculation")]
     Overflow,
+
+    // RFC-001 / RFC-003: An MRV data root was already used for minting — double counting prevented
+    #[error(
+        "duplicate MRV data root: this dataset has already been minted — double counting prevented"
+    )]
+    DuplicateDataRoot,
 }
