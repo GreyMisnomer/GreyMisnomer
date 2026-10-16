@@ -94,7 +94,9 @@ pub fn normalize_slices(slices: &mut Vec<SerialSlice>) {
 
     for slice in slices.drain(..) {
         if let Some(last) = merged.last_mut() {
-            if last.status == slice.status && last.range.end + 1 == slice.range.start {
+            if last.status == slice.status
+                && last.range.end.checked_add(1) == Some(slice.range.start)
+            {
                 last.range.end = slice.range.end;
                 continue;
             }

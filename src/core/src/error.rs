@@ -60,4 +60,8 @@ pub enum RegistryError {
         "duplicate MRV data root: this dataset has already been minted — double counting prevented"
     )]
     DuplicateDataRoot,
+
+    // RFC-002: Internal consistency check failed after mutation
+    #[error("internal state consistency check failed: credit batch corrupted after mutation")]
+    CorruptedState,
 }

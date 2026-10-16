@@ -170,11 +170,10 @@ impl Registry {
         // Normalize slices to merge adjacent fragments and prevent infinite fragmentation
         crate::credit::normalize_slices(&mut batch.slices);
 
-        // Assert fail-fast internal validation guard to prevent silent state corruption
-        assert!(
-            batch.validate_internal(),
-            "CreditBatch internal state corrupted after burn mutation"
-        );
+        // Fail-fast internal validation guard to prevent silent state corruption (Bug 15)
+        if !batch.validate_internal() {
+            return Err(RegistryError::CorruptedState);
+        }
 
         // Lock globally
         self.burned_ranges.push(burn_range);
