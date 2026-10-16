@@ -125,7 +125,7 @@ impl Registry {
             .slices
             .iter()
             .position(|s| s.status == CreditStatus::Active && s.range.contains(&burn_range))
-            .ok_or_else(|| RegistryError::BurnRangeNotFound {
+            .ok_or(RegistryError::BurnRangeNotFound {
                 start: burn_range.start,
                 end: burn_range.end,
             })?;

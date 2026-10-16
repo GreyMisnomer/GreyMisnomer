@@ -205,7 +205,7 @@ mod tests {
     #[test]
     fn single_record_root_equals_leaf_hash() {
         let r = make_record(500, 10.0);
-        let root = build_merkle_root(&[r.clone()]);
+        let root = build_merkle_root(std::slice::from_ref(&r));
         assert_eq!(root, hash_record(&r));
     }
 

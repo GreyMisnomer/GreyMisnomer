@@ -147,7 +147,7 @@ pub fn build_commitment(records_json: &str, timestamp: u64) -> Result<String, Js
         timestamp: commitment.timestamp,
     };
 
-    serde_json::to_string(&out).map_err(|e| js_err(e))
+    serde_json::to_string(&out).map_err(js_err)
 }
 
 /// Verify that a specific MRV record is included in a commitment.
@@ -238,7 +238,7 @@ impl WasmRegistry {
             .ok_or_else(|| js_err("No MRV commitment stored. Call store_commitment() first."))?;
 
         let range =
-            SerialRange::new(input.serial_start, input.serial_end).map_err(|e| js_err(e))?;
+            SerialRange::new(input.serial_start, input.serial_end).map_err(js_err)?;
 
         if input.cc_mint_amount != range.size() {
             return Err(js_err(format!(
@@ -269,7 +269,7 @@ impl WasmRegistry {
         let batch = self
             .inner
             .mint(&mut poi, input.owner)
-            .map_err(|e| js_err(e))?;
+            .map_err(js_err)?;
 
         let out = MintOutput {
             credit_id: batch.credit_id.clone(),
@@ -281,14 +281,14 @@ impl WasmRegistry {
             poi_status: "USED".to_string(),
         };
 
-        serde_json::to_string(&out).map_err(|e| js_err(e))
+        serde_json::to_string(&out).map_err(js_err)
     }
 
     #[wasm_bindgen]
     pub fn transfer(&mut self, credit_id: &str, new_owner: &str) -> Result<String, JsValue> {
         self.inner
             .transfer(credit_id, new_owner.to_string())
-            .map_err(|e| js_err(e))?;
+            .map_err(js_err)?;
 
         self.batch_state(credit_id)
     }
@@ -299,7 +299,7 @@ impl WasmRegistry {
             .map_err(|e| js_err(format!("Invalid burn JSON: {e}")))?;
 
         let burn_range =
-            SerialRange::new(input.burn_start, input.burn_end).map_err(|e| js_err(e))?;
+            SerialRange::new(input.burn_start, input.burn_end).map_err(js_err)?;
 
         let claim_type = match input.claim_type.as_str() {
             "CorporateNetZero" => ClaimType::CorporateNetZero,
@@ -311,7 +311,7 @@ impl WasmRegistry {
         let poo = self
             .inner
             .burn(&input.credit_id, burn_range, input.beneficiary, claim_type)
-            .map_err(|e| js_err(e))?;
+            .map_err(js_err)?;
 
         let claim_str = match poo.claim_type {
             ClaimType::CorporateNetZero => "CorporateNetZero",
@@ -334,7 +334,7 @@ impl WasmRegistry {
             amounts_consistent,
         };
 
-        serde_json::to_string(&out).map_err(|e| js_err(e))
+        serde_json::to_string(&out).map_err(js_err)
     }
 
     #[wasm_bindgen]
@@ -385,7 +385,7 @@ impl WasmRegistry {
             retired_total,
         };
 
-        serde_json::to_string(&out).map_err(|e| js_err(e))
+        serde_json::to_string(&out).map_err(js_err)
     }
 
     #[wasm_bindgen]
@@ -448,6 +448,12 @@ impl WasmRegistry {
             credits: credits?,
         };
 
-        serde_json::to_string(&state).map_err(|e| js_err(e))
+        serde_json::to_string(&state).map_err(js_err)
+    }
+}
+
+impl Default for WasmRegistry {
+    fn default() -> Self {
+        Self::new()
     }
 }
