@@ -238,12 +238,12 @@ impl WasmRegistry {
             .ok_or_else(|| js_err("No MRV commitment stored. Call store_commitment() first."))?;
 
         let range = SerialRange::new(input.serial_start, input.serial_end).map_err(js_err)?;
+        let range_sz = range.size().map_err(js_err)?;
 
-        if input.cc_mint_amount != range.size() {
+        if input.cc_mint_amount != range_sz {
             return Err(js_err(format!(
                 "cc_mint_amount ({}) must equal serial range size ({})",
-                input.cc_mint_amount,
-                range.size()
+                input.cc_mint_amount, range_sz
             )));
         }
 
@@ -273,7 +273,7 @@ impl WasmRegistry {
             owner: batch.owner.clone(),
             original_start: batch.original_range.start,
             original_end: batch.original_range.end,
-            total_credits: batch.original_range.size(),
+            total_credits: batch.original_range.size().map_err(js_err)?,
             poi_status: "USED".to_string(),
         };
 
@@ -341,34 +341,32 @@ impl WasmRegistry {
             .find(|b| b.credit_id == credit_id)
             .ok_or_else(|| js_err(format!("Credit not found: {credit_id}")))?;
 
-        let slices: Vec<SliceOutput> = batch
-            .slices
-            .iter()
-            .map(|s| SliceOutput {
+        let mut slices = Vec::with_capacity(batch.slices.len());
+        let mut active_total: u64 = 0;
+        let mut retired_total: u64 = 0;
+
+        for s in &batch.slices {
+            let sz = s.range.size().map_err(js_err)?;
+            if s.status == CreditStatus::Active {
+                active_total = active_total
+                    .checked_add(sz)
+                    .ok_or_else(|| js_err("active_total overflow"))?;
+            } else if s.status == CreditStatus::Retired {
+                retired_total = retired_total
+                    .checked_add(sz)
+                    .ok_or_else(|| js_err("retired_total overflow"))?;
+            }
+            slices.push(SliceOutput {
                 start: s.range.start,
                 end: s.range.end,
-                size: s.range.size(),
+                size: sz,
                 status: match s.status {
                     CreditStatus::Active => "Active".to_string(),
                     CreditStatus::Retired => "Retired".to_string(),
                     CreditStatus::Expired => "Expired".to_string(),
                 },
-            })
-            .collect();
-
-        let active_total: u64 = batch
-            .slices
-            .iter()
-            .filter(|s| s.status == CreditStatus::Active)
-            .map(|s| s.range.size())
-            .sum();
-
-        let retired_total: u64 = batch
-            .slices
-            .iter()
-            .filter(|s| s.status == CreditStatus::Retired)
-            .map(|s| s.range.size())
-            .sum();
+            });
+        }
 
         let out = BatchStateOutput {
             credit_id: batch.credit_id.clone(),
@@ -392,55 +390,50 @@ impl WasmRegistry {
             credits: Vec<BatchStateOutput>,
         }
 
-        let credits: Result<Vec<_>, _> = self
-            .inner
-            .credits
-            .iter()
-            .map(|b| {
-                let slices = b
-                    .slices
-                    .iter()
-                    .map(|s| SliceOutput {
-                        start: s.range.start,
-                        end: s.range.end,
-                        size: s.range.size(),
-                        status: match s.status {
-                            CreditStatus::Active => "Active".to_string(),
-                            CreditStatus::Retired => "Retired".to_string(),
-                            CreditStatus::Expired => "Expired".to_string(),
-                        },
-                    })
-                    .collect();
+        let mut credits = Vec::with_capacity(self.inner.credits.len());
+        for b in &self.inner.credits {
+            let mut slices = Vec::with_capacity(b.slices.len());
+            let mut active_total: u64 = 0;
+            let mut retired_total: u64 = 0;
 
-                let active_total = b
-                    .slices
-                    .iter()
-                    .filter(|s| s.status == CreditStatus::Active)
-                    .map(|s| s.range.size())
-                    .sum();
-                let retired_total = b
-                    .slices
-                    .iter()
-                    .filter(|s| s.status == CreditStatus::Retired)
-                    .map(|s| s.range.size())
-                    .sum();
+            for s in &b.slices {
+                let sz = s.range.size().map_err(js_err)?;
+                if s.status == CreditStatus::Active {
+                    active_total = active_total
+                        .checked_add(sz)
+                        .ok_or_else(|| js_err("active_total overflow"))?;
+                } else if s.status == CreditStatus::Retired {
+                    retired_total = retired_total
+                        .checked_add(sz)
+                        .ok_or_else(|| js_err("retired_total overflow"))?;
+                }
+                slices.push(SliceOutput {
+                    start: s.range.start,
+                    end: s.range.end,
+                    size: sz,
+                    status: match s.status {
+                        CreditStatus::Active => "Active".to_string(),
+                        CreditStatus::Retired => "Retired".to_string(),
+                        CreditStatus::Expired => "Expired".to_string(),
+                    },
+                });
+            }
 
-                Ok(BatchStateOutput {
-                    credit_id: b.credit_id.clone(),
-                    owner: b.owner.clone(),
-                    original_start: b.original_range.start,
-                    original_end: b.original_range.end,
-                    slices,
-                    active_total,
-                    retired_total,
-                })
-            })
-            .collect::<Result<Vec<_>, JsValue>>();
+            credits.push(BatchStateOutput {
+                credit_id: b.credit_id.clone(),
+                owner: b.owner.clone(),
+                original_start: b.original_range.start,
+                original_end: b.original_range.end,
+                slices,
+                active_total,
+                retired_total,
+            });
+        }
 
         let state = FullState {
             credit_count: self.inner.credits.len(),
             burned_range_count: self.inner.burned_ranges.len(),
-            credits: credits?,
+            credits,
         };
 
         serde_json::to_string(&state).map_err(js_err)

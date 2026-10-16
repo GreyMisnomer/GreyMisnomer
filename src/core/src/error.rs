@@ -50,4 +50,8 @@ pub enum RegistryError {
     // General: referenced a credit_id or project_id that doesn't exist in the registry
     #[error("entity not found: {id}")]
     NotFound { id: String },
+
+    // Integer overflow in arithmetic calculation
+    #[error("integer overflow in serial range calculation")]
+    Overflow,
 }

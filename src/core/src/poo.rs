@@ -46,7 +46,10 @@ impl PoO {
 
     /// Validates cc_amount exactly matches physical serialized size
     pub fn amounts_are_consistent(&self) -> bool {
-        self.cc_amount == self.serialization_range.size() && self.amount_tco2e == self.cc_amount
+        self.serialization_range
+            .size()
+            .map(|sz| self.cc_amount == sz && self.amount_tco2e == self.cc_amount)
+            .unwrap_or(false)
     }
 }
 

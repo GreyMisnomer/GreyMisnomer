@@ -56,7 +56,7 @@ impl Registry {
         }
 
         // Enforce Invariant 2: The range must not exceed the PoI auth cap
-        if poi.serialization_range.size() > poi.cc_mint_amount {
+        if poi.serialization_range.size()? > poi.cc_mint_amount {
             return Err(RegistryError::SupplyExceeded);
         }
 
@@ -167,19 +167,21 @@ impl Registry {
         // Lock globally
         self.burned_ranges.push(burn_range);
 
+        let burn_size = burn_range.size()?;
+
         // Generate Settlement Artifact (PoO)
         let poo = PoO {
             project_id: batch.project_id.clone(),
             credit_id: credit_id.to_string(),
             serialization_range: burn_range,
             market_scope: crate::project::MarketScope::Vcm,
-            cc_amount: burn_range.size(),
+            cc_amount: burn_size,
             burn_tx_hash: format!("mock_burn_{}_{}", credit_id, burn_range.start),
             timestamp: 0,
             beneficiary,
             owner: batch.owner.clone(),
             claim_type,
-            amount_tco2e: burn_range.size(),
+            amount_tco2e: burn_size,
             status: PoOStatus::Finalized,
         };
 

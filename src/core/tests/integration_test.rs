@@ -98,7 +98,7 @@ fn full_protocol_chain_mrv_to_poo() {
         .expect("Mint must succeed with valid PoI");
 
     assert_eq!(batch.credit_id, "CC-SOLAR-2026-001");
-    assert_eq!(batch.original_range.size(), 1000);
+    assert_eq!(batch.original_range.size().unwrap(), 1000);
     assert_eq!(batch.owner, "0xProjectOwner");
 
     // Invariant 7: PoI is now consumed

@@ -24,9 +24,12 @@ impl SerialRange {
         self.start <= self.end
     }
 
-    // Calculates the total number of credits (tCO2e) in this range.
-    pub fn size(&self) -> u64 {
-        self.end - self.start + 1
+    // Calculates the total number of credits (tCO2e) in this range safely.
+    pub fn size(&self) -> Result<u64, RegistryError> {
+        self.end
+            .checked_sub(self.start)
+            .and_then(|d| d.checked_add(1))
+            .ok_or(RegistryError::Overflow)
     }
 
     // Checks if this range overlaps with another range to prevent double-counting.
@@ -69,14 +72,23 @@ mod tests {
     #[test]
     fn test_valid_range() {
         let r = SerialRange::new(0, 10).unwrap();
-        assert_eq!(r.size(), 11);
+        assert_eq!(r.size().unwrap(), 11);
     }
 
     #[test]
     fn test_single_range() {
         let r = SerialRange::new(5, 5).unwrap();
-        assert_eq!(r.size(), 1);
+        assert_eq!(r.size().unwrap(), 1);
         assert!(r.is_valid());
+    }
+
+    #[test]
+    fn test_size_overflow() {
+        let r = SerialRange {
+            start: 0,
+            end: u64::MAX,
+        };
+        assert_eq!(r.size().unwrap_err(), RegistryError::Overflow);
     }
 
     #[test]

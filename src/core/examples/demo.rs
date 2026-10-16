@@ -186,7 +186,7 @@ fn main() {
             "{} – {} ({} credits)",
             batch.original_range.start,
             batch.original_range.end,
-            batch.original_range.size()
+            batch.original_range.size().expect("valid serial range")
         ),
     );
     field("Active slices", &batch.slices.len().to_string());
@@ -277,18 +277,21 @@ fn main() {
         .slices
         .iter()
         .filter(|s| s.status == CreditStatus::Active)
-        .map(|s| s.range.size())
+        .map(|s| s.range.size().expect("valid serial range"))
         .sum();
     let retired_total: u64 = batch
         .slices
         .iter()
         .filter(|s| s.status == CreditStatus::Retired)
-        .map(|s| s.range.size())
+        .map(|s| s.range.size().expect("valid serial range"))
         .sum();
 
     field(
         "Original supply",
-        &format!("{} credits", batch.original_range.size()),
+        &format!(
+            "{} credits",
+            batch.original_range.size().expect("valid serial range")
+        ),
     );
     field("Active remaining", &format!("{} credits", active_total));
     field("Retired total", &format!("{} credits", retired_total));
@@ -304,7 +307,7 @@ fn main() {
 
     assert_eq!(
         active_total + retired_total,
-        batch.original_range.size(),
+        batch.original_range.size().expect("valid serial range"),
         "Supply conservation violated"
     );
     ok("Supply conservation holds (active + retired = original)");
@@ -402,7 +405,7 @@ fn print_slice_state(registry: &Registry, credit_id: &str) {
             "    [{status_label}]  {:>12} – {:>12}  ({} credits)",
             s.range.start,
             s.range.end,
-            s.range.size()
+            s.range.size().expect("valid serial range")
         );
     }
 }
