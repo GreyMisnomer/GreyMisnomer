@@ -237,8 +237,7 @@ impl WasmRegistry {
             .clone()
             .ok_or_else(|| js_err("No MRV commitment stored. Call store_commitment() first."))?;
 
-        let range =
-            SerialRange::new(input.serial_start, input.serial_end).map_err(js_err)?;
+        let range = SerialRange::new(input.serial_start, input.serial_end).map_err(js_err)?;
 
         if input.cc_mint_amount != range.size() {
             return Err(js_err(format!(
@@ -266,10 +265,7 @@ impl WasmRegistry {
             status: PoIStatus::Valid,
         };
 
-        let batch = self
-            .inner
-            .mint(&mut poi, input.owner)
-            .map_err(js_err)?;
+        let batch = self.inner.mint(&mut poi, input.owner).map_err(js_err)?;
 
         let out = MintOutput {
             credit_id: batch.credit_id.clone(),
@@ -298,8 +294,7 @@ impl WasmRegistry {
         let input: BurnInput = serde_json::from_str(burn_json)
             .map_err(|e| js_err(format!("Invalid burn JSON: {e}")))?;
 
-        let burn_range =
-            SerialRange::new(input.burn_start, input.burn_end).map_err(js_err)?;
+        let burn_range = SerialRange::new(input.burn_start, input.burn_end).map_err(js_err)?;
 
         let claim_type = match input.claim_type.as_str() {
             "CorporateNetZero" => ClaimType::CorporateNetZero,

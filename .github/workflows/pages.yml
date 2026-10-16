@@ -28,6 +28,7 @@ jobs:
         uses: dtolnay/rust-toolchain@stable
         with:
           targets: wasm32-unknown-unknown
+          components: clippy, rustfmt
 
       - name: Cache Rust build artifacts
         uses: actions/cache@v4
@@ -40,6 +41,17 @@ jobs:
           restore-keys: |
             ${{ runner.os }}-cargo-
 
+      # ── Quality gates — nothing deploys unless all three pass ──────────
+      - name: Check formatting
+        run: cargo fmt --all -- --check
+
+      - name: Clippy (deny warnings)
+        run: cargo clippy --all-targets -- -D warnings
+
+      - name: Run tests
+        run: cargo test --all
+
+      # ── Build WASM (only runs if quality gates passed) ─────────────────
       - name: Install wasm-pack
         run: curl https://rustwasm.github.io/wasm-pack/installer/init.sh -sSf | sh
 
