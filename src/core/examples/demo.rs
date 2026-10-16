@@ -103,8 +103,16 @@ fn main() {
     // Spot-check inclusion proofs
     let proof_first = mrv::generate_inclusion_proof(&records, 0).unwrap();
     let proof_last = mrv::generate_inclusion_proof(&records, 29).unwrap();
-    assert!(mrv::verify_inclusion_proof(&records[0], &proof_first, &commitment.merkle_root));
-    assert!(mrv::verify_inclusion_proof(&records[29], &proof_last, &commitment.merkle_root));
+    assert!(mrv::verify_inclusion_proof(
+        &records[0],
+        &proof_first,
+        &commitment.merkle_root
+    ));
+    assert!(mrv::verify_inclusion_proof(
+        &records[29],
+        &proof_last,
+        &commitment.merkle_root
+    ));
     ok("Inclusion proof [0]  → verified");
     ok("Inclusion proof [29] → verified");
 
@@ -116,7 +124,11 @@ fn main() {
         source: records[5].source.clone(),
     };
     let proof_5 = mrv::generate_inclusion_proof(&records, 5).unwrap();
-    assert!(!mrv::verify_inclusion_proof(&tampered, &proof_5, &commitment.merkle_root));
+    assert!(!mrv::verify_inclusion_proof(
+        &tampered,
+        &proof_5,
+        &commitment.merkle_root
+    ));
     ok("Tampered record [5]  → REJECTED by Merkle proof ✗");
 
     // ── Step 3: Proof-of-Integrity ───────────────────────────────────────────
@@ -142,8 +154,17 @@ fn main() {
 
     field("Project ID", &poi.project_id);
     field("Credit ID", &poi.credit_id);
-    field("Serial range", &format!("{} – {}", poi.serialization_range.start, poi.serialization_range.end));
-    field("Authorized supply", &format!("{} tCO2e", poi.cc_mint_amount));
+    field(
+        "Serial range",
+        &format!(
+            "{} – {}",
+            poi.serialization_range.start, poi.serialization_range.end
+        ),
+    );
+    field(
+        "Authorized supply",
+        &format!("{} tCO2e", poi.cc_mint_amount),
+    );
     field("Jurisdiction", &poi.jurisdiction);
     field("VVB signature", &poi.vvb_signature);
     field("Status", "VALID");
@@ -159,8 +180,15 @@ fn main() {
 
     field("Credit ID minted", &batch.credit_id);
     field("Owner", &batch.owner);
-    field("Original range", &format!("{} – {} ({} credits)",
-        batch.original_range.start, batch.original_range.end, batch.original_range.size()));
+    field(
+        "Original range",
+        &format!(
+            "{} – {} ({} credits)",
+            batch.original_range.start,
+            batch.original_range.end,
+            batch.original_range.size()
+        ),
+    );
     field("Active slices", &batch.slices.len().to_string());
     field("PoI status after mint", "USED");
     assert!(poi.is_used());
@@ -258,12 +286,20 @@ fn main() {
         .map(|s| s.range.size())
         .sum();
 
-    field("Original supply", &format!("{} credits", batch.original_range.size()));
+    field(
+        "Original supply",
+        &format!("{} credits", batch.original_range.size()),
+    );
     field("Active remaining", &format!("{} credits", active_total));
     field("Retired total", &format!("{} credits", retired_total));
     field(
         "Conservation check",
-        &format!("{} + {} = {}", active_total, retired_total, active_total + retired_total),
+        &format!(
+            "{} + {} = {}",
+            active_total,
+            retired_total,
+            active_total + retired_total
+        ),
     );
 
     assert_eq!(
@@ -278,7 +314,10 @@ fn main() {
     ok("CreditBatch internal validation passed (no overlaps, all within original_range)");
 
     // original_range immutability
-    assert_eq!(batch.original_range, SerialRange::new(1_000_000, 1_000_999).unwrap());
+    assert_eq!(
+        batch.original_range,
+        SerialRange::new(1_000_000, 1_000_999).unwrap()
+    );
     ok("original_range unchanged — audit trail intact (Invariant anchor)");
 
     // Double-burn prevention
@@ -318,14 +357,20 @@ fn main() {
 
     println!("  Protocol flow completed successfully.");
     println!();
-    println!("  MRV records hashed        : {} leaves → Merkle root", records.len());
+    println!(
+        "  MRV records hashed        : {} leaves → Merkle root",
+        records.len()
+    );
     println!("  Credits minted            : 1000 tCO2e (range 1_000_000–1_000_999)");
     println!("  Ownership transfers       : 1  (ProjectOwner → Buyer)");
     println!("  Partial retirements       : 2");
     println!("    PoO-1  300 tCO2e        → AcmeCorp_NetZero_2026  [CorporateNetZero]");
     println!("    PoO-2  200 tCO2e        → GreenEnergy_Ltd         [Compliance]");
     println!("  Credits still active      : {} tCO2e", active_total);
-    println!("  Burned ranges on record   : {}", registry.burned_ranges.len());
+    println!(
+        "  Burned ranges on record   : {}",
+        registry.burned_ranges.len()
+    );
     println!();
     println!("  All RFC-001 invariants enforced at runtime.");
     println!("  Supply conserved. Audit trail intact.");
@@ -349,13 +394,15 @@ fn print_slice_state(registry: &Registry, credit_id: &str) {
 
     for s in &sorted {
         let status_label = match s.status {
-            CreditStatus::Active  => "ACTIVE ",
+            CreditStatus::Active => "ACTIVE ",
             CreditStatus::Retired => "RETIRED",
             CreditStatus::Expired => "EXPIRED",
         };
         println!(
             "    [{status_label}]  {:>12} – {:>12}  ({} credits)",
-            s.range.start, s.range.end, s.range.size()
+            s.range.start,
+            s.range.end,
+            s.range.size()
         );
     }
 }

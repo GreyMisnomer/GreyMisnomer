@@ -6,10 +6,10 @@ use serde::{Deserialize, Serialize};
 // Real production records will carry more fields; this is the Phase Alpha shape.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct MRVRecord {
-    pub timestamp: u64,   // Unix epoch of the measurement
-    pub value: f64,        // Quantity measured (e.g. kWh generated, kg CO2 captured)
-    pub unit: String,      // Unit string — "kWh", "tCO2e", etc.
-    pub source: String,    // Data source identifier — sensor ID, satellite pass ID, etc.
+    pub timestamp: u64, // Unix epoch of the measurement
+    pub value: f64,     // Quantity measured (e.g. kWh generated, kg CO2 captured)
+    pub unit: String,   // Unit string — "kWh", "tCO2e", etc.
+    pub source: String, // Data source identifier — sensor ID, satellite pass ID, etc.
 }
 
 // --- MRVCommitment -------------------------------------------------------

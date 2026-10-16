@@ -1,8 +1,7 @@
-use serde::{Deserialize, Serialize};
 use crate::serial::SerialRange;
+use serde::{Deserialize, Serialize};
 
 // Represents the operational lifecycle status of a credit fragment.
-
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 pub enum CreditStatus {
@@ -41,7 +40,10 @@ impl CreditBatch {
 
         out.push_str(&format!("Credit ID: {}\n", self.credit_id));
         out.push_str(&format!("Owner: {}\n\n", self.owner));
-        out.push_str(&format!("Original Range: {}–{}\n\n", self.original_range.start, self.original_range.end));
+        out.push_str(&format!(
+            "Original Range: {}–{}\n\n",
+            self.original_range.start, self.original_range.end
+        ));
 
         out.push_str("Active:\n");
         for s in &self.slices {

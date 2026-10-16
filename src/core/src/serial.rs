@@ -1,5 +1,5 @@
-use serde::{Deserialize, Serialize};
 use crate::error::RegistryError;
+use serde::{Deserialize, Serialize};
 
 // The SerialRange struct maps to our RFC-002 specification.
 // It defines a contiguous block of carbon credits.
@@ -112,7 +112,7 @@ mod tests {
         let main = SerialRange::new(0, 999).unwrap();
         let burn = SerialRange::new(200, 399).unwrap();
         let remainders = main.slice(&burn).unwrap();
-        
+
         assert_eq!(remainders.len(), 2);
         assert_eq!(remainders[0], SerialRange::new(0, 199).unwrap());
         assert_eq!(remainders[1], SerialRange::new(400, 999).unwrap());
@@ -123,7 +123,7 @@ mod tests {
         let main = SerialRange::new(0, 999).unwrap();
         let burn = SerialRange::new(0, 499).unwrap();
         let remainders = main.slice(&burn).unwrap();
-        
+
         assert_eq!(remainders.len(), 1);
         assert_eq!(remainders[0], SerialRange::new(500, 999).unwrap());
     }
@@ -133,7 +133,7 @@ mod tests {
         let main = SerialRange::new(0, 999).unwrap();
         let burn = SerialRange::new(500, 999).unwrap();
         let remainders = main.slice(&burn).unwrap();
-        
+
         assert_eq!(remainders.len(), 1);
         assert_eq!(remainders[0], SerialRange::new(0, 499).unwrap());
     }
@@ -143,7 +143,7 @@ mod tests {
         let main = SerialRange::new(0, 999).unwrap();
         let burn = SerialRange::new(0, 999).unwrap();
         let remainders = main.slice(&burn).unwrap();
-        
+
         assert_eq!(remainders.len(), 0);
     }
 
@@ -152,7 +152,7 @@ mod tests {
         let main = SerialRange::new(100, 200).unwrap();
         let burn = SerialRange::new(150, 250).unwrap();
         let result = main.slice(&burn);
-        
+
         assert!(result.is_err());
     }
 }

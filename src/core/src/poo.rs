@@ -1,6 +1,6 @@
-use serde::{Deserialize, Serialize};
-use crate::serial::SerialRange;
 use crate::project::MarketScope;
+use crate::serial::SerialRange;
+use serde::{Deserialize, Serialize};
 
 // Represents the final state of a Proof-of-Offset.
 // Finalized means it has been successfully issued and recorded.
@@ -20,7 +20,7 @@ pub enum ClaimType {
 }
 
 // Proof-of-Offset (PoO) represents a formally retired carbon credit.
-// As defined in RFC-001 §3.2, it contains the immutable cryptographic proof 
+// As defined in RFC-001 §3.2, it contains the immutable cryptographic proof
 // that specific serial ranges have been burned and claimed.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct PoO {
@@ -29,7 +29,7 @@ pub struct PoO {
     pub serialization_range: SerialRange,
     pub market_scope: MarketScope,
     pub cc_amount: u64,
-    
+
     pub burn_tx_hash: String,
     pub timestamp: u64,
     pub beneficiary: String,
@@ -46,8 +46,7 @@ impl PoO {
 
     /// Validates cc_amount exactly matches physical serialized size
     pub fn amounts_are_consistent(&self) -> bool {
-        self.cc_amount == self.serialization_range.size()
-            && self.amount_tco2e == self.cc_amount
+        self.cc_amount == self.serialization_range.size() && self.amount_tco2e == self.cc_amount
     }
 }
 

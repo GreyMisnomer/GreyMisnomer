@@ -1,7 +1,7 @@
-use serde::{Deserialize, Serialize};
-use crate::serial::SerialRange;
 use crate::mrv::MRVCommitment;
 use crate::project::MarketScope;
+use crate::serial::SerialRange;
+use serde::{Deserialize, Serialize};
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
 pub enum PoIStatus {
@@ -23,7 +23,7 @@ pub struct PoI {
     pub amount_tco2e: u64,
     pub jurisdiction: String,
     pub market_scope: MarketScope,
-    
+
     pub credit_id: String,
     pub valid_from: u64,
     pub valid_until: u64,

@@ -1,7 +1,7 @@
+use crate::credit::{CreditBatch, CreditStatus, SerialSlice};
 use crate::error::RegistryError;
 use crate::poi::PoI;
-use crate::credit::{CreditBatch, CreditStatus, SerialSlice};
-use crate::poo::{PoO, PoOStatus, ClaimType};
+use crate::poo::{ClaimType, PoO, PoOStatus};
 use crate::serial::SerialRange;
 
 // The Registry serves as the central state machine and source of truth for the entire GreyMisnomer protocol.
@@ -47,7 +47,9 @@ impl Registry {
         // Enforce Invariant 3: Global Serialization lock against overlaps
         for existing in &self.credits {
             for slice in &existing.slices {
-                if slice.status == CreditStatus::Active && slice.range.overlaps(&poi.serialization_range) {
+                if slice.status == CreditStatus::Active
+                    && slice.range.overlaps(&poi.serialization_range)
+                {
                     return Err(RegistryError::RangeOverlap);
                 }
             }
@@ -62,7 +64,10 @@ impl Registry {
             project_id: poi.project_id.clone(),
             credit_id: poi.credit_id.clone(),
             original_range: poi.serialization_range,
-            slices: vec![SerialSlice { range: poi.serialization_range, status: CreditStatus::Active }],
+            slices: vec![SerialSlice {
+                range: poi.serialization_range,
+                status: CreditStatus::Active,
+            }],
             owner,
         };
 
@@ -73,14 +78,18 @@ impl Registry {
 
     // Transfer ownership of a credit seamlessly tracking lifecycle state
     pub fn transfer(&mut self, credit_id: &str, new_owner: String) -> Result<(), RegistryError> {
-        let credit = self.credits.iter_mut()
+        let credit = self
+            .credits
+            .iter_mut()
             .find(|c| c.credit_id == credit_id)
-            .ok_or_else(|| RegistryError::NotFound { id: credit_id.to_string() })?;
+            .ok_or_else(|| RegistryError::NotFound {
+                id: credit_id.to_string(),
+            })?;
 
         if !credit.is_active() {
-            return Err(RegistryError::InvalidStateTransition { 
-                from: "Retired/Expired".to_string(), 
-                to: "Active".to_string() 
+            return Err(RegistryError::InvalidStateTransition {
+                from: "Retired/Expired".to_string(),
+                to: "Active".to_string(),
             });
         }
 
@@ -96,10 +105,13 @@ impl Registry {
         beneficiary: String,
         claim_type: ClaimType,
     ) -> Result<PoO, RegistryError> {
-
-        let batch = self.credits.iter_mut()
+        let batch = self
+            .credits
+            .iter_mut()
             .find(|b| b.credit_id == credit_id)
-            .ok_or_else(|| RegistryError::NotFound { id: credit_id.to_string() })?;
+            .ok_or_else(|| RegistryError::NotFound {
+                id: credit_id.to_string(),
+            })?;
 
         // Invariant 5: Prevent double burning through historic overlap tracking
         for burned in &self.burned_ranges {
@@ -109,9 +121,14 @@ impl Registry {
         }
 
         // Find the active slice that strictly contains the burn envelope
-        let slice_idx = batch.slices.iter()
+        let slice_idx = batch
+            .slices
+            .iter()
             .position(|s| s.status == CreditStatus::Active && s.range.contains(&burn_range))
-            .ok_or_else(|| RegistryError::BurnRangeNotFound { start: burn_range.start, end: burn_range.end })?;
+            .ok_or_else(|| RegistryError::BurnRangeNotFound {
+                start: burn_range.start,
+                end: burn_range.end,
+            })?;
 
         // Excise target slice
         let target_slice = batch.slices.remove(slice_idx);
@@ -121,19 +138,28 @@ impl Registry {
 
         // Persist remainders to the batch's active state
         for r in remainders {
-            batch.slices.push(SerialSlice { range: r, status: CreditStatus::Active });
+            batch.slices.push(SerialSlice {
+                range: r,
+                status: CreditStatus::Active,
+            });
         }
-        
+
         // Push the executed burn footprint onto the batch tracking object
-        batch.slices.push(SerialSlice { range: burn_range, status: CreditStatus::Retired });
+        batch.slices.push(SerialSlice {
+            range: burn_range,
+            status: CreditStatus::Retired,
+        });
 
         // Normalize slices to merge adjacent fragments and prevent infinite fragmentation
         crate::credit::normalize_slices(&mut batch.slices);
 
         // Assert fail-fast internal validation guard to prevent silent state corruption
-        assert!(batch.validate_internal(), "CreditBatch internal state corrupted after burn mutation");
+        assert!(
+            batch.validate_internal(),
+            "CreditBatch internal state corrupted after burn mutation"
+        );
 
-        // Lock globally 
+        // Lock globally
         self.burned_ranges.push(burn_range);
 
         // Generate Settlement Artifact (PoO)
@@ -159,8 +185,8 @@ impl Registry {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::poi::PoIStatus;
     use crate::mrv::MRVCommitment;
+    use crate::poi::PoIStatus;
     use crate::project::MarketScope;
 
     fn make_poi(credit_id: &str, start: u64, end: u64) -> PoI {
@@ -219,8 +245,8 @@ mod tests {
     #[test]
     fn cannot_mint_beyond_authorized_supply() {
         let mut r = Registry::new();
-        let mut poi = make_poi("CC-1", 0, 99); 
-        poi.cc_mint_amount = 5;                
+        let mut poi = make_poi("CC-1", 0, 99);
+        poi.cc_mint_amount = 5;
         let result = r.mint(&mut poi, "Alice".to_string());
         assert_eq!(result.unwrap_err(), RegistryError::SupplyExceeded);
     }
@@ -230,7 +256,14 @@ mod tests {
         let mut registry = Registry::new();
         let mut poi = make_poi("CC-1", 0, 99);
         registry.mint(&mut poi, "Alice".to_string()).unwrap();
-        registry.burn("CC-1", SerialRange::new(0, 99).unwrap(), "Corp_X".to_string(), ClaimType::CorporateNetZero).unwrap();
+        registry
+            .burn(
+                "CC-1",
+                SerialRange::new(0, 99).unwrap(),
+                "Corp_X".to_string(),
+                ClaimType::CorporateNetZero,
+            )
+            .unwrap();
 
         let mut new_poi = make_poi("CC-2", 0, 99);
         let result = registry.mint(&mut new_poi, "Bob".to_string());
@@ -251,7 +284,14 @@ mod tests {
         let mut registry = Registry::new();
         let mut poi = make_poi("CC-1", 0, 99);
         registry.mint(&mut poi, "Alice".to_string()).unwrap();
-        let poo = registry.burn("CC-1", SerialRange::new(0, 99).unwrap(), "Corp_X".to_string(), ClaimType::CorporateNetZero).unwrap();
+        let poo = registry
+            .burn(
+                "CC-1",
+                SerialRange::new(0, 99).unwrap(),
+                "Corp_X".to_string(),
+                ClaimType::CorporateNetZero,
+            )
+            .unwrap();
         assert!(poo.is_finalized());
         assert_eq!(poo.beneficiary, "Corp_X");
         assert_eq!(registry.burned_ranges.len(), 1);
@@ -262,8 +302,20 @@ mod tests {
         let mut registry = Registry::new();
         let mut poi = make_poi("CC-1", 0, 99);
         registry.mint(&mut poi, "Alice".to_string()).unwrap();
-        registry.burn("CC-1", SerialRange::new(0, 99).unwrap(), "Corp_X".to_string(), ClaimType::CorporateNetZero).unwrap();
-        let result = registry.burn("CC-1", SerialRange::new(0, 99).unwrap(), "Corp_Y".to_string(), ClaimType::CorporateNetZero);
+        registry
+            .burn(
+                "CC-1",
+                SerialRange::new(0, 99).unwrap(),
+                "Corp_X".to_string(),
+                ClaimType::CorporateNetZero,
+            )
+            .unwrap();
+        let result = registry.burn(
+            "CC-1",
+            SerialRange::new(0, 99).unwrap(),
+            "Corp_Y".to_string(),
+            ClaimType::CorporateNetZero,
+        );
         assert!(result.is_err());
     }
 
@@ -272,10 +324,17 @@ mod tests {
         let mut registry = Registry::new();
         let mut poi = make_poi("CC-1", 0, 999);
         registry.mint(&mut poi, "Alice".to_string()).unwrap();
-        
+
         let burn_range = SerialRange::new(200, 399).unwrap();
-        let poo = registry.burn("CC-1", burn_range, "Corp_X".to_string(), ClaimType::CorporateNetZero).unwrap();
-        
+        let poo = registry
+            .burn(
+                "CC-1",
+                burn_range,
+                "Corp_X".to_string(),
+                ClaimType::CorporateNetZero,
+            )
+            .unwrap();
+
         assert_eq!(poo.cc_amount, 200);
         assert_eq!(registry.burned_ranges.len(), 1);
         assert_eq!(registry.burned_ranges[0], burn_range);
@@ -283,13 +342,25 @@ mod tests {
         let batch = registry.credits.first().unwrap();
         // Since it's normalized, left is active, middle is retired, right is active. Total 3 slices.
         assert_eq!(batch.slices.len(), 3);
-        
-        let active_slices: Vec<_> = batch.slices.iter().filter(|s| s.status == CreditStatus::Active).collect();
-        assert_eq!(active_slices.len(), 2);
-        assert!(active_slices.iter().any(|s| s.range == SerialRange::new(0, 199).unwrap()));
-        assert!(active_slices.iter().any(|s| s.range == SerialRange::new(400, 999).unwrap()));
 
-        let retired_slices: Vec<_> = batch.slices.iter().filter(|s| s.status == CreditStatus::Retired).collect();
+        let active_slices: Vec<_> = batch
+            .slices
+            .iter()
+            .filter(|s| s.status == CreditStatus::Active)
+            .collect();
+        assert_eq!(active_slices.len(), 2);
+        assert!(active_slices
+            .iter()
+            .any(|s| s.range == SerialRange::new(0, 199).unwrap()));
+        assert!(active_slices
+            .iter()
+            .any(|s| s.range == SerialRange::new(400, 999).unwrap()));
+
+        let retired_slices: Vec<_> = batch
+            .slices
+            .iter()
+            .filter(|s| s.status == CreditStatus::Retired)
+            .collect();
         assert_eq!(retired_slices.len(), 1);
         assert_eq!(retired_slices[0].range, burn_range);
     }
@@ -302,12 +373,28 @@ mod tests {
         registry.mint(&mut poi, "Alice".to_string()).unwrap();
 
         // Burn two adjacent ranges
-        registry.burn("CC-1", SerialRange::new(200, 299).unwrap(), "A".to_string(), ClaimType::CorporateNetZero).unwrap();
-        registry.burn("CC-1", SerialRange::new(300, 399).unwrap(), "B".to_string(), ClaimType::CorporateNetZero).unwrap();
+        registry
+            .burn(
+                "CC-1",
+                SerialRange::new(200, 299).unwrap(),
+                "A".to_string(),
+                ClaimType::CorporateNetZero,
+            )
+            .unwrap();
+        registry
+            .burn(
+                "CC-1",
+                SerialRange::new(300, 399).unwrap(),
+                "B".to_string(),
+                ClaimType::CorporateNetZero,
+            )
+            .unwrap();
 
         let batch = registry.credits.first().unwrap();
 
-        let retired: Vec<_> = batch.slices.iter()
+        let retired: Vec<_> = batch
+            .slices
+            .iter()
             .filter(|s| s.status == CreditStatus::Retired)
             .collect();
 
