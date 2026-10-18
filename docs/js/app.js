@@ -441,7 +441,8 @@
         jurisdiction: p.jurisdiction,
         methodology_hash: `SHA256(VM0042-v4.0)`,
         vvb_signature: `0xVVB_SIG_${Date.now().toString(36)}`,
-        owner: currentWallet
+        owner: currentWallet,
+        poi_valid: p.poiIssued === true
       };
 
       try {

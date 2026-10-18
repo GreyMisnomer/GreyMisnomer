@@ -33,6 +33,10 @@ struct MrvInput {
     source: String,
 }
 
+fn default_true() -> bool {
+    true
+}
+
 #[derive(Deserialize)]
 struct PoiInput {
     project_id: String,
@@ -44,6 +48,8 @@ struct PoiInput {
     methodology_hash: String,
     vvb_signature: String,
     owner: String,
+    #[serde(default = "default_true")]
+    poi_valid: bool,
 }
 
 #[derive(Deserialize)]
@@ -259,7 +265,7 @@ impl WasmRegistry {
             credit_id: input.credit_id.clone(),
             valid_from: 0,
             valid_until: 9_999_999_999,
-            poi_valid: true,
+            poi_valid: input.poi_valid,
             cc_mint_amount: input.cc_mint_amount,
             owner: input.owner.clone(),
             status: PoIStatus::Valid,
