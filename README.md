@@ -187,6 +187,21 @@ Open [http://localhost:8080/app.html](http://localhost:8080/app.html) in your br
 
 > **Tip:** You can also use the [Dev Container](.devcontainer/devcontainer.json) for a pre-configured Codespaces environment.
 
+### 5. Verify the Public Event Log & Bitcoin Proof Locally
+
+```bash
+# Verify the entire event log using the Rust CLI replayer
+cargo run -p grey-misnomer-cli -- docs/events.jsonl
+
+# Output machine-readable JSON verification summary
+cargo run -p grey-misnomer-cli -- docs/events.jsonl --json
+
+# Verify the OpenTimestamps Bitcoin anchoring proof (requires `pip install opentimestamps-client`)
+ots verify docs/events.jsonl.ots
+```
+
+Or open [http://localhost:8080/app.html](http://localhost:8080/app.html) (or the [Live Platform](https://greymisnomer.github.io/GreyMisnomer/)), navigate to the **Audit** tab, and your browser will independently replay `events.jsonl` in client-side WebAssembly, validate the SHA-256 hash chain, check all 7 protocol invariants, and inspect the Bitcoin attestation proof.
+
 ---
 
 ## 🧪 Testing
@@ -221,6 +236,7 @@ All protocol behavior is specified through RFCs before implementation:
 | [RFC-001](docs/rfc/rfc-001.md) | Two-Proof Model (PoI / PoO) | ✅ Implemented |
 | [RFC-002](docs/rfc/rfc-002.md) | Credit Serialization Format & Range Locking | ✅ Implemented |
 | [RFC-003](docs/rfc/rfc-003.md) | MRV Data Commitment & Merkle Root Format | ✅ Implemented |
+| [RFC-004](docs/rfc/rfc-004.md) | Canonical Event Log Schema & Hash Chain Replayer | ✅ Implemented |
 
 > New features require an accepted RFC before code is written. See the [RFC template](docs/rfc/rfc-template.md) to propose a new specification.
 
