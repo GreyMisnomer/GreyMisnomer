@@ -83,9 +83,9 @@ jobs:
 
       - name: Anchor Event Log to Bitcoin via OpenTimestamps
         run: |
-          # If .ots proof exists, attempt to upgrade pending attestations; otherwise stamp fresh
+          # If .ots proof exists, attempt to upgrade pending attestations; non-zero exit when still pending Bitcoin confirmations is expected
           if [ -f events.jsonl.ots ]; then
-            ots upgrade events.jsonl.ots || ots stamp events.jsonl
+            ots upgrade events.jsonl.ots || true
           else
             ots stamp events.jsonl
           fi
