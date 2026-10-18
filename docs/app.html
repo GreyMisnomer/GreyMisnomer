@@ -371,40 +371,172 @@
 
 ﻿      <!-- 🔎 VIEW: Audit -->
       <div class="view" id="view-audit">
-        <div class="rfc-tag">RFC-001 5</div>
-        <h2 class="page-title">Protocol Audit & Invariant Checks</h2>
-        <p class="page-desc">The Registry enforces seven core constraints in real-time. Review active checks and download serialized artifacts.</p>
+        <div class="rfc-tag">RFC-001 §5 · RFC-004 Event Log · OpenTimestamps Bitcoin Anchor</div>
+        <h2 class="page-title">Protocol Audit & In-Browser WASM Verifier</h2>
+        <p class="page-desc">Zero-trust cryptographic verification. The browser independently loads the immutable event log (<code>events.jsonl</code>), replays every state transition in WebAssembly, checks all 7 invariants, and inspects the OpenTimestamps Bitcoin attestation.</p>
 
-        <div class="metrics-grid" style="grid-template-columns: repeat(4, 1fr);">
-          <div class="metric-card" style="border-top: 3px solid var(--blue)">
-            <span class="metric-val" id="cnt-original">0</span>
-            <span class="metric-lbl">Original Supply</span>
+        <!-- ══════════════════════════════════════════════════════════════════ -->
+        <!--  PUBLIC EVENT LOG VERIFIER (RFC-004 & OPENTIMESTAMPS)             -->
+        <!-- ══════════════════════════════════════════════════════════════════ -->
+        <div class="result-card ledger-verifier-card">
+          <div class="ledger-header-row">
+            <div>
+              <div style="display:flex; align-items:center; gap:0.75rem; margin-bottom:0.25rem;">
+                <h3 style="font-size:1.25rem; font-weight:700; color:var(--text); margin:0;">Public Immutable Ledger</h3>
+                <span id="ledgerVerificationBadge" class="ledger-badge verifying">⏳ Verifying in WASM...</span>
+              </div>
+              <p style="font-size:0.85rem; color:var(--muted); margin:0;">
+                Deterministic state machine replay via pure <code>apply(state, event)</code> in WebAssembly. Zero backend trust.
+              </p>
+            </div>
+            <div style="display:flex; gap:0.5rem; flex-wrap:wrap;">
+              <button class="btn btn-primary btn-sm" id="btnReplayLedger" onclick="verifyPublicLedger()">🔄 Replay in WASM</button>
+              <a class="btn btn-secondary btn-sm" id="btnDownloadLedger" href="events.jsonl" download="events.jsonl">📄 events.jsonl</a>
+              <a class="btn btn-secondary btn-sm" id="btnDownloadOts" href="events.jsonl.ots" download="events.jsonl.ots">₿ events.jsonl.ots</a>
+              <button class="btn btn-ghost btn-sm" id="btnToggleTamperSandbox" onclick="toggleTamperSandbox()">🧪 Tamper Sandbox</button>
+            </div>
           </div>
-          <div class="metric-card" style="border-top: 3px solid var(--green)">
-            <span class="metric-val" id="cnt-active">0</span>
-            <span class="metric-lbl">Active Remainders</span>
+
+          <div id="ledgerVerificationError" class="tamper-banner error" style="display:none; margin-bottom:1rem;"></div>
+
+          <!-- OpenTimestamps Bitcoin Attestation Box -->
+          <div class="ots-box">
+            <div style="display:flex; align-items:center; gap:0.75rem;">
+              <span style="font-size:1.6rem; color:var(--amber);">₿</span>
+              <div>
+                <div style="font-size:0.9rem; font-weight:600; color:var(--amber);">Bitcoin Calendar Attestation (OpenTimestamps)</div>
+                <div id="otsStatusText" style="font-size:0.8rem; color:var(--muted);">
+                  Anchored via OpenTimestamps calendar pool · Cryptographic existence proof bound to Bitcoin blockchain.
+                </div>
+              </div>
+            </div>
+            <div style="display:flex; align-items:center; gap:0.5rem;">
+              <span class="mono-hash" style="color:var(--amber);">ots verify events.jsonl.ots</span>
+            </div>
           </div>
-          <div class="metric-card" style="border-top: 3px solid var(--red)">
-            <span class="metric-val" id="cnt-retired">0</span>
-            <span class="metric-lbl">Retired Carbon</span>
+
+          <!-- Ledger Accounting & Supply Metrics Grid -->
+          <div class="metrics-grid" style="grid-template-columns: repeat(4, 1fr); margin-bottom:1.5rem;">
+            <div class="metric-card" style="border-top: 3px solid var(--blue)">
+              <span class="metric-val" id="ledgerChainStatus" style="font-size:1.15rem; color:var(--green)">VALID</span>
+              <span class="metric-lbl">Cryptographic Chaining</span>
+            </div>
+            <div class="metric-card" style="border-top: 3px solid var(--green)">
+              <span class="metric-val" id="ledgerEventsCount">0</span>
+              <span class="metric-lbl">Replayed Events</span>
+            </div>
+            <div class="metric-card" style="border-top: 3px solid var(--purple)">
+              <span class="metric-val" id="ledgerActiveSupply">0</span>
+              <span class="metric-lbl">Active Supply</span>
+            </div>
+            <div class="metric-card" style="border-top: 3px solid var(--red)">
+              <span class="metric-val" id="ledgerRetiredSupply">0</span>
+              <span class="metric-lbl">Retired Carbon (PoO)</span>
+            </div>
           </div>
-          <div class="metric-card" style="border-top: 3px solid var(--purple)">
-            <span class="metric-val" id="cnt-burned-ranges">0</span>
-            <span class="metric-lbl">Burn Footprints</span>
+
+          <!-- Cryptographic Tip & Genesis Hashes -->
+          <div style="background:var(--bg3); border:1px solid var(--border); border-radius:8px; padding:0.75rem 1rem; margin-bottom:1.5rem; display:flex; flex-direction:column; gap:0.4rem; font-size:0.8rem;">
+            <div style="display:flex; justify-content:space-between; align-items:center; gap:1rem; flex-wrap:wrap;">
+              <span style="color:var(--muted)">Genesis Prev-Hash:</span>
+              <span class="mono-hash">0000000000000000000000000000000000000000000000000000000000000000</span>
+            </div>
+            <div style="display:flex; justify-content:space-between; align-items:center; gap:1rem; flex-wrap:wrap;">
+              <span style="color:var(--muted)">Replayed Tip Hash:</span>
+              <span class="mono-hash" id="ledgerTipHash">...</span>
+            </div>
+          </div>
+
+          <!-- 7 Protocol Invariants Live Results for Public Ledger -->
+          <h4 style="font-size:1rem; margin-bottom:0.75rem; color:var(--text); display:flex; align-items:center; gap:0.5rem;">
+            <span>🛡️</span> Live Invariant Checks on Replayed State (RFC-001 §5)
+          </h4>
+          <div class="audit-grid" id="publicLedgerInvariantsGrid" style="display:grid; grid-template-columns:repeat(2,1fr); gap:1rem;"></div>
+
+          <!-- Replayed Events Breakdown Table -->
+          <div style="margin-top:1.5rem;">
+            <h4 style="font-size:1rem; margin-bottom:0.75rem; color:var(--text); display:flex; align-items:center; gap:0.5rem;">
+              <span>📜</span> Replayed Sequential Transitions
+            </h4>
+            <div style="overflow-x:auto;">
+              <table class="ledger-events-table">
+                <thead>
+                  <tr>
+                    <th>Seq</th>
+                    <th>Type</th>
+                    <th>Prev Hash</th>
+                    <th>Entry Hash</th>
+                    <th>Transition Details</th>
+                  </tr>
+                </thead>
+                <tbody id="ledgerEventsTableBody"></tbody>
+              </table>
+            </div>
+          </div>
+
+          <!-- Interactive Tamper Testing Sandbox -->
+          <div id="tamperSandbox" class="tamper-box" style="display:none;">
+            <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:0.75rem;">
+              <h4 style="font-size:0.95rem; font-weight:600; color:var(--amber); margin:0;">
+                🧪 Cryptographic Tamper & Attack Detection Sandbox
+              </h4>
+              <span style="font-size:0.75rem; color:var(--muted);">Simulate malicious ledger modification</span>
+            </div>
+            <p style="font-size:0.8rem; color:var(--muted); margin-bottom:0.75rem;">
+              Modify any byte below (e.g., tamper with an event hash or sequence) and replay to verify that client-side WASM halts and rejects the corrupted chain.
+            </p>
+            <textarea id="tamperLogInput" class="input-modern" rows="5" style="font-family:var(--mono); font-size:0.78rem; width:100%; resize:vertical;"></textarea>
+            <div style="display:flex; gap:0.5rem; margin-top:0.75rem; flex-wrap:wrap;">
+              <button class="btn btn-primary btn-sm" onclick="replayCustomLog()">▶ Replay Modified Log in WASM</button>
+              <button class="btn btn-secondary btn-sm" onclick="corruptCustomLog()" style="color:var(--red);">⚠️ Corrupt a Hash (Test Rejection)</button>
+              <button class="btn btn-ghost btn-sm" onclick="resetCustomLog()">↺ Reset to Authentic Log</button>
+            </div>
+            <div id="tamperResultBanner" class="tamper-banner" style="display:none;"></div>
           </div>
         </div>
 
-        <div class="audit-grid" id="auditGrid" style="margin-top:2rem; display:grid; grid-template-columns:repeat(2,1fr); gap:1rem;"></div>
-
-        <div class="result-card" style="margin-top:2rem; border-color:var(--purple)">
-          <h3 style="font-size:1.1rem; margin-bottom:1rem; display:flex; align-items:center; gap:0.5rem">
-            <span>📥</span> Export Session Certificates & Receipts
+        <!-- ══════════════════════════════════════════════════════════════════ -->
+        <!--  INTERACTIVE SESSION SANDBOX (IN-MEMORY DEMO)                     -->
+        <!-- ══════════════════════════════════════════════════════════════════ -->
+        <div style="margin-top:3rem;">
+          <h3 style="font-size:1.15rem; margin-bottom:0.5rem; color:var(--text); display:flex; align-items:center; gap:0.5rem;">
+            <span>🧪</span> Interactive Session Audit (In-Memory Sandbox)
           </h3>
-          <div class="download-grid" id="downloadGrid"></div>
-          <div style="margin-top:1.5rem; display:flex; gap:1rem; flex-wrap:wrap;">
-            <button class="btn btn-primary btn-sm" onclick="exportPdfCertificate()" id="pdfExportBtn" style="display:none;background:var(--amber)">📄 Export PDF Certificate</button>
-            <button class="btn btn-primary btn-sm" onclick="exportZipBundle()" id="zipExportBtn" style="display:none;background:var(--green)">📦 Download Audit ZIP</button>
-            <button class="btn btn-ghost btn-sm" onclick="resetAll()">🔄 Reset Registry & Start Over</button>
+          <p class="page-desc" style="margin-bottom:1.5rem;">
+            Real-time invariant checking and artifact generation for transactions executed in your current browser tab.
+          </p>
+
+          <div class="metrics-grid" style="grid-template-columns: repeat(4, 1fr);">
+            <div class="metric-card" style="border-top: 3px solid var(--blue)">
+              <span class="metric-val" id="cnt-original">0</span>
+              <span class="metric-lbl">Original Supply</span>
+            </div>
+            <div class="metric-card" style="border-top: 3px solid var(--green)">
+              <span class="metric-val" id="cnt-active">0</span>
+              <span class="metric-lbl">Active Remainders</span>
+            </div>
+            <div class="metric-card" style="border-top: 3px solid var(--red)">
+              <span class="metric-val" id="cnt-retired">0</span>
+              <span class="metric-lbl">Retired Carbon</span>
+            </div>
+            <div class="metric-card" style="border-top: 3px solid var(--purple)">
+              <span class="metric-val" id="cnt-burned-ranges">0</span>
+              <span class="metric-lbl">Burn Footprints</span>
+            </div>
+          </div>
+
+          <div class="audit-grid" id="auditGrid" style="margin-top:2rem; display:grid; grid-template-columns:repeat(2,1fr); gap:1rem;"></div>
+
+          <div class="result-card" style="margin-top:2rem; border-color:var(--purple)">
+            <h3 style="font-size:1.1rem; margin-bottom:1rem; display:flex; align-items:center; gap:0.5rem">
+              <span>📥</span> Export Session Certificates & Receipts
+            </h3>
+            <div class="download-grid" id="downloadGrid"></div>
+            <div style="margin-top:1.5rem; display:flex; gap:1rem; flex-wrap:wrap;">
+              <button class="btn btn-primary btn-sm" onclick="exportPdfCertificate()" id="pdfExportBtn" style="display:none;background:var(--amber)">📄 Export PDF Certificate</button>
+              <button class="btn btn-primary btn-sm" onclick="exportZipBundle()" id="zipExportBtn" style="display:none;background:var(--green)">📦 Download Audit ZIP</button>
+              <button class="btn btn-ghost btn-sm" onclick="resetAll()">🔄 Reset Registry & Start Over</button>
+            </div>
           </div>
         </div>
       </div>

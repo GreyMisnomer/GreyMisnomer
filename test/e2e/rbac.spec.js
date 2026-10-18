@@ -143,4 +143,63 @@ test.describe('Role-Based Access Control (RBAC) Core Flows', () => {
     }
   });
 
+  test('Public Immutable Ledger WASM verifier independently verifies events.jsonl and all 7 invariants', async ({ page }) => {
+    await page.goto('/app.html');
+    await page.waitForSelector('#roleSwitcher', { timeout: 15000 });
+
+    // Navigate to Audit view
+    await page.selectOption('#roleSwitcher', 'auditor');
+    await page.click('#nav-audit');
+    await expect(page.locator('#view-audit')).toHaveClass(/active/);
+
+    // Verify verification badge shows verified status
+    const badge = page.locator('#ledgerVerificationBadge');
+    await expect(badge).toHaveClass(/ok/, { timeout: 10000 });
+    await expect(badge).toContainText('VERIFIED');
+
+    // Check chain status and metrics
+    await expect(page.locator('#ledgerChainStatus')).toContainText('VALID');
+    await expect(page.locator('#ledgerEventsCount')).toContainText('3');
+    await expect(page.locator('#ledgerActiveSupply')).toContainText('800');
+    await expect(page.locator('#ledgerRetiredSupply')).toContainText('200');
+
+    // Check all 7 public ledger invariant cards
+    const publicCards = page.locator('#publicLedgerInvariantsGrid .audit-card');
+    await expect(publicCards).toHaveCount(7);
+    for (let i = 0; i < 7; i++) {
+      await expect(publicCards.nth(i)).toHaveClass(/ok/);
+    }
+
+    // Check that sequential events table rendered all 3 events
+    const rows = page.locator('#ledgerEventsTableBody tr');
+    await expect(rows).toHaveCount(3);
+  });
+
+  test('Public Ledger Tamper Sandbox detects forged entry and displays cryptographic rejection', async ({ page }) => {
+    await page.goto('/app.html');
+    await page.waitForSelector('#roleSwitcher', { timeout: 15000 });
+
+    await page.click('#nav-audit');
+    await expect(page.locator('#view-audit')).toHaveClass(/active/);
+
+    // Open Tamper Sandbox
+    await page.click('#btnToggleTamperSandbox');
+    await expect(page.locator('#tamperSandbox')).toBeVisible();
+
+    // Trigger corruption test
+    await page.click('button:has-text("Corrupt a Hash")');
+
+    // Banner should show cryptographic rejection
+    const banner = page.locator('#tamperResultBanner');
+    await expect(banner).toBeVisible();
+    await expect(banner).toHaveClass(/error/);
+    await expect(banner).toContainText('WASM CRYPTOGRAPHIC REJECTION');
+
+    // Reset back
+    await page.click('button:has-text("Reset to Authentic Log")');
+    await page.click('button:has-text("Replay Modified Log in WASM")');
+    await expect(banner).toHaveClass(/success/);
+    await expect(banner).toContainText('REPLAY SUCCESS');
+  });
+
 });
