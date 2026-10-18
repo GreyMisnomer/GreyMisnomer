@@ -1,3 +1,4 @@
+use serde::{Deserialize, Serialize};
 use thiserror::Error;
 
 // RegistryError — the single error type for the entire protocol.
@@ -5,7 +6,7 @@ use thiserror::Error;
 // thiserror::Error auto-implements Display so each variant prints a clean message.
 
 // PartialEq lets tests use assert_eq!(result.unwrap_err(), RegistryError::InvalidRange)
-#[derive(Error, Debug, PartialEq)]
+#[derive(Error, Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub enum RegistryError {
     // RFC-002: SerialRange where start > end
     #[error("invalid serial range: start must be <= end")]

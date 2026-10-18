@@ -3,6 +3,7 @@
 export const memory: WebAssembly.Memory;
 export const __wbg_wasmregistry_free: (a: number, b: number) => void;
 export const build_commitment: (a: number, b: number, c: bigint) => [number, number, number, number];
+export const replay_event_log: (a: number, b: number) => [number, number, number, number];
 export const verify_inclusion: (a: number, b: number, c: number, d: number, e: number) => [number, number, number, number];
 export const wasmregistry_batch_state: (a: number, b: number, c: number) => [number, number, number, number];
 export const wasmregistry_burn: (a: number, b: number, c: number) => [number, number, number, number];

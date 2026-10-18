@@ -105,6 +105,16 @@ dependencies = [
 ]
 
 [[package]]
+name = "grey-misnomer-cli"
+version = "0.1.0"
+dependencies = [
+ "anyhow",
+ "grey-misnomer-core",
+ "serde",
+ "serde_json",
+]
+
+[[package]]
 name = "grey-misnomer-core"
 version = "0.1.0"
 dependencies = [

@@ -276,6 +276,34 @@ export function build_commitment(records_json, timestamp) {
 }
 
 /**
+ * In-browser event log replayer (RFC-004 / Stage 1):
+ * Parses `events.jsonl`, validates the cryptographic hash chain,
+ * replays every state transition through pure `apply()`, and verifies all 7 invariants.
+ * @param {string} events_jsonl
+ * @returns {string}
+ */
+export function replay_event_log(events_jsonl) {
+    let deferred3_0;
+    let deferred3_1;
+    try {
+        const ptr0 = passStringToWasm0(events_jsonl, wasm.__wbindgen_malloc, wasm.__wbindgen_realloc);
+        const len0 = WASM_VECTOR_LEN;
+        const ret = wasm.replay_event_log(ptr0, len0);
+        var ptr2 = ret[0];
+        var len2 = ret[1];
+        if (ret[3]) {
+            ptr2 = 0; len2 = 0;
+            throw takeFromExternrefTable0(ret[2]);
+        }
+        deferred3_0 = ptr2;
+        deferred3_1 = len2;
+        return getStringFromWasm0(ptr2, len2);
+    } finally {
+        wasm.__wbindgen_free(deferred3_0, deferred3_1, 1);
+    }
+}
+
+/**
  * Verify that a specific MRV record is included in a commitment.
  * @param {string} records_json
  * @param {number} index

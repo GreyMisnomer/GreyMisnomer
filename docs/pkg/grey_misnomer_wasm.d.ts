@@ -52,6 +52,13 @@ export class WasmRegistry {
 export function build_commitment(records_json: string, timestamp: bigint): string;
 
 /**
+ * In-browser event log replayer (RFC-004 / Stage 1):
+ * Parses `events.jsonl`, validates the cryptographic hash chain,
+ * replays every state transition through pure `apply()`, and verifies all 7 invariants.
+ */
+export function replay_event_log(events_jsonl: string): string;
+
+/**
  * Verify that a specific MRV record is included in a commitment.
  */
 export function verify_inclusion(records_json: string, index: number, root_hex: string): string;
@@ -62,6 +69,7 @@ export interface InitOutput {
     readonly memory: WebAssembly.Memory;
     readonly __wbg_wasmregistry_free: (a: number, b: number) => void;
     readonly build_commitment: (a: number, b: number, c: bigint) => [number, number, number, number];
+    readonly replay_event_log: (a: number, b: number) => [number, number, number, number];
     readonly verify_inclusion: (a: number, b: number, c: number, d: number, e: number) => [number, number, number, number];
     readonly wasmregistry_batch_state: (a: number, b: number, c: number) => [number, number, number, number];
     readonly wasmregistry_burn: (a: number, b: number, c: number) => [number, number, number, number];

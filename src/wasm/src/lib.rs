@@ -594,3 +594,14 @@ impl Default for WasmRegistry {
         Self::new()
     }
 }
+
+/// In-browser event log replayer (RFC-004 / Stage 1):
+/// Parses `events.jsonl`, validates the cryptographic hash chain,
+/// replays every state transition through pure `apply()`, and verifies all 7 invariants.
+#[wasm_bindgen]
+pub fn replay_event_log(events_jsonl: &str) -> Result<String, JsValue> {
+    match grey_misnomer_core::event_log::replay_log_str(events_jsonl) {
+        Ok(summary) => serde_json::to_string(&summary).map_err(js_err),
+        Err(err) => Err(js_err(format!("Replay verification failed: {err}"))),
+    }
+}
