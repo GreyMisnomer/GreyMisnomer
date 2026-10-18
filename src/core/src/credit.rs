@@ -12,7 +12,7 @@ pub enum CreditStatus {
 
 // A fragment of the original serial range, tracking its specific lifecycle state.
 // This allows partial retirement and granular tracking of the credit.
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct SerialSlice {
     pub range: SerialRange,
     pub status: CreditStatus,
@@ -20,7 +20,7 @@ pub struct SerialSlice {
 
 // Represents the on-chain carbon credit asset mapping to a specific project.
 // Tracks the full issuance provenance (`original_range`) and the fragmented operational state (`slices`).
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct CreditBatch {
     pub project_id: String,
     pub credit_id: String,

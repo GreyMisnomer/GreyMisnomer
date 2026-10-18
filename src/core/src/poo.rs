@@ -12,7 +12,7 @@ pub enum PoOStatus {
 
 // Defines the specific rationale for the carbon credit retirement.
 // Enables transparent tracking of why a credit was burned.
-#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 pub enum ClaimType {
     CorporateNetZero,
     Payg,
@@ -22,7 +22,7 @@ pub enum ClaimType {
 // Proof-of-Offset (PoO) represents a formally retired carbon credit.
 // As defined in RFC-001 §3.2, it contains the immutable cryptographic proof
 // that specific serial ranges have been burned and claimed.
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct PoO {
     pub project_id: String,
     pub credit_id: String,

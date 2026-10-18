@@ -1,26 +1,237 @@
-use crate::credit::{CreditBatch, CreditStatus, SerialSlice};
+use crate::credit::{normalize_slices, CreditBatch, CreditStatus, SerialSlice};
 use crate::error::RegistryError;
 use crate::poi::PoI;
 use crate::poo::{ClaimType, PoO, PoOStatus};
 use crate::serial::SerialRange;
-use std::collections::HashSet;
+use serde::{Deserialize, Serialize};
+use std::collections::BTreeSet;
 
-// The Registry serves as the central state machine and source of truth for the entire GreyMisnomer protocol.
-// It manages the global lifecycle of all Carbon Credits, ensuring compliance with RFC-001, RFC-002, and RFC-003.
-#[derive(Default)]
-pub struct Registry {
-    // Active and retired credit batches representing all issued supply
+/// The canonical, immutable state of the protocol registry.
+/// Purely functional: state transitions produce a new `RegistryState`.
+#[derive(Default, Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct RegistryState {
+    /// Active and retired credit batches representing all issued supply
     pub credits: Vec<CreditBatch>,
-    // Globally immutable append-only record of all retired/burned ranges (Invariant 4 & 5)
+    /// Globally immutable append-only record of all retired/burned ranges (Invariant 4 & 5)
     pub burned_ranges: Vec<SerialRange>,
-    // Set of all MRV data roots (merkle roots) that have been minted, preventing double-counting (Bug 9)
-    pub used_data_roots: HashSet<[u8; 32]>,
+    /// Set of all MRV data roots (merkle roots) that have been minted, preventing double-counting (Bug 9)
+    pub used_data_roots: BTreeSet<[u8; 32]>,
 }
 
-impl Registry {
-    // Instantiates an empty protocol Registry state
+/// The discrete events that cause state transitions in the GreyMisnomer protocol.
+/// Serializable to and from JSON/JSONL for event logging and deterministic replayability.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(tag = "type", content = "payload")]
+pub enum RegistryEvent {
+    #[serde(rename = "mint")]
+    Mint { poi: Box<PoI>, owner: String },
+    #[serde(rename = "transfer")]
+    Transfer {
+        credit_id: String,
+        new_owner: String,
+    },
+    #[serde(rename = "burn", alias = "retire")]
+    Burn {
+        credit_id: String,
+        burn_range: SerialRange,
+        beneficiary: String,
+        claim_type: ClaimType,
+    },
+}
+
+/// Pure state transition function: apply(state, event) -> Result<RegistryState, RegistryError>
+///
+/// Guaranteed properties:
+/// 1. Pure: No I/O, no system time, no global mutable state, no side effects.
+/// 2. Deterministic: Given the identical state and event, it always produces the identical new state or error.
+/// 3. Invariant-preserving: Valid state + valid event => valid new state satisfying all 7 protocol invariants.
+pub fn apply(state: &RegistryState, event: &RegistryEvent) -> Result<RegistryState, RegistryError> {
+    match event {
+        RegistryEvent::Mint { poi, owner } => apply_mint(state, poi, owner),
+        RegistryEvent::Transfer {
+            credit_id,
+            new_owner,
+        } => apply_transfer(state, credit_id, new_owner),
+        RegistryEvent::Burn {
+            credit_id,
+            burn_range,
+            beneficiary: _,
+            claim_type: _,
+        } => apply_burn(state, credit_id, *burn_range),
+    }
+}
+
+fn apply_mint(
+    state: &RegistryState,
+    poi: &PoI,
+    owner: &str,
+) -> Result<RegistryState, RegistryError> {
+    state.validate_poi(poi)?;
+
+    // Prevent historic replay! (Invariant 4 logic mapping)
+    for burned in &state.burned_ranges {
+        if burned.overlaps(&poi.serialization_range) {
+            return Err(RegistryError::BurnIrreversible);
+        }
+    }
+
+    // Enforce Invariant 3: Global Serialization lock against overlaps
+    for existing in &state.credits {
+        for slice in &existing.slices {
+            if slice.status == CreditStatus::Active
+                && slice.range.overlaps(&poi.serialization_range)
+            {
+                return Err(RegistryError::RangeOverlap);
+            }
+        }
+    }
+
+    // Enforce Invariant 2: The range must not exceed the PoI auth cap
+    if poi.serialization_range.size()? > poi.cc_mint_amount {
+        return Err(RegistryError::SupplyExceeded);
+    }
+
+    // Prevent duplicate credit_id (Bug 3)
+    if state.credits.iter().any(|c| c.credit_id == poi.credit_id) {
+        return Err(RegistryError::DuplicateCreditId);
+    }
+
+    // Prevent duplicate data_root (Bug 9: double-counting prevention)
+    if state
+        .used_data_roots
+        .contains(&poi.mrv_commitment.merkle_root)
+    {
+        return Err(RegistryError::DuplicateDataRoot);
+    }
+
+    let batch = CreditBatch {
+        project_id: poi.project_id.clone(),
+        credit_id: poi.credit_id.clone(),
+        original_range: poi.serialization_range,
+        slices: vec![SerialSlice {
+            range: poi.serialization_range,
+            status: CreditStatus::Active,
+        }],
+        owner: owner.to_string(),
+    };
+
+    let mut new_state = state.clone();
+    new_state
+        .used_data_roots
+        .insert(poi.mrv_commitment.merkle_root);
+    new_state.credits.push(batch);
+    Ok(new_state)
+}
+
+fn apply_transfer(
+    state: &RegistryState,
+    credit_id: &str,
+    new_owner: &str,
+) -> Result<RegistryState, RegistryError> {
+    let credit = state
+        .credits
+        .iter()
+        .find(|c| c.credit_id == credit_id)
+        .ok_or_else(|| RegistryError::NotFound {
+            id: credit_id.to_string(),
+        })?;
+
+    if !credit.is_active() {
+        return Err(RegistryError::InvalidStateTransition {
+            from: "Retired/Expired".to_string(),
+            to: "Active".to_string(),
+        });
+    }
+
+    let mut new_state = state.clone();
+    let target = new_state
+        .credits
+        .iter_mut()
+        .find(|c| c.credit_id == credit_id)
+        .unwrap();
+    target.owner = new_owner.to_string();
+    Ok(new_state)
+}
+
+fn apply_burn(
+    state: &RegistryState,
+    credit_id: &str,
+    burn_range: SerialRange,
+) -> Result<RegistryState, RegistryError> {
+    let batch = state
+        .credits
+        .iter()
+        .find(|b| b.credit_id == credit_id)
+        .ok_or_else(|| RegistryError::NotFound {
+            id: credit_id.to_string(),
+        })?;
+
+    // Invariant 5: Prevent double burning through historic overlap tracking
+    for burned in &state.burned_ranges {
+        if burned.overlaps(&burn_range) {
+            return Err(RegistryError::PoOAlreadyIssued);
+        }
+    }
+
+    // Find the active slice that strictly contains the burn envelope
+    let slice_idx = batch
+        .slices
+        .iter()
+        .position(|s| s.status == CreditStatus::Active && s.range.contains(&burn_range))
+        .ok_or(RegistryError::BurnRangeNotFound {
+            start: burn_range.start,
+            end: burn_range.end,
+        })?;
+
+    let mut new_state = state.clone();
+    let target_batch = new_state
+        .credits
+        .iter_mut()
+        .find(|b| b.credit_id == credit_id)
+        .unwrap();
+
+    // Excise target slice
+    let target_slice = target_batch.slices.remove(slice_idx);
+
+    // Run algorithmic slice split tracking active remainders
+    let remainders = target_slice.range.slice(&burn_range)?;
+
+    // Persist remainders to the batch's active state
+    for r in remainders {
+        target_batch.slices.push(SerialSlice {
+            range: r,
+            status: CreditStatus::Active,
+        });
+    }
+
+    // Push the executed burn footprint onto the batch tracking object
+    target_batch.slices.push(SerialSlice {
+        range: burn_range,
+        status: CreditStatus::Retired,
+    });
+
+    // Normalize slices to merge adjacent fragments and prevent infinite fragmentation
+    normalize_slices(&mut target_batch.slices);
+
+    // Fail-fast internal validation guard to prevent silent state corruption (Bug 15)
+    if !target_batch.validate_internal() {
+        return Err(RegistryError::CorruptedState);
+    }
+
+    // Lock globally
+    new_state.burned_ranges.push(burn_range);
+
+    Ok(new_state)
+}
+
+impl RegistryState {
     pub fn new() -> Self {
         Self::default()
+    }
+
+    /// Evaluates the pure transition function for an event against this state.
+    pub fn apply(&self, event: &RegistryEvent) -> Result<Self, RegistryError> {
+        apply(self, event)
     }
 
     // Validates a Proof-of-Integrity (PoI) before minting. Ensures the PoI hasn't been used and is semantically valid.
@@ -34,169 +245,6 @@ impl Registry {
         }
 
         Ok(())
-    }
-
-    // Mint logic mapping: ingests a PoI and issues a new CreditBatch to the owner if invariants hold.
-    pub fn mint(&mut self, poi: &mut PoI, owner: String) -> Result<CreditBatch, RegistryError> {
-        self.validate_poi(poi)?;
-
-        // Prevent historic replay! (Invariant 4 logic mapping)
-        for burned in &self.burned_ranges {
-            if burned.overlaps(&poi.serialization_range) {
-                return Err(RegistryError::BurnIrreversible);
-            }
-        }
-
-        // Enforce Invariant 3: Global Serialization lock against overlaps
-        for existing in &self.credits {
-            for slice in &existing.slices {
-                if slice.status == CreditStatus::Active
-                    && slice.range.overlaps(&poi.serialization_range)
-                {
-                    return Err(RegistryError::RangeOverlap);
-                }
-            }
-        }
-
-        // Enforce Invariant 2: The range must not exceed the PoI auth cap
-        if poi.serialization_range.size()? > poi.cc_mint_amount {
-            return Err(RegistryError::SupplyExceeded);
-        }
-
-        // Prevent duplicate credit_id (Bug 3)
-        if self.credits.iter().any(|c| c.credit_id == poi.credit_id) {
-            return Err(RegistryError::DuplicateCreditId);
-        }
-
-        // Prevent duplicate data_root (Bug 9: double-counting prevention)
-        if self
-            .used_data_roots
-            .contains(&poi.mrv_commitment.merkle_root)
-        {
-            return Err(RegistryError::DuplicateDataRoot);
-        }
-
-        let batch = CreditBatch {
-            project_id: poi.project_id.clone(),
-            credit_id: poi.credit_id.clone(),
-            original_range: poi.serialization_range,
-            slices: vec![SerialSlice {
-                range: poi.serialization_range,
-                status: CreditStatus::Active,
-            }],
-            owner,
-        };
-
-        self.used_data_roots.insert(poi.mrv_commitment.merkle_root);
-        poi.status = crate::poi::PoIStatus::Used;
-        self.credits.push(batch.clone());
-        Ok(batch)
-    }
-
-    // Transfer ownership of a credit seamlessly tracking lifecycle state
-    pub fn transfer(&mut self, credit_id: &str, new_owner: String) -> Result<(), RegistryError> {
-        let credit = self
-            .credits
-            .iter_mut()
-            .find(|c| c.credit_id == credit_id)
-            .ok_or_else(|| RegistryError::NotFound {
-                id: credit_id.to_string(),
-            })?;
-
-        if !credit.is_active() {
-            return Err(RegistryError::InvalidStateTransition {
-                from: "Retired/Expired".to_string(),
-                to: "Active".to_string(),
-            });
-        }
-
-        credit.owner = new_owner;
-        Ok(())
-    }
-
-    // Partial Burn logic mapping
-    pub fn burn(
-        &mut self,
-        credit_id: &str,
-        burn_range: SerialRange,
-        beneficiary: String,
-        claim_type: ClaimType,
-    ) -> Result<PoO, RegistryError> {
-        let batch = self
-            .credits
-            .iter_mut()
-            .find(|b| b.credit_id == credit_id)
-            .ok_or_else(|| RegistryError::NotFound {
-                id: credit_id.to_string(),
-            })?;
-
-        // Invariant 5: Prevent double burning through historic overlap tracking
-        for burned in &self.burned_ranges {
-            if burned.overlaps(&burn_range) {
-                return Err(RegistryError::PoOAlreadyIssued);
-            }
-        }
-
-        // Find the active slice that strictly contains the burn envelope
-        let slice_idx = batch
-            .slices
-            .iter()
-            .position(|s| s.status == CreditStatus::Active && s.range.contains(&burn_range))
-            .ok_or(RegistryError::BurnRangeNotFound {
-                start: burn_range.start,
-                end: burn_range.end,
-            })?;
-
-        // Excise target slice
-        let target_slice = batch.slices.remove(slice_idx);
-
-        // Run algorithmic slice split tracking active remainders
-        let remainders = target_slice.range.slice(&burn_range)?;
-
-        // Persist remainders to the batch's active state
-        for r in remainders {
-            batch.slices.push(SerialSlice {
-                range: r,
-                status: CreditStatus::Active,
-            });
-        }
-
-        // Push the executed burn footprint onto the batch tracking object
-        batch.slices.push(SerialSlice {
-            range: burn_range,
-            status: CreditStatus::Retired,
-        });
-
-        // Normalize slices to merge adjacent fragments and prevent infinite fragmentation
-        crate::credit::normalize_slices(&mut batch.slices);
-
-        // Fail-fast internal validation guard to prevent silent state corruption (Bug 15)
-        if !batch.validate_internal() {
-            return Err(RegistryError::CorruptedState);
-        }
-
-        // Lock globally
-        self.burned_ranges.push(burn_range);
-
-        let burn_size = burn_range.size()?;
-
-        // Generate Settlement Artifact (PoO)
-        let poo = PoO {
-            project_id: batch.project_id.clone(),
-            credit_id: credit_id.to_string(),
-            serialization_range: burn_range,
-            market_scope: crate::project::MarketScope::Vcm,
-            cc_amount: burn_size,
-            burn_tx_hash: format!("mock_burn_{}_{}", credit_id, burn_range.start),
-            timestamp: 0,
-            beneficiary,
-            owner: batch.owner.clone(),
-            claim_type,
-            amount_tco2e: burn_size,
-            status: PoOStatus::Finalized,
-        };
-
-        Ok(poo)
     }
 
     // ── Invariant Verification Engine (RFC-001 §5) ──────────────────────────────
@@ -427,6 +475,113 @@ pub struct InvariantReport {
     pub inv6_poo_non_transferable: bool,
     pub inv7_poi_single_use: bool,
     pub all_passed: bool,
+}
+
+/// The stateful Registry wrapper that manages state transitions via pure `apply()`.
+/// Implements `Deref` and `DerefMut` to `RegistryState` for seamless inspection.
+#[derive(Default, Debug, Clone, Serialize, Deserialize)]
+pub struct Registry {
+    pub state: RegistryState,
+}
+
+impl std::ops::Deref for Registry {
+    type Target = RegistryState;
+    fn deref(&self) -> &Self::Target {
+        &self.state
+    }
+}
+
+impl std::ops::DerefMut for Registry {
+    fn deref_mut(&mut self) -> &mut Self::Target {
+        &mut self.state
+    }
+}
+
+impl Registry {
+    /// Instantiates an empty protocol Registry
+    pub fn new() -> Self {
+        Self::default()
+    }
+
+    /// Instantiates a Registry initialized from an existing state
+    pub fn from_state(state: RegistryState) -> Self {
+        Self { state }
+    }
+
+    /// Applies a discrete protocol event to transition the registry's state
+    pub fn apply_event(&mut self, event: &RegistryEvent) -> Result<(), RegistryError> {
+        self.state = apply(&self.state, event)?;
+        Ok(())
+    }
+
+    /// Mint logic: constructs a Mint event, applies it to state, marks PoI as used, and returns the new CreditBatch
+    pub fn mint(&mut self, poi: &mut PoI, owner: String) -> Result<CreditBatch, RegistryError> {
+        let event = RegistryEvent::Mint {
+            poi: Box::new(poi.clone()),
+            owner,
+        };
+        let new_state = apply(&self.state, &event)?;
+        self.state = new_state;
+        poi.status = crate::poi::PoIStatus::Used;
+        let batch = self.credits.last().unwrap().clone();
+        Ok(batch)
+    }
+
+    /// Transfer logic: constructs a Transfer event and applies it to state
+    pub fn transfer(&mut self, credit_id: &str, new_owner: String) -> Result<(), RegistryError> {
+        let event = RegistryEvent::Transfer {
+            credit_id: credit_id.to_string(),
+            new_owner,
+        };
+        self.state = apply(&self.state, &event)?;
+        Ok(())
+    }
+
+    /// Partial burn logic: constructs a Burn event, applies it to state, and generates the settlement PoO
+    pub fn burn(
+        &mut self,
+        credit_id: &str,
+        burn_range: SerialRange,
+        beneficiary: String,
+        claim_type: ClaimType,
+    ) -> Result<PoO, RegistryError> {
+        let event = RegistryEvent::Burn {
+            credit_id: credit_id.to_string(),
+            burn_range,
+            beneficiary: beneficiary.clone(),
+            claim_type,
+        };
+        let new_state = apply(&self.state, &event)?;
+
+        let batch = self
+            .credits
+            .iter()
+            .find(|b| b.credit_id == credit_id)
+            .ok_or_else(|| RegistryError::NotFound {
+                id: credit_id.to_string(),
+            })?
+            .clone();
+
+        self.state = new_state;
+
+        let burn_size = burn_range.size()?;
+        let poo = PoO {
+            project_id: batch.project_id,
+            credit_id: credit_id.to_string(),
+            serialization_range: burn_range,
+            market_scope: crate::project::MarketScope::Vcm,
+            cc_amount: burn_size,
+            burn_tx_hash: format!("mock_burn_{}_{}", credit_id, burn_range.start),
+            timestamp: 0,
+            beneficiary,
+            owner: batch.owner,
+            claim_type,
+            amount_tco2e: burn_size,
+            status: PoOStatus::Finalized,
+        };
+
+        Ok(poo)
+    }
 }
 
 #[cfg(test)]
@@ -755,5 +910,146 @@ mod tests {
 
         assert!(!registry.check_invariant_5());
         assert!(!registry.check_invariants().all_passed);
+    }
+
+    // ── Pure apply(state, event) tests ──────────────────────────────────────────
+
+    #[test]
+    fn test_pure_apply_immutability() {
+        let s0 = RegistryState::new();
+        let poi = make_poi("CC-PURE-1", 1000, 1999);
+        let event = RegistryEvent::Mint {
+            poi: Box::new(poi),
+            owner: "Alice".to_string(),
+        };
+
+        // s0 must remain completely empty after applying
+        let s1 = apply(&s0, &event).unwrap();
+        assert!(s0.credits.is_empty());
+        assert!(s0.used_data_roots.is_empty());
+        assert_eq!(s1.credits.len(), 1);
+        assert_eq!(s1.used_data_roots.len(), 1);
+        assert_eq!(s1.credits[0].credit_id, "CC-PURE-1");
+    }
+
+    #[test]
+    fn test_pure_apply_full_lifecycle() {
+        let s0 = RegistryState::new();
+        let poi = make_poi("CC-CYCLE", 100, 199);
+
+        // Step 1: Mint
+        let mint_event = RegistryEvent::Mint {
+            poi: Box::new(poi),
+            owner: "Alice".to_string(),
+        };
+        let s1 = apply(&s0, &mint_event).unwrap();
+        assert_eq!(s1.credits[0].owner, "Alice");
+        assert!(s1.check_invariants().all_passed);
+
+        // Step 2: Transfer
+        let xfer_event = RegistryEvent::Transfer {
+            credit_id: "CC-CYCLE".to_string(),
+            new_owner: "Bob".to_string(),
+        };
+        let s2 = apply(&s1, &xfer_event).unwrap();
+        assert_eq!(s2.credits[0].owner, "Bob");
+        assert_eq!(s1.credits[0].owner, "Alice"); // s1 untouched
+        assert!(s2.check_invariants().all_passed);
+
+        // Step 3: Burn
+        let burn_event = RegistryEvent::Burn {
+            credit_id: "CC-CYCLE".to_string(),
+            burn_range: SerialRange::new(120, 149).unwrap(),
+            beneficiary: "GreenCorp".to_string(),
+            claim_type: ClaimType::CorporateNetZero,
+        };
+        let s3 = apply(&s2, &burn_event).unwrap();
+        assert_eq!(s3.burned_ranges.len(), 1);
+        assert_eq!(s3.burned_ranges[0], SerialRange::new(120, 149).unwrap());
+        assert!(s3.check_invariants().all_passed);
+    }
+
+    #[test]
+    fn test_pure_apply_rejects_invalid_event() {
+        let s0 = RegistryState::new();
+        let mut poi = make_poi("CC-ERR", 100, 199);
+        poi.status = PoIStatus::Used; // Invalid: already used
+
+        let event = RegistryEvent::Mint {
+            poi: Box::new(poi),
+            owner: "Alice".to_string(),
+        };
+        let err = apply(&s0, &event).unwrap_err();
+        assert_eq!(err, RegistryError::PoIAlreadyUsed);
+    }
+
+    #[test]
+    fn test_event_serde_roundtrip() {
+        let poi = make_poi("CC-SERDE", 100, 199);
+        let events = vec![
+            RegistryEvent::Mint {
+                poi: Box::new(poi),
+                owner: "Alice".to_string(),
+            },
+            RegistryEvent::Transfer {
+                credit_id: "CC-SERDE".to_string(),
+                new_owner: "Bob".to_string(),
+            },
+            RegistryEvent::Burn {
+                credit_id: "CC-SERDE".to_string(),
+                burn_range: SerialRange::new(100, 150).unwrap(),
+                beneficiary: "ACME Corp".to_string(),
+                claim_type: ClaimType::Compliance,
+            },
+        ];
+
+        for ev in &events {
+            let json = serde_json::to_string(ev).unwrap();
+            let deserialized: RegistryEvent = serde_json::from_str(&json).unwrap();
+            assert_eq!(ev, &deserialized);
+        }
+    }
+
+    #[test]
+    fn test_state_machine_replay_equivalence() {
+        let mut registry = Registry::new();
+        let poi = make_poi("CC-REPLAY", 500, 599);
+
+        let mint_ev = RegistryEvent::Mint {
+            poi: Box::new(poi.clone()),
+            owner: "Alice".to_string(),
+        };
+        let xfer_ev = RegistryEvent::Transfer {
+            credit_id: "CC-REPLAY".to_string(),
+            new_owner: "Bob".to_string(),
+        };
+        let burn_ev = RegistryEvent::Burn {
+            credit_id: "CC-REPLAY".to_string(),
+            burn_range: SerialRange::new(520, 549).unwrap(),
+            beneficiary: "ZeroNet".to_string(),
+            claim_type: ClaimType::Payg,
+        };
+
+        // Execute via stateful methods on Registry
+        let mut poi_mut = poi;
+        registry.mint(&mut poi_mut, "Alice".to_string()).unwrap();
+        registry.transfer("CC-REPLAY", "Bob".to_string()).unwrap();
+        registry
+            .burn(
+                "CC-REPLAY",
+                SerialRange::new(520, 549).unwrap(),
+                "ZeroNet".to_string(),
+                ClaimType::Payg,
+            )
+            .unwrap();
+
+        // Replay independently via pure apply()
+        let s0 = RegistryState::new();
+        let s1 = apply(&s0, &mint_ev).unwrap();
+        let s2 = apply(&s1, &xfer_ev).unwrap();
+        let s3 = apply(&s2, &burn_ev).unwrap();
+
+        // Both states must be identical
+        assert_eq!(registry.state, s3);
     }
 }

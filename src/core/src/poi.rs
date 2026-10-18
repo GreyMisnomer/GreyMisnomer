@@ -13,7 +13,7 @@ pub enum PoIStatus {
 // Proof-of-Integrity (PoI) represents the cryptographic authorization to mint carbon credits.
 // As defined in RFC-001 §3.1, it binds real-world MRV data to a specific serial range
 // and must be digitally signed by a recognized VVB.
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct PoI {
     pub project_id: String,
     pub mrv_commitment: MRVCommitment,

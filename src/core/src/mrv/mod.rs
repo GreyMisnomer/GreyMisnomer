@@ -15,7 +15,7 @@ pub struct MRVRecord {
 // --- MRVCommitment -------------------------------------------------------
 // The single on-chain artifact that represents an entire MRV dataset.
 // Stored inside PoI.mrv_commitment — binds the credit to real-world data.
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct MRVCommitment {
     // BLAKE3 Merkle Root of all MRV records for this issuance period
     pub merkle_root: [u8; 32],
