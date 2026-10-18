@@ -10,6 +10,7 @@
     // Platform state (lives in JS, simulates "DB")
     let projects = [];       // { id, name, tech, jurisdiction, org, expectedCredits, lat, lng, status, mrvCommitted, poiIssued }
     let mintedBatches = [];  // { creditId, projectId, owner, totalCredits, originalStart, originalEnd, poiStatus, listedOnMarket, listingPrice, pooReceipts }
+    let globalNextSerial = 1000000;
     let currentRole = 'admin';
     let currentWallet = '0xProjectOwner';
     let currentOrg = 'ABC Solar Energy Pvt. Ltd.';
@@ -695,7 +696,10 @@
       if (p.minted) { showToast('Project already minted.'); return; }
 
       const creditId = `CC-${p.tech.replace(/\s/g, '').toUpperCase().slice(0,5)}-${Date.now().toString(36).toUpperCase()}`;
-      const serialStart = 1000000 + mintedBatches.length * 10000;
+      const serialStart = Math.max(
+        globalNextSerial,
+        mintedBatches.length > 0 ? Math.max(...mintedBatches.map(b => b.originalEnd)) + 1 : 1000000
+      );
       const serialEnd = serialStart + p.expectedCredits - 1;
 
       const poiData = {
@@ -715,6 +719,7 @@
         const res = registry.mint(JSON.stringify(poiData));
         const mintData = JSON.parse(res);
 
+        globalNextSerial = serialEnd + 1;
         p.minted = true;
         p.status = 'Minted';
 
@@ -1496,6 +1501,7 @@
         registry = new WasmRegistry();
         mrvRecords = []; commitment = null;
         projects = []; mintedBatches = [];
+        globalNextSerial = 1000000;
         document.getElementById('mrvCommitmentDisplay').replaceChildren();
         document.getElementById('spotCheckSection').style.display = 'none';
         document.getElementById('mrvBody').replaceChildren();
