@@ -14,6 +14,22 @@
     let currentWallet = '0xProjectOwner';
     let currentOrg = 'ABC Solar Energy Pvt. Ltd.';
 
+    function createEmptyState(icon, title, desc) {
+      const div = document.createElement('div');
+      div.className = 'empty-state';
+      const iconDiv = document.createElement('div');
+      iconDiv.className = 'empty-icon';
+      iconDiv.textContent = icon;
+      const h3 = document.createElement('h3');
+      h3.textContent = title;
+      const p = document.createElement('p');
+      p.textContent = desc;
+      div.appendChild(iconDiv);
+      div.appendChild(h3);
+      div.appendChild(p);
+      return div;
+    }
+
     // ══════════════════════════════════════════════════════════════════
     //  BOOTSTRAP
     // ══════════════════════════════════════════════════════════════════
@@ -131,25 +147,81 @@
 
     function refreshProjectsList() {
       const container = document.getElementById('projectsList');
+      container.replaceChildren();
       if (projects.length === 0) {
-        container.innerHTML = '<div class="empty-state"><div class="empty-icon">📁</div><h3>No Projects Yet</h3><p>Register your first carbon reduction project above.</p></div>';
+        container.appendChild(createEmptyState('📁', 'No Projects Yet', 'Register your first carbon reduction project above.'));
         return;
       }
-      let html = '<div class="table-wrap"><table class="data"><thead><tr><th>Project ID</th><th>Name</th><th>Technology</th><th>Status</th><th>Credits</th><th>Actions</th></tr></thead><tbody>';
-      projects.forEach((p, i) => {
-        const statusClass = p.minted ? 'active' : (p.poiIssued ? 'listed' : (p.mrvCommitted ? 'pending' : ''));
-        const statusText = p.minted ? 'Minted' : (p.poiIssued ? 'PoI Issued' : (p.mrvCommitted ? 'MRV Committed' : 'Registered'));
-        html += `<tr>
-          <td style="color:var(--blue)">${p.id}</td>
-          <td style="color:var(--text);font-family:var(--sans)">${p.name}</td>
-          <td>${p.tech}</td>
-          <td><span class="status-pill ${statusClass || 'pending'}">${statusText}</span></td>
-          <td>${p.expectedCredits.toLocaleString()}</td>
-          <td>${!p.mrvCommitted ? `<button class="btn btn-secondary btn-sm" onclick="navigate('mrv')">Upload MRV</button>` : (!p.minted && p.poiIssued ? `<button class="btn btn-green btn-sm" onclick="mintFromProject(${i})">🪙 Mint</button>` : '—')}</td>
-        </tr>`;
+      const wrap = document.createElement('div');
+      wrap.className = 'table-wrap';
+      const table = document.createElement('table');
+      table.className = 'data';
+
+      const thead = document.createElement('thead');
+      const headerRow = document.createElement('tr');
+      ['Project ID', 'Name', 'Technology', 'Status', 'Credits', 'Actions'].forEach(text => {
+        const th = document.createElement('th');
+        th.textContent = text;
+        headerRow.appendChild(th);
       });
-      html += '</tbody></table></div>';
-      container.innerHTML = html;
+      thead.appendChild(headerRow);
+      table.appendChild(thead);
+
+      const tbody = document.createElement('tbody');
+      projects.forEach((p, i) => {
+        const tr = document.createElement('tr');
+
+        const tdId = document.createElement('td');
+        tdId.style.color = 'var(--blue)';
+        tdId.textContent = p.id;
+        tr.appendChild(tdId);
+
+        const tdName = document.createElement('td');
+        tdName.style.color = 'var(--text)';
+        tdName.style.fontFamily = 'var(--sans)';
+        tdName.textContent = p.name;
+        tr.appendChild(tdName);
+
+        const tdTech = document.createElement('td');
+        tdTech.textContent = p.tech;
+        tr.appendChild(tdTech);
+
+        const tdStatus = document.createElement('td');
+        const spanStatus = document.createElement('span');
+        const statusClass = p.minted ? 'active' : (p.poiIssued ? 'listed' : (p.mrvCommitted ? 'pending' : 'pending'));
+        const statusText = p.minted ? 'Minted' : (p.poiIssued ? 'PoI Issued' : (p.mrvCommitted ? 'MRV Committed' : 'Registered'));
+        spanStatus.className = `status-pill ${statusClass}`;
+        spanStatus.textContent = statusText;
+        tdStatus.appendChild(spanStatus);
+        tr.appendChild(tdStatus);
+
+        const tdCredits = document.createElement('td');
+        tdCredits.textContent = p.expectedCredits.toLocaleString();
+        tr.appendChild(tdCredits);
+
+        const tdAction = document.createElement('td');
+        if (!p.mrvCommitted) {
+          const btn = document.createElement('button');
+          btn.className = 'btn btn-secondary btn-sm';
+          btn.textContent = 'Upload MRV';
+          btn.onclick = () => navigate('mrv');
+          tdAction.appendChild(btn);
+        } else if (!p.minted && p.poiIssued) {
+          const btn = document.createElement('button');
+          btn.className = 'btn btn-green btn-sm';
+          btn.textContent = '🪙 Mint';
+          btn.onclick = () => mintFromProject(i);
+          tdAction.appendChild(btn);
+        } else {
+          tdAction.textContent = '—';
+        }
+        tr.appendChild(tdAction);
+
+        tbody.appendChild(tr);
+      });
+      table.appendChild(tbody);
+      wrap.appendChild(table);
+      container.appendChild(wrap);
     }
 
     // ══════════════════════════════════════════════════════════════════
@@ -157,13 +229,19 @@
     // ══════════════════════════════════════════════════════════════════
     function refreshMrvProjectSelect() {
       const sel = document.getElementById('mrv-project-select');
-      sel.innerHTML = '';
+      sel.replaceChildren();
       if (projects.length === 0) {
-        sel.innerHTML = '<option value="">— Register a project first —</option>';
+        const opt = document.createElement('option');
+        opt.value = '';
+        opt.textContent = '— Register a project first —';
+        sel.appendChild(opt);
         return;
       }
       projects.filter(p => !p.minted).forEach(p => {
-        sel.innerHTML += `<option value="${p.id}">${p.id} — ${p.name}</option>`;
+        const opt = document.createElement('option');
+        opt.value = p.id;
+        opt.textContent = `${p.id} — ${p.name}`;
+        sel.appendChild(opt);
       });
     }
 
@@ -174,20 +252,65 @@
       const defaultVal = val || 1200.0;
       const defaultSrc = src || `SOLAR-SENSOR-${String(idx % 4).padStart(3, '0')}`;
       const row = document.createElement('tr');
-      row.innerHTML = `
-        <td style="color:var(--muted);font-family:var(--mono);font-size:0.73rem;">${idx + 1}</td>
-        <td><input type="number" class="mrv-ts" value="${defaultTs}"></td>
-        <td><input type="number" class="mrv-val" value="${defaultVal}" step="0.1"></td>
-        <td><input type="text" class="mrv-unit" value="${unit}" style="width:70px;"></td>
-        <td><input type="text" class="mrv-src" value="${defaultSrc}"></td>
-        <td><button onclick="this.closest('tr').remove();reindexTable();updateRecordBadge();" style="background:none;border:none;color:var(--muted);cursor:pointer;font-size:0.9rem;">✕</button></td>`;
+
+      const tdIdx = document.createElement('td');
+      tdIdx.style.cssText = 'color:var(--muted);font-family:var(--mono);font-size:0.73rem;';
+      tdIdx.textContent = idx + 1;
+      row.appendChild(tdIdx);
+
+      const tdTs = document.createElement('td');
+      const inTs = document.createElement('input');
+      inTs.type = 'number';
+      inTs.className = 'mrv-ts';
+      inTs.value = defaultTs;
+      tdTs.appendChild(inTs);
+      row.appendChild(tdTs);
+
+      const tdVal = document.createElement('td');
+      const inVal = document.createElement('input');
+      inVal.type = 'number';
+      inVal.className = 'mrv-val';
+      inVal.value = defaultVal;
+      inVal.step = '0.1';
+      tdVal.appendChild(inVal);
+      row.appendChild(tdVal);
+
+      const tdUnit = document.createElement('td');
+      const inUnit = document.createElement('input');
+      inUnit.type = 'text';
+      inUnit.className = 'mrv-unit';
+      inUnit.value = unit;
+      inUnit.style.width = '70px';
+      tdUnit.appendChild(inUnit);
+      row.appendChild(tdUnit);
+
+      const tdSrc = document.createElement('td');
+      const inSrc = document.createElement('input');
+      inSrc.type = 'text';
+      inSrc.className = 'mrv-src';
+      inSrc.value = defaultSrc;
+      tdSrc.appendChild(inSrc);
+      row.appendChild(tdSrc);
+
+      const tdDel = document.createElement('td');
+      const delBtn = document.createElement('button');
+      delBtn.textContent = '✕';
+      delBtn.style.cssText = 'background:none;border:none;color:var(--muted);cursor:pointer;font-size:0.9rem;';
+      delBtn.onclick = () => {
+        row.remove();
+        reindexTable();
+        updateRecordBadge();
+      };
+      tdDel.appendChild(delBtn);
+      row.appendChild(tdDel);
+
       body.appendChild(row);
       updateRecordBadge();
     }
     window.addMrvRow = addMrvRow;
     window.reindexTable = () => { document.querySelectorAll('#mrvBody tr').forEach((row, i) => { row.cells[0].textContent = i + 1; }); };
 
-    function clearMrvTable() { document.getElementById('mrvBody').innerHTML = ''; updateRecordBadge(); }
+    function clearMrvTable() { document.getElementById('mrvBody').replaceChildren(); updateRecordBadge(); }
     window.clearMrvTable = clearMrvTable;
 
     function updateRecordBadge() {
@@ -285,16 +408,45 @@
         const prj = projects.find(p => p.id === selProjectId);
         if (prj) { prj.mrvCommitted = true; prj.status = 'MRV Committed'; prj.commitment = commitment; prj.mrvData = list; }
 
-        document.getElementById('mrvCommitmentDisplay').innerHTML = `
-          <div class="hash-display"><span class="tag">BLAKE3 Merkle Root</span>${commitment.merkle_root_hex}</div>
-          <div class="result-card success">
-            <h4>✅ Merkle Commitment Successful (RFC-003)</h4>
-            <div class="kv-row"><span class="kv-key">project</span><span class="kv-val blue">${selProjectId}</span></div>
-            <div class="kv-row"><span class="kv-key">leaf_count</span><span class="kv-val green">${commitment.leaf_count} leaves</span></div>
-            <div class="kv-row"><span class="kv-key">hash_algorithm</span><span class="kv-val blue">${commitment.algorithm}</span></div>
-            <div class="kv-row"><span class="kv-key">commitment_ts</span><span class="kv-val">${commitment.timestamp}</span></div>
-            <div class="kv-row"><span class="kv-key">data_anchored</span><span class="kv-val green">True (Stored in Registry)</span></div>
-          </div>`;
+        const disp = document.getElementById('mrvCommitmentDisplay');
+        disp.replaceChildren();
+
+        const hashDiv = document.createElement('div');
+        hashDiv.className = 'hash-display';
+        const tag = document.createElement('span');
+        tag.className = 'tag';
+        tag.textContent = 'BLAKE3 Merkle Root';
+        hashDiv.appendChild(tag);
+        hashDiv.appendChild(document.createTextNode(commitment.merkle_root_hex));
+        disp.appendChild(hashDiv);
+
+        const card = document.createElement('div');
+        card.className = 'result-card success';
+        const h4 = document.createElement('h4');
+        h4.textContent = '✅ Merkle Commitment Successful (RFC-003)';
+        card.appendChild(h4);
+
+        const kvRows = [
+          ['project', selProjectId, 'kv-val blue'],
+          ['leaf_count', `${commitment.leaf_count} leaves`, 'kv-val green'],
+          ['hash_algorithm', commitment.algorithm, 'kv-val blue'],
+          ['commitment_ts', String(commitment.timestamp), 'kv-val'],
+          ['data_anchored', 'True (Stored in Registry)', 'kv-val green']
+        ];
+        kvRows.forEach(([key, val, valClass]) => {
+          const rowDiv = document.createElement('div');
+          rowDiv.className = 'kv-row';
+          const kSpan = document.createElement('span');
+          kSpan.className = 'kv-key';
+          kSpan.textContent = key;
+          const vSpan = document.createElement('span');
+          vSpan.className = valClass;
+          vSpan.textContent = val;
+          rowDiv.appendChild(kSpan);
+          rowDiv.appendChild(vSpan);
+          card.appendChild(rowDiv);
+        });
+        disp.appendChild(card);
 
         renderSpotChecks();
         document.getElementById('spotCheckSection').style.display = 'block';
@@ -313,7 +465,7 @@
 
     function renderSpotChecks() {
       const body = document.getElementById('spotCheckBody');
-      body.innerHTML = '';
+      body.replaceChildren();
       const indices = [];
       if (mrvRecords.length > 0) indices.push(0);
       if (mrvRecords.length > 2) indices.push(Math.floor(mrvRecords.length / 2));
@@ -321,12 +473,41 @@
       indices.forEach(idx => {
         const record = mrvRecords[idx];
         const row = document.createElement('tr');
-        row.innerHTML = `
-          <td style="font-family:var(--mono)">[${idx}]</td>
-          <td>${record.source}</td>
-          <td><span id="spot-val-${idx}">${record.value}</span> ${record.unit}</td>
-          <td><input type="checkbox" id="tamper-${idx}" onchange="toggleTamper(${idx})"></td>
-          <td id="proof-status-${idx}"><button class="btn btn-secondary btn-sm" onclick="runSpotVerify(${idx})">Verify Inclusion</button></td>`;
+
+        const tdIdx = document.createElement('td');
+        tdIdx.style.fontFamily = 'var(--mono)';
+        tdIdx.textContent = `[${idx}]`;
+        row.appendChild(tdIdx);
+
+        const tdSrc = document.createElement('td');
+        tdSrc.textContent = record.source;
+        row.appendChild(tdSrc);
+
+        const tdVal = document.createElement('td');
+        const spanVal = document.createElement('span');
+        spanVal.id = `spot-val-${idx}`;
+        spanVal.textContent = record.value;
+        tdVal.appendChild(spanVal);
+        tdVal.appendChild(document.createTextNode(` ${record.unit}`));
+        row.appendChild(tdVal);
+
+        const tdCheck = document.createElement('td');
+        const check = document.createElement('input');
+        check.type = 'checkbox';
+        check.id = `tamper-${idx}`;
+        check.onchange = () => toggleTamper(idx);
+        tdCheck.appendChild(check);
+        row.appendChild(tdCheck);
+
+        const tdStatus = document.createElement('td');
+        tdStatus.id = `proof-status-${idx}`;
+        const vBtn = document.createElement('button');
+        vBtn.className = 'btn btn-secondary btn-sm';
+        vBtn.textContent = 'Verify Inclusion';
+        vBtn.onclick = () => runSpotVerify(idx);
+        tdStatus.appendChild(vBtn);
+        row.appendChild(tdStatus);
+
         body.appendChild(row);
       });
     }
@@ -336,7 +517,13 @@
       const displaySpan = document.getElementById(`spot-val-${idx}`);
       if (checked) { displaySpan.textContent = "999999.0 (Tampered)"; displaySpan.style.color = "var(--red)"; }
       else { displaySpan.textContent = mrvRecords[idx].value; displaySpan.style.color = "var(--text)"; }
-      document.getElementById(`proof-status-${idx}`).innerHTML = `<button class="btn btn-secondary btn-sm" onclick="runSpotVerify(${idx})">Verify Inclusion</button>`;
+      const statusTd = document.getElementById(`proof-status-${idx}`);
+      statusTd.replaceChildren();
+      const vBtn = document.createElement('button');
+      vBtn.className = 'btn btn-secondary btn-sm';
+      vBtn.textContent = 'Verify Inclusion';
+      vBtn.onclick = () => runSpotVerify(idx);
+      statusTd.appendChild(vBtn);
     };
 
     window.runSpotVerify = (idx) => {
@@ -347,8 +534,16 @@
         const dummyList = [...mrvRecords]; dummyList[idx] = targetRecord;
         const res = verify_inclusion(JSON.stringify(dummyList), idx, commitment.merkle_root_hex);
         const statusTd = document.getElementById(`proof-status-${idx}`);
-        if (res === "verified") statusTd.innerHTML = `<span style="color:var(--green)">✓ Verified</span>`;
-        else statusTd.innerHTML = `<span style="color:var(--red)">✗ Rejected</span>`;
+        statusTd.replaceChildren();
+        const span = document.createElement('span');
+        if (res === "verified") {
+          span.style.color = 'var(--green)';
+          span.textContent = '✓ Verified';
+        } else {
+          span.style.color = 'var(--red)';
+          span.textContent = '✗ Rejected';
+        }
+        statusTd.appendChild(span);
       } catch (err) { showToast(err); }
     };
 
@@ -357,44 +552,115 @@
     // ══════════════════════════════════════════════════════════════════
     function refreshVerification() {
       const container = document.getElementById('verificationQueue');
+      container.replaceChildren();
       const pending = projects.filter(p => p.mrvCommitted && !p.poiIssued);
       const approved = projects.filter(p => p.poiIssued);
 
       if (pending.length === 0 && approved.length === 0) {
-        container.innerHTML = '<div class="empty-state"><div class="empty-icon">🔐</div><h3>No Pending Verifications</h3><p>Projects with MRV commitments will appear here for validator approval.</p></div>';
+        container.appendChild(createEmptyState('🔐', 'No Pending Verifications', 'Projects with MRV commitments will appear here for validator approval.'));
         return;
       }
 
-      let html = '';
       if (pending.length > 0) {
-        html += '<h3 style="font-size:1rem;margin-bottom:0.75rem;color:var(--amber)">⏳ Pending Approval</h3>';
-        pending.forEach((p, i) => {
+        const h3 = document.createElement('h3');
+        h3.style.cssText = 'font-size:1rem;margin-bottom:0.75rem;color:var(--amber)';
+        h3.textContent = '⏳ Pending Approval';
+        container.appendChild(h3);
+
+        pending.forEach(p => {
           const pIdx = projects.indexOf(p);
-          html += `<div class="result-card" style="border-color:rgba(236,178,46,0.2);">
-            <h4>📁 ${p.name} <span class="status-pill pending" style="margin-left:0.5rem">Pending</span></h4>
-            <div class="kv-row"><span class="kv-key">project_id</span><span class="kv-val blue">${p.id}</span></div>
-            <div class="kv-row"><span class="kv-key">technology</span><span class="kv-val">${p.tech}</span></div>
-            <div class="kv-row"><span class="kv-key">jurisdiction</span><span class="kv-val">${p.jurisdiction}</span></div>
-            <div class="kv-row"><span class="kv-key">merkle_root</span><span class="kv-val green">${p.commitment?.merkle_root_hex || 'N/A'}</span></div>
-            <div class="kv-row"><span class="kv-key">leaf_count</span><span class="kv-val">${p.commitment?.leaf_count || 0} records</span></div>
-            <div class="btn-row">
-              <button class="btn btn-green btn-sm" onclick="approveProject(${pIdx})">✅ Approve & Issue PoI</button>
-              <button class="btn btn-secondary btn-sm" onclick="rejectProject(${pIdx})">✗ Reject</button>
-            </div>
-          </div>`;
+          const card = document.createElement('div');
+          card.className = 'result-card';
+          card.style.borderColor = 'rgba(236,178,46,0.2)';
+
+          const h4 = document.createElement('h4');
+          h4.textContent = `📁 ${p.name} `;
+          const pill = document.createElement('span');
+          pill.className = 'status-pill pending';
+          pill.style.marginLeft = '0.5rem';
+          pill.textContent = 'Pending';
+          h4.appendChild(pill);
+          card.appendChild(h4);
+
+          const kvData = [
+            ['project_id', p.id, 'kv-val blue'],
+            ['technology', p.tech, 'kv-val'],
+            ['jurisdiction', p.jurisdiction, 'kv-val'],
+            ['merkle_root', p.commitment?.merkle_root_hex || 'N/A', 'kv-val green'],
+            ['leaf_count', `${p.commitment?.leaf_count || 0} records`, 'kv-val']
+          ];
+          kvData.forEach(([k, v, cls]) => {
+            const row = document.createElement('div');
+            row.className = 'kv-row';
+            const kSpan = document.createElement('span');
+            kSpan.className = 'kv-key';
+            kSpan.textContent = k;
+            const vSpan = document.createElement('span');
+            vSpan.className = cls;
+            vSpan.textContent = v;
+            row.appendChild(kSpan);
+            row.appendChild(vSpan);
+            card.appendChild(row);
+          });
+
+          const btnRow = document.createElement('div');
+          btnRow.className = 'btn-row';
+          const approveBtn = document.createElement('button');
+          approveBtn.className = 'btn btn-green btn-sm';
+          approveBtn.textContent = '✅ Approve & Issue PoI';
+          approveBtn.onclick = () => approveProject(pIdx);
+          const rejectBtn = document.createElement('button');
+          rejectBtn.className = 'btn btn-secondary btn-sm';
+          rejectBtn.textContent = '✗ Reject';
+          rejectBtn.onclick = () => rejectProject(pIdx);
+          btnRow.appendChild(approveBtn);
+          btnRow.appendChild(rejectBtn);
+          card.appendChild(btnRow);
+
+          container.appendChild(card);
         });
       }
+
       if (approved.length > 0) {
-        html += '<h3 style="font-size:1rem;margin-top:1.5rem;margin-bottom:0.75rem;color:var(--green)">✅ Approved</h3>';
+        const h3 = document.createElement('h3');
+        h3.style.cssText = 'font-size:1rem;margin-top:1.5rem;margin-bottom:0.75rem;color:var(--green)';
+        h3.textContent = '✅ Approved';
+        container.appendChild(h3);
+
         approved.forEach(p => {
-          html += `<div class="result-card success">
-            <h4>📁 ${p.name} <span class="status-pill active" style="margin-left:0.5rem">PoI Issued</span></h4>
-            <div class="kv-row"><span class="kv-key">project_id</span><span class="kv-val blue">${p.id}</span></div>
-            <div class="kv-row"><span class="kv-key">merkle_root</span><span class="kv-val green">${p.commitment?.merkle_root_hex || 'N/A'}</span></div>
-          </div>`;
+          const card = document.createElement('div');
+          card.className = 'result-card success';
+
+          const h4 = document.createElement('h4');
+          h4.textContent = `📁 ${p.name} `;
+          const pill = document.createElement('span');
+          pill.className = 'status-pill active';
+          pill.style.marginLeft = '0.5rem';
+          pill.textContent = 'PoI Issued';
+          h4.appendChild(pill);
+          card.appendChild(h4);
+
+          const kvData = [
+            ['project_id', p.id, 'kv-val blue'],
+            ['merkle_root', p.commitment?.merkle_root_hex || 'N/A', 'kv-val green']
+          ];
+          kvData.forEach(([k, v, cls]) => {
+            const row = document.createElement('div');
+            row.className = 'kv-row';
+            const kSpan = document.createElement('span');
+            kSpan.className = 'kv-key';
+            kSpan.textContent = k;
+            const vSpan = document.createElement('span');
+            vSpan.className = cls;
+            vSpan.textContent = v;
+            row.appendChild(kSpan);
+            row.appendChild(vSpan);
+            card.appendChild(row);
+          });
+
+          container.appendChild(card);
         });
       }
-      container.innerHTML = html;
     }
 
     function approveProject(idx) {
@@ -480,10 +746,13 @@
     // ══════════════════════════════════════════════════════════════════
     //  REGISTRY MODULE
     // ══════════════════════════════════════════════════════════════════
+    // ══════════════════════════════════════════════════════════════════
+    //  REGISTRY MODULE
+    // ══════════════════════════════════════════════════════════════════
     function refreshRegistry() {
       const container = document.getElementById('registryTable');
       if (mintedBatches.length === 0) {
-        container.innerHTML = '<div class="empty-state"><div class="empty-icon">🪙</div><h3>No Credits Minted Yet</h3><p>Register a project, upload MRV data, get it verified, then mint credits.</p></div>';
+        container.replaceChildren(createEmptyState('🪙', 'No Credits Minted Yet', 'Register a project, upload MRV data, get it verified, then mint credits.'));
         document.getElementById('reg-total-batches').textContent = '0';
         document.getElementById('reg-total-active').textContent = '0';
         document.getElementById('reg-total-retired').textContent = '0';
@@ -493,7 +762,20 @@
       document.getElementById('reg-total-batches').textContent = mintedBatches.length;
 
       let totalActive = 0, totalRetired = 0;
-      let html = '<div class="table-wrap"><table class="data"><thead><tr><th>Credit ID</th><th>Project</th><th>Owner</th><th>Supply</th><th>Status</th><th>Actions</th></tr></thead><tbody>';
+      const wrap = document.createElement('div');
+      wrap.className = 'table-wrap';
+      const table = document.createElement('table');
+      table.className = 'data';
+      const thead = document.createElement('thead');
+      const trHead = document.createElement('tr');
+      ['Credit ID', 'Project', 'Owner', 'Supply', 'Status', 'Actions'].forEach(h => {
+        const th = document.createElement('th');
+        th.textContent = h;
+        trHead.appendChild(th);
+      });
+      thead.appendChild(trHead);
+      table.appendChild(thead);
+      const tbody = document.createElement('tbody');
 
       mintedBatches.forEach((b, i) => {
         let batchActive = 0, batchRetired = 0;
@@ -508,17 +790,51 @@
         const statusText = batchRetired >= b.totalCredits ? 'Fully Retired' : (b.listedOnMarket ? 'Listed' : 'Active');
         const statusClass = batchRetired >= b.totalCredits ? 'retired' : (b.listedOnMarket ? 'listed' : 'active');
 
-        html += `<tr>
-          <td style="color:var(--blue)">${b.creditId}</td>
-          <td style="color:var(--text);font-family:var(--sans)">${b.projectName || b.projectId}</td>
-          <td>${b.owner}</td>
-          <td>${b.totalCredits.toLocaleString()} tCO2e</td>
-          <td><span class="status-pill ${statusClass}">${statusText}</span></td>
-          <td>${!b.listedOnMarket && batchActive > 0 ? `<button class="btn btn-secondary btn-sm" onclick="listOnMarket(${i})">🛒 List</button>` : '—'}</td>
-        </tr>`;
+        const tr = document.createElement('tr');
+
+        const tdId = document.createElement('td');
+        tdId.style.color = 'var(--blue)';
+        tdId.textContent = b.creditId;
+        tr.appendChild(tdId);
+
+        const tdProj = document.createElement('td');
+        tdProj.style.color = 'var(--text)';
+        tdProj.style.fontFamily = 'var(--sans)';
+        tdProj.textContent = b.projectName || b.projectId;
+        tr.appendChild(tdProj);
+
+        const tdOwner = document.createElement('td');
+        tdOwner.textContent = b.owner;
+        tr.appendChild(tdOwner);
+
+        const tdSupply = document.createElement('td');
+        tdSupply.textContent = `${b.totalCredits.toLocaleString()} tCO2e`;
+        tr.appendChild(tdSupply);
+
+        const tdStatus = document.createElement('td');
+        const pill = document.createElement('span');
+        pill.className = `status-pill ${statusClass}`;
+        pill.textContent = statusText;
+        tdStatus.appendChild(pill);
+        tr.appendChild(tdStatus);
+
+        const tdAction = document.createElement('td');
+        if (!b.listedOnMarket && batchActive > 0) {
+          const listBtn = document.createElement('button');
+          listBtn.className = 'btn btn-secondary btn-sm';
+          listBtn.textContent = '🛒 List';
+          listBtn.onclick = () => listOnMarket(i);
+          tdAction.appendChild(listBtn);
+        } else {
+          tdAction.textContent = '—';
+        }
+        tr.appendChild(tdAction);
+
+        tbody.appendChild(tr);
       });
-      html += '</tbody></table></div>';
-      container.innerHTML = html;
+      table.appendChild(tbody);
+      wrap.appendChild(table);
+      container.replaceChildren(wrap);
       document.getElementById('reg-total-active').textContent = totalActive.toLocaleString();
       document.getElementById('reg-total-retired').textContent = totalRetired.toLocaleString();
     }
@@ -542,45 +858,94 @@
       const listings = mintedBatches.filter(b => b.listedOnMarket);
 
       if (listings.length === 0) {
-        container.innerHTML = '<div class="empty-state"><div class="empty-icon">🛒</div><h3>No Listings Available</h3><p>Minted credits must be published to the marketplace by their owners.</p></div>';
+        container.replaceChildren(createEmptyState('🛒', 'No Listings Available', 'Minted credits must be published to the marketplace by their owners.'));
         return;
       }
 
-      let html = '<div class="listing-grid">';
+      const grid = document.createElement('div');
+      grid.className = 'listing-grid';
       listings.forEach((b) => {
         const bIdx = mintedBatches.indexOf(b);
         let activeCredits = b.totalCredits;
         try { const state = JSON.parse(registry.batch_state(b.creditId)); activeCredits = state.active_total; } catch(_){}
 
         const isSeller = b.owner === currentWallet;
-        let actionHtml = '';
+        const card = document.createElement('div');
+        card.className = 'listing-card';
+
+        const header = document.createElement('div');
+        header.className = 'listing-header';
+        const title = document.createElement('div');
+        title.className = 'listing-title';
+        title.textContent = b.projectName || b.creditId;
+        const price = document.createElement('div');
+        price.className = 'listing-price';
+        price.textContent = `₹${b.listingPrice}/tCO2e`;
+        header.appendChild(title);
+        header.appendChild(price);
+        card.appendChild(header);
+
+        const meta = document.createElement('div');
+        meta.className = 'listing-meta';
+        const techStrong = document.createElement('strong');
+        techStrong.textContent = b.tech;
+        meta.appendChild(techStrong);
+        meta.appendChild(document.createTextNode(` · ${b.creditId}`));
+        meta.appendChild(document.createElement('br'));
+        meta.appendChild(document.createTextNode(`Seller: ${b.owner}`));
+        if (isSeller) {
+          const youStrong = document.createElement('strong');
+          youStrong.style.color = 'var(--amber)';
+          youStrong.textContent = ' (You)';
+          meta.appendChild(youStrong);
+        }
+        card.appendChild(meta);
+
+        const stats = document.createElement('div');
+        stats.className = 'listing-stats';
+        const statAvail = document.createElement('div');
+        statAvail.className = 'listing-stat';
+        statAvail.appendChild(document.createTextNode('Available'));
+        const spanAvail = document.createElement('span');
+        spanAvail.textContent = activeCredits.toLocaleString();
+        statAvail.appendChild(spanAvail);
+
+        const statTot = document.createElement('div');
+        statTot.className = 'listing-stat';
+        statTot.appendChild(document.createTextNode('Total'));
+        const spanTot = document.createElement('span');
+        spanTot.textContent = b.totalCredits.toLocaleString();
+        statTot.appendChild(spanTot);
+
+        stats.appendChild(statAvail);
+        stats.appendChild(statTot);
+        card.appendChild(stats);
+
         if (activeCredits <= 0) {
-          actionHtml = '<span class="status-pill retired">Sold Out</span>';
+          const pill = document.createElement('span');
+          pill.className = 'status-pill retired';
+          pill.textContent = 'Sold Out';
+          card.appendChild(pill);
         } else if (isSeller) {
-          actionHtml = '<span style="font-size:0.8rem;color:var(--muted);font-style:italic;">You own this listing</span>';
+          const spanOwn = document.createElement('span');
+          spanOwn.style.fontSize = '0.8rem';
+          spanOwn.style.color = 'var(--muted)';
+          spanOwn.style.fontStyle = 'italic';
+          spanOwn.textContent = 'You own this listing';
+          card.appendChild(spanOwn);
         } else {
           const totalCost = (activeCredits * b.listingPrice).toLocaleString();
-          actionHtml = `<button class="btn btn-primary btn-sm" style="width:100%" onclick="purchaseCredit(${bIdx})">🛒 Buy ${activeCredits.toLocaleString()} credits · ₹${totalCost}</button>`;
+          const buyBtn = document.createElement('button');
+          buyBtn.className = 'btn btn-primary btn-sm';
+          buyBtn.style.width = '100%';
+          buyBtn.textContent = `🛒 Buy ${activeCredits.toLocaleString()} credits · ₹${totalCost}`;
+          buyBtn.onclick = () => purchaseCredit(bIdx);
+          card.appendChild(buyBtn);
         }
 
-        html += `<div class="listing-card">
-          <div class="listing-header">
-            <div class="listing-title">${b.projectName || b.creditId}</div>
-            <div class="listing-price">₹${b.listingPrice}/tCO2e</div>
-          </div>
-          <div class="listing-meta">
-            <strong>${b.tech}</strong> · ${b.creditId}<br>
-            Seller: ${b.owner}${isSeller ? ' <strong style="color:var(--amber)">(You)</strong>' : ''}
-          </div>
-          <div class="listing-stats">
-            <div class="listing-stat">Available<span>${activeCredits.toLocaleString()}</span></div>
-            <div class="listing-stat">Total<span>${b.totalCredits.toLocaleString()}</span></div>
-          </div>
-          ${actionHtml}
-        </div>`;
+        grid.appendChild(card);
       });
-      html += '</div>';
-      container.innerHTML = html;
+      container.replaceChildren(grid);
     }
 
     function purchaseCredit(bIdx) {
@@ -614,24 +979,70 @@
       const modal = document.createElement('div');
       modal.id = 'purchaseModal';
       modal.style.cssText = 'position:fixed;inset:0;background:rgba(5,7,12,0.88);z-index:900;display:flex;align-items:center;justify-content:center;backdrop-filter:blur(10px);animation:fadeUp 0.3s cubic-bezier(0.16,1,0.3,1);';
-      modal.innerHTML = `
-        <div style="background:var(--bg2);border:1px solid var(--border);border-radius:20px;padding:2rem;max-width:480px;width:90%;box-shadow:0 25px 60px rgba(0,0,0,0.6);">
-          <h2 style="font-size:1.2rem;font-weight:800;margin-bottom:1.25rem;display:flex;align-items:center;gap:0.5rem;">🛒 Confirm Purchase</h2>
-          <div style="background:var(--bg3);border:1px solid var(--border);border-radius:12px;padding:1rem;margin-bottom:1.25rem;">
-            <div class="kv-row"><span class="kv-key">Credit</span><span class="kv-val blue">${batch.creditId}</span></div>
-            <div class="kv-row"><span class="kv-key">Project</span><span class="kv-val">${batch.projectName}</span></div>
-            <div class="kv-row"><span class="kv-key">Seller</span><span class="kv-val red">${previousOwner}</span></div>
-            <div class="kv-row"><span class="kv-key">Buyer</span><span class="kv-val green">${currentWallet} (${currentOrg})</span></div>
-            <div class="kv-row"><span class="kv-key">Quantity</span><span class="kv-val green">${activeCredits.toLocaleString()} tCO2e</span></div>
-            <div class="kv-row"><span class="kv-key">Unit Price</span><span class="kv-val">₹${batch.listingPrice}/tCO2e</span></div>
-            <div class="kv-row" style="border-top:1px solid var(--border);padding-top:0.6rem;"><span class="kv-key" style="font-weight:700;color:var(--text)">Total Cost</span><span class="kv-val green" style="font-size:1.1rem;font-weight:700;">₹${totalCost}</span></div>
-          </div>
-          <div style="display:flex;gap:0.75rem;">
-            <button class="btn btn-primary" style="flex:1;" onclick="executePurchase(${bIdx})">✅ Confirm Purchase</button>
-            <button class="btn btn-secondary" style="flex:1;" onclick="document.getElementById('purchaseModal').remove()">Cancel</button>
-          </div>
-        </div>`;
+
+      const box = document.createElement('div');
+      box.style.cssText = 'background:var(--bg2);border:1px solid var(--border);border-radius:20px;padding:2rem;max-width:480px;width:90%;box-shadow:0 25px 60px rgba(0,0,0,0.6);';
+
+      const title = document.createElement('h2');
+      title.style.cssText = 'font-size:1.2rem;font-weight:800;margin-bottom:1.25rem;display:flex;align-items:center;gap:0.5rem;';
+      title.textContent = '🛒 Confirm Purchase';
+      box.appendChild(title);
+
+      const kvWrap = document.createElement('div');
+      kvWrap.style.cssText = 'background:var(--bg3);border:1px solid var(--border);border-radius:12px;padding:1rem;margin-bottom:1.25rem;';
+
+      function addKv(key, val, valClass, style) {
+        const row = document.createElement('div');
+        row.className = 'kv-row';
+        if (style) row.style.cssText = style;
+        const kSpan = document.createElement('span');
+        kSpan.className = 'kv-key';
+        if (style) { kSpan.style.fontWeight = '700'; kSpan.style.color = 'var(--text)'; }
+        kSpan.textContent = key;
+        const vSpan = document.createElement('span');
+        vSpan.className = 'kv-val' + (valClass ? ' ' + valClass : '');
+        if (style) { vSpan.style.fontSize = '1.1rem'; vSpan.style.fontWeight = '700'; }
+        vSpan.textContent = val;
+        row.appendChild(kSpan);
+        row.appendChild(vSpan);
+        kvWrap.appendChild(row);
+      }
+
+      addKv('Credit', batch.creditId, 'blue');
+      addKv('Project', batch.projectName);
+      addKv('Seller', previousOwner, 'red');
+      addKv('Buyer', `${currentWallet} (${currentOrg})`, 'green');
+      addKv('Quantity', `${activeCredits.toLocaleString()} tCO2e`, 'green');
+      addKv('Unit Price', `₹${batch.listingPrice}/tCO2e`);
+      addKv('Total Cost', `₹${totalCost}`, 'green', 'border-top:1px solid var(--border);padding-top:0.6rem;');
+
+      box.appendChild(kvWrap);
+
+      const btnRow = document.createElement('div');
+      btnRow.style.cssText = 'display:flex;gap:0.75rem;';
+
+      const confirmBtn = document.createElement('button');
+      confirmBtn.className = 'btn btn-primary';
+      confirmBtn.style.flex = '1';
+      confirmBtn.textContent = '✅ Confirm Purchase';
+      confirmBtn.onclick = () => executePurchase(bIdx);
+
+      const cancelBtn = document.createElement('button');
+      cancelBtn.className = 'btn btn-secondary';
+      cancelBtn.style.flex = '1';
+      cancelBtn.textContent = 'Cancel';
+      cancelBtn.onclick = () => {
+        const m = document.getElementById('purchaseModal');
+        if (m) m.remove();
+      };
+
+      btnRow.appendChild(confirmBtn);
+      btnRow.appendChild(cancelBtn);
+      box.appendChild(btnRow);
+
+      modal.appendChild(box);
       document.body.appendChild(modal);
+
       // Close on backdrop click
       modal.addEventListener('click', (e) => { if (e.target === modal) modal.remove(); });
     }
@@ -689,65 +1100,173 @@
       document.getElementById('port-retired').textContent = totalRetired.toLocaleString();
 
       if (owned.length === 0) {
-        container.innerHTML = '<div class="empty-state"><div class="empty-icon">💼</div><h3>No Credits in Portfolio</h3><p>Purchase credits from the Marketplace to see them here.</p></div>';
+        container.replaceChildren(createEmptyState('💼', 'No Credits in Portfolio', 'Purchase credits from the Marketplace to see them here.'));
         return;
       }
 
-      let html = '';
+      const cards = [];
       owned.forEach((b) => {
         const bIdx = mintedBatches.indexOf(b);
         let batchState = null;
         try { batchState = JSON.parse(registry.batch_state(b.creditId)); } catch(_){}
         const activeCredits = batchState ? batchState.active_total : b.totalCredits;
 
-        html += `<div class="result-card" style="border-color:rgba(88,166,255,0.15);">
-          <h4>🪙 ${b.creditId} — ${b.projectName || b.projectId}</h4>
-          <div class="kv-row"><span class="kv-key">technology</span><span class="kv-val">${b.tech}</span></div>
-          <div class="kv-row"><span class="kv-key">total_supply</span><span class="kv-val">${b.totalCredits.toLocaleString()} tCO2e</span></div>
-          <div class="kv-row"><span class="kv-key">active</span><span class="kv-val green">${activeCredits.toLocaleString()}</span></div>
-          <div class="kv-row"><span class="kv-key">retired</span><span class="kv-val red">${batchState ? batchState.retired_total.toLocaleString() : '0'}</span></div>`;
+        const card = document.createElement('div');
+        card.className = 'result-card';
+        card.style.borderColor = 'rgba(88,166,255,0.15)';
+
+        const h4 = document.createElement('h4');
+        h4.textContent = `🪙 ${b.creditId} — ${b.projectName || b.projectId}`;
+        card.appendChild(h4);
+
+        function addKv(key, val, valClass) {
+          const row = document.createElement('div');
+          row.className = 'kv-row';
+          const kSpan = document.createElement('span');
+          kSpan.className = 'kv-key';
+          kSpan.textContent = key;
+          const vSpan = document.createElement('span');
+          vSpan.className = 'kv-val' + (valClass ? ' ' + valClass : '');
+          vSpan.textContent = val;
+          row.appendChild(kSpan);
+          row.appendChild(vSpan);
+          card.appendChild(row);
+        }
+
+        addKv('technology', b.tech);
+        addKv('total_supply', `${b.totalCredits.toLocaleString()} tCO2e`);
+        addKv('active', activeCredits.toLocaleString(), 'green');
+        addKv('retired', batchState ? batchState.retired_total.toLocaleString() : '0', 'red');
 
         if (activeCredits > 0) {
           const retireStart = batchState?.slices?.find(s => s.status === 'Active')?.start || b.originalStart;
           const retireEnd = Math.min(retireStart + 299, batchState?.slices?.find(s => s.status === 'Active')?.end || b.originalEnd);
-          html += `
-          <div style="margin-top:1rem;padding-top:0.75rem;border-top:1px solid var(--border);">
-            <h4 style="font-size:0.88rem;margin-bottom:0.75rem;">🔥 Retire Credits (Generate PoO)</h4>
-            <div class="form-grid triple">
-              <div class="field"><label>Burn Start</label><input type="number" id="burn-start-${bIdx}" value="${retireStart}"></div>
-              <div class="field"><label>Burn End</label><input type="number" id="burn-end-${bIdx}" value="${retireEnd}"></div>
-              <div class="field"><label>Claim Type</label>
-                <select id="burn-claim-${bIdx}">
-                  <option value="CorporateNetZero">Corporate Net Zero</option>
-                  <option value="Compliance">Regulatory Compliance</option>
-                  <option value="Payg">Pay-As-You-Go</option>
-                </select>
-              </div>
-            </div>
-            <div class="form-grid single">
-              <div class="field"><label>Beneficiary</label><input type="text" id="burn-beneficiary-${bIdx}" value="${currentOrg}"></div>
-            </div>
-            <button class="btn btn-primary btn-sm" onclick="retireCredits(${bIdx})">🔥 Execute Retirement</button>
-          </div>`;
+
+          const retireDiv = document.createElement('div');
+          retireDiv.style.cssText = 'margin-top:1rem;padding-top:0.75rem;border-top:1px solid var(--border);';
+
+          const rH4 = document.createElement('h4');
+          rH4.style.cssText = 'font-size:0.88rem;margin-bottom:0.75rem;';
+          rH4.textContent = '🔥 Retire Credits (Generate PoO)';
+          retireDiv.appendChild(rH4);
+
+          const formGridTriple = document.createElement('div');
+          formGridTriple.className = 'form-grid triple';
+
+          // Burn Start field
+          const f1 = document.createElement('div');
+          f1.className = 'field';
+          const l1 = document.createElement('label');
+          l1.textContent = 'Burn Start';
+          const inp1 = document.createElement('input');
+          inp1.type = 'number';
+          inp1.id = `burn-start-${bIdx}`;
+          inp1.value = retireStart;
+          f1.appendChild(l1);
+          f1.appendChild(inp1);
+
+          // Burn End field
+          const f2 = document.createElement('div');
+          f2.className = 'field';
+          const l2 = document.createElement('label');
+          l2.textContent = 'Burn End';
+          const inp2 = document.createElement('input');
+          inp2.type = 'number';
+          inp2.id = `burn-end-${bIdx}`;
+          inp2.value = retireEnd;
+          f2.appendChild(l2);
+          f2.appendChild(inp2);
+
+          // Claim Type field
+          const f3 = document.createElement('div');
+          f3.className = 'field';
+          const l3 = document.createElement('label');
+          l3.textContent = 'Claim Type';
+          const sel3 = document.createElement('select');
+          sel3.id = `burn-claim-${bIdx}`;
+          const optMap = [
+            ['CorporateNetZero', 'Corporate Net Zero'],
+            ['Compliance', 'Regulatory Compliance'],
+            ['Payg', 'Pay-As-You-Go']
+          ];
+          optMap.forEach(([val, txt]) => {
+            const opt = document.createElement('option');
+            opt.value = val;
+            opt.textContent = txt;
+            sel3.appendChild(opt);
+          });
+          f3.appendChild(l3);
+          f3.appendChild(sel3);
+
+          formGridTriple.appendChild(f1);
+          formGridTriple.appendChild(f2);
+          formGridTriple.appendChild(f3);
+          retireDiv.appendChild(formGridTriple);
+
+          const formGridSingle = document.createElement('div');
+          formGridSingle.className = 'form-grid single';
+          const f4 = document.createElement('div');
+          f4.className = 'field';
+          const l4 = document.createElement('label');
+          l4.textContent = 'Beneficiary';
+          const inp4 = document.createElement('input');
+          inp4.type = 'text';
+          inp4.id = `burn-beneficiary-${bIdx}`;
+          inp4.value = currentOrg;
+          f4.appendChild(l4);
+          f4.appendChild(inp4);
+          formGridSingle.appendChild(f4);
+          retireDiv.appendChild(formGridSingle);
+
+          const retBtn = document.createElement('button');
+          retBtn.className = 'btn btn-primary btn-sm';
+          retBtn.textContent = '🔥 Execute Retirement';
+          retBtn.onclick = () => retireCredits(bIdx);
+          retireDiv.appendChild(retBtn);
+
+          card.appendChild(retireDiv);
         }
 
         // Show PoO receipts
         if (b.pooReceipts.length > 0) {
-          html += '<div style="margin-top:1rem;">';
+          const pooWrap = document.createElement('div');
+          pooWrap.style.marginTop = '1rem';
           b.pooReceipts.forEach((poo, pi) => {
-            html += `<div class="result-card success" style="margin-top:0.5rem;">
-              <h4>🔥 PoO Receipt #${pi+1}</h4>
-              <div class="kv-row"><span class="kv-key">serial_range</span><span class="kv-val">${poo.serial_start} – ${poo.serial_end}</span></div>
-              <div class="kv-row"><span class="kv-key">amount</span><span class="kv-val green">${poo.cc_amount} tCO2e</span></div>
-              <div class="kv-row"><span class="kv-key">beneficiary</span><span class="kv-val blue">${poo.beneficiary}</span></div>
-              <div class="kv-row"><span class="kv-key">burn_tx_hash</span><span class="kv-val">${poo.burn_tx_hash}</span></div>
-            </div>`;
+            const pooCard = document.createElement('div');
+            pooCard.className = 'result-card success';
+            pooCard.style.marginTop = '0.5rem';
+
+            const pH4 = document.createElement('h4');
+            pH4.textContent = `🔥 PoO Receipt #${pi + 1}`;
+            pooCard.appendChild(pH4);
+
+            const rows = [
+              ['serial_range', `${poo.serial_start} – ${poo.serial_end}`],
+              ['amount', `${poo.cc_amount} tCO2e`, 'green'],
+              ['beneficiary', poo.beneficiary, 'blue'],
+              ['burn_tx_hash', poo.burn_tx_hash]
+            ];
+            rows.forEach(([k, v, cls]) => {
+              const r = document.createElement('div');
+              r.className = 'kv-row';
+              const ks = document.createElement('span');
+              ks.className = 'kv-key';
+              ks.textContent = k;
+              const vs = document.createElement('span');
+              vs.className = 'kv-val' + (cls ? ' ' + cls : '');
+              vs.textContent = v;
+              r.appendChild(ks);
+              r.appendChild(vs);
+              pooCard.appendChild(r);
+            });
+            pooWrap.appendChild(pooCard);
           });
-          html += '</div>';
+          card.appendChild(pooWrap);
         }
-        html += '</div>';
+
+        cards.push(card);
       });
-      container.innerHTML = html;
+      container.replaceChildren(...cards);
     }
 
     function retireCredits(bIdx) {
@@ -777,7 +1296,7 @@
     // ══════════════════════════════════════════════════════════════════
     function runAuditChecks() {
       if (mintedBatches.length === 0) {
-        document.getElementById('auditGrid').innerHTML = '<div class="empty-state"><div class="empty-icon">📄</div><h3>No Audit Data</h3><p>Complete a full lifecycle (MRV → Mint → Retire) to see invariant checks.</p></div>';
+        document.getElementById('auditGrid').replaceChildren(createEmptyState('📄', 'No Audit Data', 'Complete a full lifecycle (MRV → Mint → Retire) to see invariant checks.'));
         return;
       }
       const firstBatch = mintedBatches[0];
@@ -793,7 +1312,7 @@
         document.getElementById('cnt-burned-ranges').textContent = fullState.burned_range_count;
 
         const grid = document.getElementById('auditGrid');
-        grid.innerHTML = '';
+        grid.replaceChildren();
         grid.appendChild(auditCard("1", "PoI is Mandatory for Minting", "Minting fails if no valid Proof-of-Integrity is supplied.", true));
         const inv2Ok = (state.original_end - state.original_start + 1) <= firstBatch.totalCredits;
         grid.appendChild(auditCard("2", "Supply Authorized Cap Limit", "Minted credits must be <= authorized PoI quantity.", inv2Ok));
@@ -811,13 +1330,25 @@
     function auditCard(num, name, desc, pass) {
       const card = document.createElement('div');
       card.className = `audit-card ${pass ? 'ok' : 'failed'}`;
-      card.innerHTML = `<div class="audit-icon">${pass ? '✓' : '✗'}</div><div class="audit-desc"><h5>Invariant ${num}: ${name}</h5><p>${desc}</p></div>`;
+      const icon = document.createElement('div');
+      icon.className = 'audit-icon';
+      icon.textContent = pass ? '✓' : '✗';
+      const descDiv = document.createElement('div');
+      descDiv.className = 'audit-desc';
+      const h5 = document.createElement('h5');
+      h5.textContent = `Invariant ${num}: ${name}`;
+      const p = document.createElement('p');
+      p.textContent = desc;
+      descDiv.appendChild(h5);
+      descDiv.appendChild(p);
+      card.appendChild(icon);
+      card.appendChild(descDiv);
       return card;
     }
 
     function setupDownloads(batch, state, fullState) {
       const grid = document.getElementById('downloadGrid');
-      grid.innerHTML = '';
+      grid.replaceChildren();
       grid.appendChild(downloadBtn("mrv_records.json", mrvRecords, "📡 MRV Records"));
       if (commitment) grid.appendChild(downloadBtn("merkle_commitment.json", commitment, "🌳 Merkle Commitment"));
       grid.appendChild(downloadBtn("credit_batch.json", state, "📦 Credit Batch"));
@@ -831,8 +1362,9 @@
       const dataStr = "data:text/json;charset=utf-8," + encodeURIComponent(JSON.stringify(obj, null, 2));
       const a = document.createElement('a');
       a.className = 'btn btn-secondary btn-sm';
-      a.href = dataStr; a.download = filename;
-      a.innerHTML = `💾 ${label}`;
+      a.href = dataStr;
+      a.download = filename;
+      a.textContent = `💾 ${label}`;
       return a;
     }
 
@@ -963,9 +1495,9 @@
         registry = new WasmRegistry();
         mrvRecords = []; commitment = null;
         projects = []; mintedBatches = [];
-        document.getElementById('mrvCommitmentDisplay').innerHTML = '';
+        document.getElementById('mrvCommitmentDisplay').replaceChildren();
         document.getElementById('spotCheckSection').style.display = 'none';
-        document.getElementById('mrvBody').innerHTML = '';
+        document.getElementById('mrvBody').replaceChildren();
         refreshDashboard();
         navigate('dashboard');
         showSuccessToast('✓ Registry reset complete');
