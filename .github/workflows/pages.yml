@@ -9,7 +9,7 @@ concurrency:
   cancel-in-progress: true
 
 permissions:
-  contents: read
+  contents: write
   pages: write
   id-token: write
 
@@ -69,6 +69,42 @@ jobs:
         run: |
           printf '# Allow all — wasm-pack default overridden\n!*\n' > docs/pkg/.gitignore
 
+      # ── Event Log Verification & OpenTimestamps Bitcoin Anchoring ───────
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+
+      - name: Install OpenTimestamps Client
+        run: pip install opentimestamps-client
+
+      - name: Verify Event Log Invariants via CLI Replayer
+        run: cargo run -p grey-misnomer-cli -- events.jsonl
+
+      - name: Anchor Event Log to Bitcoin via OpenTimestamps
+        run: |
+          # If .ots proof exists, attempt to upgrade pending attestations; otherwise stamp fresh
+          if [ -f events.jsonl.ots ]; then
+            ots upgrade events.jsonl.ots || ots stamp events.jsonl
+          else
+            ots stamp events.jsonl
+          fi
+          # Ensure docs copy matches for GitHub Pages deployment
+          cp events.jsonl docs/events.jsonl
+          cp events.jsonl.ots docs/events.jsonl.ots
+          # Print proof info for workflow audit trail
+          ots info events.jsonl.ots
+
+      - name: Commit updated .ots proofs if changed
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+          git add events.jsonl.ots docs/events.jsonl docs/events.jsonl.ots
+          if ! git diff --cached --quiet; then
+            git commit -m "ci: OpenTimestamps Bitcoin anchoring update [skip ci]"
+            git push || echo "Push skipped or not permitted in this context"
+          fi
+
       - name: Upload Pages Artifact
         uses: actions/upload-pages-artifact@v3
         with:
@@ -77,3 +113,4 @@ jobs:
       - name: Deploy to GitHub Pages
         id: deployment
         uses: actions/deploy-pages@v4
+
