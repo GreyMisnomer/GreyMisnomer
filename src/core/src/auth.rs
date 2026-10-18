@@ -13,7 +13,7 @@ use std::fmt;
 
 /// 32-byte Ed25519 public key.
 /// Canonical text serialization is 64 lowercase hexadecimal characters.
-#[derive(Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash)]
+#[derive(Clone, Copy, Default, PartialEq, Eq, PartialOrd, Ord, Hash)]
 pub struct PubKey(pub [u8; 32]);
 
 impl PubKey {
@@ -108,6 +108,12 @@ impl<'de> Deserialize<'de> for PubKey {
 /// Canonical text serialization is 128 lowercase hexadecimal characters.
 #[derive(Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash)]
 pub struct Signature(pub [u8; 64]);
+
+impl Default for Signature {
+    fn default() -> Self {
+        Self([0u8; 64])
+    }
+}
 
 impl Signature {
     pub const fn from_bytes(bytes: [u8; 64]) -> Self {
@@ -438,6 +444,44 @@ pub fn compute_entry_hash(seq: u64, prev_hash: &[u8; 32], body_bytes: &[u8]) -> 
     enc_bytes32(prev_hash, &mut buf);
     buf.extend_from_slice(body_bytes);
     *blake3::hash(&buf).as_bytes()
+}
+
+/// Computes the unique `poi_hash` for a minted credit batch (RFC-005 §3.5):
+/// poi_hash = BLAKE3(enc(str "GM/v1/poi") || mint_msg || vvb_sig)
+pub fn compute_poi_hash(mint_msg: &[u8], vvb_sig: &Signature) -> [u8; 32] {
+    let mut buf = Vec::new();
+    enc_str("GM/v1/poi", &mut buf);
+    buf.extend_from_slice(mint_msg);
+    enc_sig(vvb_sig, &mut buf);
+    *blake3::hash(&buf).as_bytes()
+}
+
+/// Serde helper for 32-byte arrays formatted as 64 lowercase hexadecimal characters.
+pub mod hex_bytes32 {
+    use serde::{de, Deserialize, Deserializer, Serializer};
+
+    pub fn serialize<S>(bytes: &[u8; 32], serializer: S) -> Result<S::Ok, S::Error>
+    where
+        S: Serializer,
+    {
+        serializer.serialize_str(&hex::encode(bytes))
+    }
+
+    pub fn deserialize<'de, D>(deserializer: D) -> Result<[u8; 32], D::Error>
+    where
+        D: Deserializer<'de>,
+    {
+        let s = String::deserialize(deserializer)?;
+        if s.len() != 64 {
+            return Err(de::Error::custom("expected 64 hex chars for 32-byte value"));
+        }
+        if s.chars().any(|c| c.is_ascii_uppercase()) {
+            return Err(de::Error::custom("hex string must be strictly lowercase"));
+        }
+        let mut buf = [0u8; 32];
+        hex::decode_to_slice(&s, &mut buf).map_err(de::Error::custom)?;
+        Ok(buf)
+    }
 }
 
 // =========================================================================

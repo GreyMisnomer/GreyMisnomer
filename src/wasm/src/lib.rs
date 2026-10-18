@@ -370,7 +370,7 @@ impl WasmRegistry {
         let out = MintOutput {
             credit_id: batch.credit_id.clone(),
             project_id: batch.project_id.clone(),
-            owner: batch.owner.clone(),
+            owner: batch.owner.to_hex(),
             original_start: batch.original_range.start,
             original_end: batch.original_range.end,
             total_credits: batch.original_range.size().map_err(js_err)?,
@@ -470,7 +470,7 @@ impl WasmRegistry {
 
         let out = BatchStateOutput {
             credit_id: batch.credit_id.clone(),
-            owner: batch.owner.clone(),
+            owner: batch.owner.to_hex(),
             original_start: batch.original_range.start,
             original_end: batch.original_range.end,
             slices,
@@ -521,7 +521,7 @@ impl WasmRegistry {
 
             credits.push(BatchStateOutput {
                 credit_id: b.credit_id.clone(),
-                owner: b.owner.clone(),
+                owner: b.owner.to_hex(),
                 original_start: b.original_range.start,
                 original_end: b.original_range.end,
                 slices,

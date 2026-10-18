@@ -1,3 +1,4 @@
+use crate::auth::PubKey;
 use crate::serial::SerialRange;
 use serde::{Deserialize, Serialize};
 
@@ -26,10 +27,37 @@ pub struct CreditBatch {
     pub credit_id: String,
     pub original_range: SerialRange, // Immutable — set at mint, audit trail only
     pub slices: Vec<SerialSlice>,    // Mutable — the operational truth
-    pub owner: String,
+    pub owner: PubKey,
+    pub op_index: u64,
+    pub vvb: PubKey,
+    #[serde(with = "crate::auth::hex_bytes32")]
+    pub poi_hash: [u8; 32],
 }
 
 impl CreditBatch {
+    pub fn new(
+        project_id: String,
+        credit_id: String,
+        original_range: SerialRange,
+        owner: PubKey,
+        vvb: PubKey,
+        poi_hash: [u8; 32],
+    ) -> Self {
+        Self {
+            project_id,
+            credit_id,
+            original_range,
+            slices: vec![SerialSlice {
+                range: original_range,
+                status: CreditStatus::Active,
+            }],
+            owner,
+            op_index: 0,
+            vvb,
+            poi_hash,
+        }
+    }
+
     // Returns true if any slice within this batch is currently Active.
     pub fn is_active(&self) -> bool {
         self.slices.iter().any(|s| s.status == CreditStatus::Active)
@@ -39,7 +67,9 @@ impl CreditBatch {
         let mut out = String::new();
 
         out.push_str(&format!("Credit ID: {}\n", self.credit_id));
-        out.push_str(&format!("Owner: {}\n\n", self.owner));
+        out.push_str(&format!("Owner: {}\n", self.owner.to_hex()));
+        out.push_str(&format!("Op Index: {}\n", self.op_index));
+        out.push_str(&format!("VVB: {}\n\n", self.vvb.to_hex()));
         out.push_str(&format!(
             "Original Range: {}–{}\n\n",
             self.original_range.start, self.original_range.end

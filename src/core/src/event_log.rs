@@ -493,7 +493,11 @@ mod tests {
         assert_eq!(summary.retired_credits, 200);
         assert_eq!(summary.batches_count, 1);
         assert!(summary.invariant_report.all_passed);
-        assert_eq!(summary.state.credits[0].owner, "Bob");
+        assert_eq!(
+            summary.state.credits[0].owner,
+            crate::auth::PubKey(*blake3::hash(b"Bob").as_bytes())
+        );
+        assert_eq!(summary.state.credits[0].op_index, 2);
     }
 
     #[test]

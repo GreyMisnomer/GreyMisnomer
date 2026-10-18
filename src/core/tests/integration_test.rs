@@ -99,7 +99,11 @@ fn full_protocol_chain_mrv_to_poo() {
 
     assert_eq!(batch.credit_id, "CC-SOLAR-2026-001");
     assert_eq!(batch.original_range.size().unwrap(), 1000);
-    assert_eq!(batch.owner, "0xProjectOwner");
+    assert_eq!(
+        batch.owner,
+        grey_misnomer_core::auth::PubKey(*blake3::hash(b"0xProjectOwner").as_bytes())
+    );
+    assert_eq!(batch.op_index, 0);
 
     // Invariant 7: PoI is now consumed
     assert!(poi.is_used(), "PoI must be USED after mint");
@@ -108,7 +112,11 @@ fn full_protocol_chain_mrv_to_poo() {
     registry
         .transfer("CC-SOLAR-2026-001", "0xBuyer".to_string())
         .expect("Transfer must succeed for active credit");
-    assert_eq!(registry.credits[0].owner, "0xBuyer");
+    assert_eq!(
+        registry.credits[0].owner,
+        grey_misnomer_core::auth::PubKey(*blake3::hash(b"0xBuyer").as_bytes())
+    );
+    assert_eq!(registry.credits[0].op_index, 1);
 
     // Step 7: Buyer retires — burn produces PoO (RFC-001 §3.2)
     let poo = registry

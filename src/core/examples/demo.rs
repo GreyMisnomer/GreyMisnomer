@@ -179,7 +179,7 @@ fn main() {
         .expect("Mint must succeed");
 
     field("Credit ID minted", &batch.credit_id);
-    field("Owner", &batch.owner);
+    field("Owner", &batch.owner.to_hex());
     field(
         "Original range",
         &format!(
@@ -208,7 +208,7 @@ fn main() {
         .expect("Transfer must succeed");
 
     field("Previous owner", "0xProjectOwner");
-    field("New owner", &registry.credits[0].owner);
+    field("New owner", &registry.credits[0].owner.to_hex());
     ok("Ownership transferred — credit still Active");
 
     // ── Step 6: First partial burn ───────────────────────────────────────────

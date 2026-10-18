@@ -1,15 +1,34 @@
+use crate::auth::PubKey;
 use crate::credit::{normalize_slices, CreditBatch, CreditStatus, SerialSlice};
 use crate::error::RegistryError;
 use crate::poi::PoI;
 use crate::poo::{ClaimType, PoO, PoOStatus};
 use crate::serial::SerialRange;
 use serde::{Deserialize, Serialize};
-use std::collections::BTreeSet;
+use std::collections::{BTreeMap, BTreeSet};
+
+/// Operational status and metadata for an accredited Validation & Verification Body (RFC-005).
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct VvbInfo {
+    pub label: String,
+    pub active: bool,
+}
 
 /// The canonical, immutable state of the protocol registry.
 /// Purely functional: state transitions produce a new `RegistryState`.
 #[derive(Default, Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct RegistryState {
+    /// Domain-separated unique 32-byte identifier for this registry instance
+    #[serde(with = "crate::auth::hex_bytes32")]
+    pub chain_id: [u8; 32],
+    /// Accredited administrative root authority for registry governance & VVB lifecycle
+    pub authority: PubKey,
+    /// Authorized sequencer key designated to sequence and sign checkpoints
+    pub sequencer: PubKey,
+    /// Monotonically increasing sequence counter for authority actions (replay protection)
+    pub authority_index: u64,
+    /// Whitelist of registered Validation & Verification Bodies authorized to attest mints
+    pub vvbs: BTreeMap<PubKey, VvbInfo>,
     /// Active and retired credit batches representing all issued supply
     pub credits: Vec<CreditBatch>,
     /// Globally immutable append-only record of all retired/burned ranges (Invariant 4 & 5)
@@ -104,6 +123,16 @@ fn apply_mint(
         return Err(RegistryError::DuplicateDataRoot);
     }
 
+    let owner_pk = PubKey::from_hex(owner).unwrap_or_else(|_| {
+        let hash = blake3::hash(owner.as_bytes());
+        PubKey(*hash.as_bytes())
+    });
+    let vvb_pk = PubKey::from_hex(&poi.vvb_signature).unwrap_or_else(|_| {
+        let hash = blake3::hash(poi.vvb_signature.as_bytes());
+        PubKey(*hash.as_bytes())
+    });
+    let poi_hash = *blake3::hash(poi.credit_id.as_bytes()).as_bytes();
+
     let batch = CreditBatch {
         project_id: poi.project_id.clone(),
         credit_id: poi.credit_id.clone(),
@@ -112,7 +141,10 @@ fn apply_mint(
             range: poi.serialization_range,
             status: CreditStatus::Active,
         }],
-        owner: owner.to_string(),
+        owner: owner_pk,
+        op_index: 0,
+        vvb: vvb_pk,
+        poi_hash,
     };
 
     let mut new_state = state.clone();
@@ -149,7 +181,12 @@ fn apply_transfer(
         .iter_mut()
         .find(|c| c.credit_id == credit_id)
         .unwrap();
-    target.owner = new_owner.to_string();
+    let new_owner_pk = PubKey::from_hex(new_owner).unwrap_or_else(|_| {
+        let hash = blake3::hash(new_owner.as_bytes());
+        PubKey(*hash.as_bytes())
+    });
+    target.owner = new_owner_pk;
+    target.op_index += 1;
     Ok(new_state)
 }
 
@@ -218,6 +255,9 @@ fn apply_burn(
         return Err(RegistryError::CorruptedState);
     }
 
+    // Increment per-credit op_index (RFC-005)
+    target_batch.op_index += 1;
+
     // Lock globally
     new_state.burned_ranges.push(burn_range);
 
@@ -232,6 +272,42 @@ impl RegistryState {
     /// Evaluates the pure transition function for an event against this state.
     pub fn apply(&self, event: &RegistryEvent) -> Result<Self, RegistryError> {
         apply(self, event)
+    }
+
+    /// Checks if a VVB is registered and currently active.
+    pub fn is_vvb_active(&self, vvb: &PubKey) -> bool {
+        self.vvbs.get(vvb).map(|info| info.active).unwrap_or(false)
+    }
+
+    /// Registers a new active VVB or updates an existing one.
+    pub fn register_vvb(&mut self, vvb: PubKey, label: String) {
+        self.vvbs.insert(
+            vvb,
+            VvbInfo {
+                label,
+                active: true,
+            },
+        );
+    }
+
+    /// Revokes an existing VVB.
+    pub fn revoke_vvb(&mut self, vvb: &PubKey) -> Result<(), RegistryError> {
+        if let Some(info) = self.vvbs.get_mut(vvb) {
+            info.active = false;
+            Ok(())
+        } else {
+            Err(RegistryError::UnknownVvb { vvb: vvb.to_hex() })
+        }
+    }
+
+    /// Finds a credit batch by credit_id.
+    pub fn get_credit(&self, credit_id: &str) -> Option<&CreditBatch> {
+        self.credits.iter().find(|c| c.credit_id == credit_id)
+    }
+
+    /// Finds a mutable credit batch by credit_id.
+    pub fn get_credit_mut(&mut self, credit_id: &str) -> Option<&mut CreditBatch> {
+        self.credits.iter_mut().find(|c| c.credit_id == credit_id)
     }
 
     // Validates a Proof-of-Integrity (PoI) before minting. Ensures the PoI hasn't been used and is semantically valid.
@@ -284,7 +360,10 @@ impl RegistryState {
         }
 
         for batch in &self.credits {
-            if batch.credit_id.is_empty() || batch.project_id.is_empty() || batch.owner.is_empty() {
+            if batch.credit_id.is_empty()
+                || batch.project_id.is_empty()
+                || batch.owner == PubKey([0u8; 32])
+            {
                 return false;
             }
         }
@@ -574,7 +653,7 @@ impl Registry {
             burn_tx_hash: format!("mock_burn_{}_{}", credit_id, burn_range.start),
             timestamp: 0,
             beneficiary,
-            owner: batch.owner,
+            owner: batch.owner.to_hex(),
             claim_type,
             amount_tco2e: burn_size,
             status: PoOStatus::Finalized,
@@ -590,6 +669,13 @@ mod tests {
     use crate::mrv::MRVCommitment;
     use crate::poi::PoIStatus;
     use crate::project::MarketScope;
+
+    fn test_pk(name: &str) -> PubKey {
+        PubKey::from_hex(name).unwrap_or_else(|_| {
+            let hash = blake3::hash(name.as_bytes());
+            PubKey(*hash.as_bytes())
+        })
+    }
 
     fn make_poi(credit_id: &str, start: u64, end: u64) -> PoI {
         let mut root = [0u8; 32];
@@ -683,7 +769,8 @@ mod tests {
         let mut poi = make_poi("CC-1", 0, 99);
         registry.mint(&mut poi, "Alice".to_string()).unwrap();
         registry.transfer("CC-1", "Bob".to_string()).unwrap();
-        assert_eq!(registry.credits[0].owner, "Bob");
+        assert_eq!(registry.credits[0].owner, test_pk("Bob"));
+        assert_eq!(registry.credits[0].op_index, 1);
     }
 
     #[test]
@@ -943,7 +1030,8 @@ mod tests {
             owner: "Alice".to_string(),
         };
         let s1 = apply(&s0, &mint_event).unwrap();
-        assert_eq!(s1.credits[0].owner, "Alice");
+        assert_eq!(s1.credits[0].owner, test_pk("Alice"));
+        assert_eq!(s1.credits[0].op_index, 0);
         assert!(s1.check_invariants().all_passed);
 
         // Step 2: Transfer
@@ -952,8 +1040,9 @@ mod tests {
             new_owner: "Bob".to_string(),
         };
         let s2 = apply(&s1, &xfer_event).unwrap();
-        assert_eq!(s2.credits[0].owner, "Bob");
-        assert_eq!(s1.credits[0].owner, "Alice"); // s1 untouched
+        assert_eq!(s2.credits[0].owner, test_pk("Bob"));
+        assert_eq!(s2.credits[0].op_index, 1);
+        assert_eq!(s1.credits[0].owner, test_pk("Alice")); // s1 untouched
         assert!(s2.check_invariants().all_passed);
 
         // Step 3: Burn
@@ -966,6 +1055,7 @@ mod tests {
         let s3 = apply(&s2, &burn_event).unwrap();
         assert_eq!(s3.burned_ranges.len(), 1);
         assert_eq!(s3.burned_ranges[0], SerialRange::new(120, 149).unwrap());
+        assert_eq!(s3.credits[0].op_index, 2);
         assert!(s3.check_invariants().all_passed);
     }
 
@@ -1051,5 +1141,32 @@ mod tests {
 
         // Both states must be identical
         assert_eq!(registry.state, s3);
+    }
+
+    #[test]
+    fn test_trust_roots_and_replay_counters() {
+        let mut state = RegistryState::new();
+        state.chain_id = [42u8; 32];
+        state.authority = test_pk("AuthorityKey");
+        state.sequencer = test_pk("SequencerKey");
+        assert_eq!(state.authority_index, 0);
+
+        let vvb = test_pk("VVB-Alpha");
+        assert!(!state.is_vvb_active(&vvb));
+
+        // Register VVB
+        state.register_vvb(vvb, "TUV SUD India".to_string());
+        assert!(state.is_vvb_active(&vvb));
+
+        // Revoke VVB
+        assert!(state.revoke_vvb(&vvb).is_ok());
+        assert!(!state.is_vvb_active(&vvb));
+
+        // Unknown VVB revoke returns error
+        let unknown = test_pk("UnknownVVB");
+        assert!(matches!(
+            state.revoke_vvb(&unknown),
+            Err(RegistryError::UnknownVvb { .. })
+        ));
     }
 }
