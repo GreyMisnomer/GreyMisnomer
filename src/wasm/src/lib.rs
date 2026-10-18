@@ -4,6 +4,8 @@
 // Every public function here is decorated with #[wasm_bindgen] which makes it
 // callable from JavaScript as if it were a normal JS function.
 
+use std::collections::HashMap;
+
 use serde::{Deserialize, Serialize};
 use wasm_bindgen::prelude::*;
 
@@ -201,6 +203,7 @@ pub fn verify_inclusion(
 #[wasm_bindgen]
 pub struct WasmRegistry {
     inner: Registry,
+    commitments: HashMap<String, MRVCommitment>,
     last_commitment: Option<MRVCommitment>,
 }
 
@@ -210,12 +213,18 @@ impl WasmRegistry {
     pub fn new() -> WasmRegistry {
         WasmRegistry {
             inner: Registry::new(),
+            commitments: HashMap::new(),
             last_commitment: None,
         }
     }
 
     #[wasm_bindgen]
-    pub fn store_commitment(&mut self, records_json: &str, timestamp: u64) -> Result<(), JsValue> {
+    pub fn store_commitment(
+        &mut self,
+        records_json: &str,
+        timestamp: u64,
+        project_id: Option<String>,
+    ) -> Result<(), JsValue> {
         let inputs: Vec<MrvInput> = serde_json::from_str(records_json)
             .map_err(|e| js_err(format!("Invalid records JSON: {e}")))?;
 
@@ -229,8 +238,24 @@ impl WasmRegistry {
             })
             .collect();
 
-        self.last_commitment = Some(mrv::commit(&records, timestamp));
+        let comm = mrv::commit(&records, timestamp);
+        if let Some(pid) = &project_id {
+            if !pid.is_empty() {
+                self.commitments.insert(pid.clone(), comm.clone());
+            }
+        }
+        self.last_commitment = Some(comm);
         Ok(())
+    }
+
+    #[wasm_bindgen]
+    pub fn store_project_commitment(
+        &mut self,
+        project_id: &str,
+        records_json: &str,
+        timestamp: u64,
+    ) -> Result<(), JsValue> {
+        self.store_commitment(records_json, timestamp, Some(project_id.to_string()))
     }
 
     #[wasm_bindgen]
@@ -239,9 +264,16 @@ impl WasmRegistry {
             serde_json::from_str(poi_json).map_err(|e| js_err(format!("Invalid PoI JSON: {e}")))?;
 
         let commitment = self
-            .last_commitment
-            .clone()
-            .ok_or_else(|| js_err("No MRV commitment stored. Call store_commitment() first."))?;
+            .commitments
+            .get(&input.project_id)
+            .cloned()
+            .or_else(|| self.last_commitment.clone())
+            .ok_or_else(|| {
+                js_err(format!(
+                    "No MRV commitment found for project '{}'. Call store_commitment() first.",
+                    input.project_id
+                ))
+            })?;
 
         let range = SerialRange::new(input.serial_start, input.serial_end).map_err(js_err)?;
         let range_sz = range.size().map_err(js_err)?;

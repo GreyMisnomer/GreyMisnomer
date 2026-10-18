@@ -403,7 +403,7 @@
         const result = build_commitment(jsonStr, timestamp);
         commitment = JSON.parse(result);
         mrvRecords = list;
-        await registry.store_commitment(jsonStr, timestamp);
+        await registry.store_commitment(jsonStr, timestamp, selProjectId);
 
         // Update project state
         const prj = projects.find(p => p.id === selProjectId);

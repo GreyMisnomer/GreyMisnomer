@@ -17,7 +17,8 @@ export const wasmregistry_check_invariants: (a: number) => [number, number, numb
 export const wasmregistry_full_state: (a: number) => [number, number, number, number];
 export const wasmregistry_mint: (a: number, b: number, c: number) => [number, number, number, number];
 export const wasmregistry_new: () => number;
-export const wasmregistry_store_commitment: (a: number, b: number, c: number, d: bigint) => [number, number];
+export const wasmregistry_store_commitment: (a: number, b: number, c: number, d: bigint, e: number, f: number) => [number, number];
+export const wasmregistry_store_project_commitment: (a: number, b: number, c: number, d: number, e: number, f: bigint) => [number, number];
 export const wasmregistry_transfer: (a: number, b: number, c: number, d: number, e: number) => [number, number, number, number];
 export const __wbindgen_externrefs: WebAssembly.Table;
 export const __wbindgen_malloc: (a: number, b: number) => number;

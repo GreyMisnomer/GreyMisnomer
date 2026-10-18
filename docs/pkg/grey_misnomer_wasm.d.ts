@@ -41,7 +41,8 @@ export class WasmRegistry {
     full_state(): string;
     mint(poi_json: string): string;
     constructor();
-    store_commitment(records_json: string, timestamp: bigint): void;
+    store_commitment(records_json: string, timestamp: bigint, project_id?: string | null): void;
+    store_project_commitment(project_id: string, records_json: string, timestamp: bigint): void;
     transfer(credit_id: string, new_owner: string): string;
 }
 
@@ -75,7 +76,8 @@ export interface InitOutput {
     readonly wasmregistry_full_state: (a: number) => [number, number, number, number];
     readonly wasmregistry_mint: (a: number, b: number, c: number) => [number, number, number, number];
     readonly wasmregistry_new: () => number;
-    readonly wasmregistry_store_commitment: (a: number, b: number, c: number, d: bigint) => [number, number];
+    readonly wasmregistry_store_commitment: (a: number, b: number, c: number, d: bigint, e: number, f: number) => [number, number];
+    readonly wasmregistry_store_project_commitment: (a: number, b: number, c: number, d: number, e: number, f: bigint) => [number, number];
     readonly wasmregistry_transfer: (a: number, b: number, c: number, d: number, e: number) => [number, number, number, number];
     readonly __wbindgen_externrefs: WebAssembly.Table;
     readonly __wbindgen_malloc: (a: number, b: number) => number;

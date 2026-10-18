@@ -191,11 +191,29 @@ export class WasmRegistry {
     /**
      * @param {string} records_json
      * @param {bigint} timestamp
+     * @param {string | null} [project_id]
      */
-    store_commitment(records_json, timestamp) {
+    store_commitment(records_json, timestamp, project_id) {
         const ptr0 = passStringToWasm0(records_json, wasm.__wbindgen_malloc, wasm.__wbindgen_realloc);
         const len0 = WASM_VECTOR_LEN;
-        const ret = wasm.wasmregistry_store_commitment(this.__wbg_ptr, ptr0, len0, timestamp);
+        var ptr1 = isLikeNone(project_id) ? 0 : passStringToWasm0(project_id, wasm.__wbindgen_malloc, wasm.__wbindgen_realloc);
+        var len1 = WASM_VECTOR_LEN;
+        const ret = wasm.wasmregistry_store_commitment(this.__wbg_ptr, ptr0, len0, timestamp, ptr1, len1);
+        if (ret[1]) {
+            throw takeFromExternrefTable0(ret[0]);
+        }
+    }
+    /**
+     * @param {string} project_id
+     * @param {string} records_json
+     * @param {bigint} timestamp
+     */
+    store_project_commitment(project_id, records_json, timestamp) {
+        const ptr0 = passStringToWasm0(project_id, wasm.__wbindgen_malloc, wasm.__wbindgen_realloc);
+        const len0 = WASM_VECTOR_LEN;
+        const ptr1 = passStringToWasm0(records_json, wasm.__wbindgen_malloc, wasm.__wbindgen_realloc);
+        const len1 = WASM_VECTOR_LEN;
+        const ret = wasm.wasmregistry_store_project_commitment(this.__wbg_ptr, ptr0, len0, ptr1, len1, timestamp);
         if (ret[1]) {
             throw takeFromExternrefTable0(ret[0]);
         }
@@ -327,6 +345,10 @@ function getUint8ArrayMemory0() {
         cachedUint8ArrayMemory0 = new Uint8Array(wasm.memory.buffer);
     }
     return cachedUint8ArrayMemory0;
+}
+
+function isLikeNone(x) {
+    return x === undefined || x === null;
 }
 
 function passStringToWasm0(arg, malloc, realloc) {
