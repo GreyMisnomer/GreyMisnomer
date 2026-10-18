@@ -102,4 +102,45 @@ test.describe('Role-Based Access Control (RBAC) Core Flows', () => {
     await expect(page.locator('#view-dashboard')).toHaveClass(/active/);
   });
 
+  test('Audit tab displays empty state when no credits minted, and renders real invariant checks', async ({ page }) => {
+    await page.goto('/app.html');
+    await page.waitForSelector('#roleSwitcher', { timeout: 15000 });
+
+    // Step 1: Check audit tab initial empty state
+    await page.selectOption('#roleSwitcher', 'auditor');
+    await page.click('#nav-audit');
+    await expect(page.locator('#view-audit')).toHaveClass(/active/);
+    const emptyState = page.locator('#auditGrid .empty-state');
+    await expect(emptyState).toContainText('No Audit Data');
+
+    // Step 2: Switch to Admin and register a project
+    await page.selectOption('#roleSwitcher', 'admin');
+    await page.click('#nav-projects');
+    await page.click('button:has-text("+ Register Project")');
+
+    // Step 3: Go to MRV and commit demo dataset
+    await page.click('#nav-mrv');
+    await page.click('button:has-text("Seed Demo Dataset")');
+    await page.click('button:has-text("Compute Merkle Tree Commitment")');
+    await expect(page.locator('#mrvCommitmentDisplay')).toContainText('Merkle Commitment Successful');
+
+    // Step 4: Go to Verification and approve PoI
+    await page.click('#nav-verification');
+    await page.click('button:has-text("Approve & Issue PoI")');
+
+    // Step 5: Go to Projects and Mint credits
+    await page.click('#nav-projects');
+    await page.click('button:has-text("🪙 Mint")');
+
+    // Step 6: Go to Audit view and verify all 7 invariant checks pass
+    await page.click('#nav-audit');
+    await expect(page.locator('#view-audit')).toHaveClass(/active/);
+
+    const cards = page.locator('#auditGrid .audit-card');
+    await expect(cards).toHaveCount(7);
+    for (let i = 0; i < 7; i++) {
+      await expect(cards.nth(i)).toHaveClass(/ok/);
+    }
+  });
+
 });

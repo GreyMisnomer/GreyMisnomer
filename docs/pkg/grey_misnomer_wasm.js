@@ -60,6 +60,84 @@ export class WasmRegistry {
         }
     }
     /**
+     * Invariant 1: PoI is Mandatory for Minting.
+     * @returns {boolean}
+     */
+    check_invariant_1() {
+        const ret = wasm.wasmregistry_check_invariant_1(this.__wbg_ptr);
+        return ret !== 0;
+    }
+    /**
+     * Invariant 2: Supply Authorized Cap Limit & Conservation.
+     * @returns {boolean}
+     */
+    check_invariant_2() {
+        const ret = wasm.wasmregistry_check_invariant_2(this.__wbg_ptr);
+        return ret !== 0;
+    }
+    /**
+     * Invariant 3: Global Serialization Locking Uniqueness.
+     * @returns {boolean}
+     */
+    check_invariant_3() {
+        const ret = wasm.wasmregistry_check_invariant_3(this.__wbg_ptr);
+        return ret !== 0;
+    }
+    /**
+     * Invariant 4: Burn Irreversibility.
+     * @returns {boolean}
+     */
+    check_invariant_4() {
+        const ret = wasm.wasmregistry_check_invariant_4(this.__wbg_ptr);
+        return ret !== 0;
+    }
+    /**
+     * Invariant 5: PoO Uniqueness (Double-spending prevented).
+     * @returns {boolean}
+     */
+    check_invariant_5() {
+        const ret = wasm.wasmregistry_check_invariant_5(this.__wbg_ptr);
+        return ret !== 0;
+    }
+    /**
+     * Invariant 6: PoO Non-Transferability.
+     * @returns {boolean}
+     */
+    check_invariant_6() {
+        const ret = wasm.wasmregistry_check_invariant_6(this.__wbg_ptr);
+        return ret !== 0;
+    }
+    /**
+     * Invariant 7: PoI Single-use Consumed State.
+     * @returns {boolean}
+     */
+    check_invariant_7() {
+        const ret = wasm.wasmregistry_check_invariant_7(this.__wbg_ptr);
+        return ret !== 0;
+    }
+    /**
+     * Evaluates all 7 RFC-001 protocol invariants and returns a JSON InvariantReport.
+     * @returns {string}
+     */
+    check_invariants() {
+        let deferred2_0;
+        let deferred2_1;
+        try {
+            const ret = wasm.wasmregistry_check_invariants(this.__wbg_ptr);
+            var ptr1 = ret[0];
+            var len1 = ret[1];
+            if (ret[3]) {
+                ptr1 = 0; len1 = 0;
+                throw takeFromExternrefTable0(ret[2]);
+            }
+            deferred2_0 = ptr1;
+            deferred2_1 = len1;
+            return getStringFromWasm0(ptr1, len1);
+        } finally {
+            wasm.__wbindgen_free(deferred2_0, deferred2_1, 1);
+        }
+    }
+    /**
      * @returns {string}
      */
     full_state() {

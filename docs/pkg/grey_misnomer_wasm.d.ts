@@ -6,6 +6,38 @@ export class WasmRegistry {
     [Symbol.dispose](): void;
     batch_state(credit_id: string): string;
     burn(burn_json: string): string;
+    /**
+     * Invariant 1: PoI is Mandatory for Minting.
+     */
+    check_invariant_1(): boolean;
+    /**
+     * Invariant 2: Supply Authorized Cap Limit & Conservation.
+     */
+    check_invariant_2(): boolean;
+    /**
+     * Invariant 3: Global Serialization Locking Uniqueness.
+     */
+    check_invariant_3(): boolean;
+    /**
+     * Invariant 4: Burn Irreversibility.
+     */
+    check_invariant_4(): boolean;
+    /**
+     * Invariant 5: PoO Uniqueness (Double-spending prevented).
+     */
+    check_invariant_5(): boolean;
+    /**
+     * Invariant 6: PoO Non-Transferability.
+     */
+    check_invariant_6(): boolean;
+    /**
+     * Invariant 7: PoI Single-use Consumed State.
+     */
+    check_invariant_7(): boolean;
+    /**
+     * Evaluates all 7 RFC-001 protocol invariants and returns a JSON InvariantReport.
+     */
+    check_invariants(): string;
     full_state(): string;
     mint(poi_json: string): string;
     constructor();
@@ -32,6 +64,14 @@ export interface InitOutput {
     readonly verify_inclusion: (a: number, b: number, c: number, d: number, e: number) => [number, number, number, number];
     readonly wasmregistry_batch_state: (a: number, b: number, c: number) => [number, number, number, number];
     readonly wasmregistry_burn: (a: number, b: number, c: number) => [number, number, number, number];
+    readonly wasmregistry_check_invariant_1: (a: number) => number;
+    readonly wasmregistry_check_invariant_2: (a: number) => number;
+    readonly wasmregistry_check_invariant_3: (a: number) => number;
+    readonly wasmregistry_check_invariant_4: (a: number) => number;
+    readonly wasmregistry_check_invariant_5: (a: number) => number;
+    readonly wasmregistry_check_invariant_6: (a: number) => number;
+    readonly wasmregistry_check_invariant_7: (a: number) => number;
+    readonly wasmregistry_check_invariants: (a: number) => [number, number, number, number];
     readonly wasmregistry_full_state: (a: number) => [number, number, number, number];
     readonly wasmregistry_mint: (a: number, b: number, c: number) => [number, number, number, number];
     readonly wasmregistry_new: () => number;

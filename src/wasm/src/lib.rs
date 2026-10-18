@@ -444,6 +444,55 @@ impl WasmRegistry {
 
         serde_json::to_string(&state).map_err(js_err)
     }
+
+    /// Evaluates all 7 RFC-001 protocol invariants and returns a JSON InvariantReport.
+    #[wasm_bindgen]
+    pub fn check_invariants(&self) -> Result<String, JsValue> {
+        let report = self.inner.check_invariants();
+        serde_json::to_string(&report).map_err(js_err)
+    }
+
+    /// Invariant 1: PoI is Mandatory for Minting.
+    #[wasm_bindgen]
+    pub fn check_invariant_1(&self) -> bool {
+        self.inner.check_invariant_1()
+    }
+
+    /// Invariant 2: Supply Authorized Cap Limit & Conservation.
+    #[wasm_bindgen]
+    pub fn check_invariant_2(&self) -> bool {
+        self.inner.check_invariant_2()
+    }
+
+    /// Invariant 3: Global Serialization Locking Uniqueness.
+    #[wasm_bindgen]
+    pub fn check_invariant_3(&self) -> bool {
+        self.inner.check_invariant_3()
+    }
+
+    /// Invariant 4: Burn Irreversibility.
+    #[wasm_bindgen]
+    pub fn check_invariant_4(&self) -> bool {
+        self.inner.check_invariant_4()
+    }
+
+    /// Invariant 5: PoO Uniqueness (Double-spending prevented).
+    #[wasm_bindgen]
+    pub fn check_invariant_5(&self) -> bool {
+        self.inner.check_invariant_5()
+    }
+
+    /// Invariant 6: PoO Non-Transferability.
+    #[wasm_bindgen]
+    pub fn check_invariant_6(&self) -> bool {
+        self.inner.check_invariant_6()
+    }
+
+    /// Invariant 7: PoI Single-use Consumed State.
+    #[wasm_bindgen]
+    pub fn check_invariant_7(&self) -> bool {
+        self.inner.check_invariant_7()
+    }
 }
 
 impl Default for WasmRegistry {

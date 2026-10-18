@@ -198,6 +198,235 @@ impl Registry {
 
         Ok(poo)
     }
+
+    // ── Invariant Verification Engine (RFC-001 §5) ──────────────────────────────
+
+    /// Invariant 1: PoI is Mandatory for Minting.
+    /// Verifies that the registry enforces PoI validation and that every minted batch
+    /// has non-empty identity and valid metadata.
+    pub fn check_invariant_1(&self) -> bool {
+        let dummy_range = match SerialRange::new(0, 0) {
+            Ok(r) => r,
+            Err(_) => return false,
+        };
+        let invalid_poi = crate::poi::PoI {
+            project_id: "DUMMY".to_string(),
+            mrv_commitment: crate::mrv::MRVCommitment {
+                merkle_root: [0u8; 32],
+                hash_algorithm: "BLAKE3".to_string(),
+                leaf_count: 0,
+                timestamp: 0,
+            },
+            methodology_hash: "0x0".to_string(),
+            vvb_signature: "0x0".to_string(),
+            serialization_range: dummy_range,
+            amount_tco2e: 1,
+            jurisdiction: "IN".to_string(),
+            market_scope: crate::project::MarketScope::Vcm,
+            credit_id: "DUMMY".to_string(),
+            valid_from: 0,
+            valid_until: 100,
+            poi_valid: false,
+            cc_mint_amount: 1,
+            owner: "dummy".to_string(),
+            status: crate::poi::PoIStatus::Valid,
+        };
+        if self.validate_poi(&invalid_poi).is_ok() {
+            return false;
+        }
+
+        for batch in &self.credits {
+            if batch.credit_id.is_empty() || batch.project_id.is_empty() || batch.owner.is_empty() {
+                return false;
+            }
+        }
+        true
+    }
+
+    /// Invariant 2: Supply Authorized Cap Limit & Conservation.
+    /// Verifies that for every batch: slices are internally valid, and
+    /// active + retired == original_range.size().
+    pub fn check_invariant_2(&self) -> bool {
+        for batch in &self.credits {
+            if !batch.validate_internal() {
+                return false;
+            }
+            let original_size = match batch.original_range.size() {
+                Ok(s) => s,
+                Err(_) => return false,
+            };
+            let mut active_sum: u64 = 0;
+            let mut retired_sum: u64 = 0;
+            for slice in &batch.slices {
+                let sz = match slice.range.size() {
+                    Ok(s) => s,
+                    Err(_) => return false,
+                };
+                match slice.status {
+                    CreditStatus::Active => {
+                        active_sum = match active_sum.checked_add(sz) {
+                            Some(v) => v,
+                            None => return false,
+                        };
+                    }
+                    CreditStatus::Retired => {
+                        retired_sum = match retired_sum.checked_add(sz) {
+                            Some(v) => v,
+                            None => return false,
+                        };
+                    }
+                    CreditStatus::Expired => {}
+                }
+            }
+            let total = match active_sum.checked_add(retired_sum) {
+                Some(v) => v,
+                None => return false,
+            };
+            if total != original_size {
+                return false;
+            }
+        }
+        true
+    }
+
+    /// Invariant 3: Global Serialization Locking Uniqueness.
+    /// Verifies that no two active serial ranges overlap anywhere in the registry.
+    pub fn check_invariant_3(&self) -> bool {
+        let mut active_ranges: Vec<SerialRange> = Vec::new();
+        for batch in &self.credits {
+            for slice in &batch.slices {
+                if slice.status == CreditStatus::Active {
+                    active_ranges.push(slice.range);
+                }
+            }
+        }
+        for (i, r1) in active_ranges.iter().enumerate() {
+            for r2 in active_ranges.iter().skip(i + 1) {
+                if r1.overlaps(r2) {
+                    return false;
+                }
+            }
+        }
+        true
+    }
+
+    /// Invariant 4: Burn Irreversibility.
+    /// Verifies that no range recorded in burned_ranges overlaps with any Active slice.
+    pub fn check_invariant_4(&self) -> bool {
+        for burned in &self.burned_ranges {
+            for batch in &self.credits {
+                for slice in &batch.slices {
+                    if slice.status == CreditStatus::Active && slice.range.overlaps(burned) {
+                        return false;
+                    }
+                }
+            }
+        }
+        true
+    }
+
+    /// Invariant 5: PoO Uniqueness (Double-spending prevented).
+    /// Verifies that all burned ranges on record are pairwise disjoint.
+    pub fn check_invariant_5(&self) -> bool {
+        for (i, b1) in self.burned_ranges.iter().enumerate() {
+            for b2 in self.burned_ranges.iter().skip(i + 1) {
+                if b1.overlaps(b2) {
+                    return false;
+                }
+            }
+        }
+        true
+    }
+
+    /// Invariant 6: PoO Non-Transferability.
+    /// Verifies that fully retired batches cannot be marked active or transferred.
+    pub fn check_invariant_6(&self) -> bool {
+        for batch in &self.credits {
+            let active_count = batch
+                .slices
+                .iter()
+                .filter(|s| s.status == CreditStatus::Active)
+                .count();
+            if active_count == 0 && batch.is_active() {
+                return false;
+            }
+        }
+        true
+    }
+
+    /// Invariant 7: PoI Single-use Consumed State.
+    /// Verifies that every minted batch has a registered unique data root,
+    /// and that spent PoIs are strictly rejected.
+    pub fn check_invariant_7(&self) -> bool {
+        if self.credits.len() != self.used_data_roots.len() {
+            return false;
+        }
+        let dummy_range = match SerialRange::new(0, 0) {
+            Ok(r) => r,
+            Err(_) => return false,
+        };
+        let spent_poi = crate::poi::PoI {
+            project_id: "DUMMY".to_string(),
+            mrv_commitment: crate::mrv::MRVCommitment {
+                merkle_root: [0u8; 32],
+                hash_algorithm: "BLAKE3".to_string(),
+                leaf_count: 0,
+                timestamp: 0,
+            },
+            methodology_hash: "0x0".to_string(),
+            vvb_signature: "0x0".to_string(),
+            serialization_range: dummy_range,
+            amount_tco2e: 1,
+            jurisdiction: "IN".to_string(),
+            market_scope: crate::project::MarketScope::Vcm,
+            credit_id: "DUMMY".to_string(),
+            valid_from: 0,
+            valid_until: 100,
+            poi_valid: true,
+            cc_mint_amount: 1,
+            owner: "dummy".to_string(),
+            status: crate::poi::PoIStatus::Used,
+        };
+        if self.validate_poi(&spent_poi).is_ok() {
+            return false;
+        }
+        true
+    }
+
+    /// Evaluates all 7 RFC-001 protocol invariants against current registry state.
+    pub fn check_invariants(&self) -> InvariantReport {
+        let inv1 = self.check_invariant_1();
+        let inv2 = self.check_invariant_2();
+        let inv3 = self.check_invariant_3();
+        let inv4 = self.check_invariant_4();
+        let inv5 = self.check_invariant_5();
+        let inv6 = self.check_invariant_6();
+        let inv7 = self.check_invariant_7();
+        let all_passed = inv1 && inv2 && inv3 && inv4 && inv5 && inv6 && inv7;
+        InvariantReport {
+            inv1_poi_mandatory: inv1,
+            inv2_supply_cap: inv2,
+            inv3_serial_uniqueness: inv3,
+            inv4_burn_irreversibility: inv4,
+            inv5_poo_uniqueness: inv5,
+            inv6_poo_non_transferable: inv6,
+            inv7_poi_single_use: inv7,
+            all_passed,
+        }
+    }
+}
+
+/// Comprehensive report of all 7 protocol invariants from RFC-001 §5.
+#[derive(Debug, Clone, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
+pub struct InvariantReport {
+    pub inv1_poi_mandatory: bool,
+    pub inv2_supply_cap: bool,
+    pub inv3_serial_uniqueness: bool,
+    pub inv4_burn_irreversibility: bool,
+    pub inv5_poo_uniqueness: bool,
+    pub inv6_poo_non_transferable: bool,
+    pub inv7_poi_single_use: bool,
+    pub all_passed: bool,
 }
 
 #[cfg(test)]
@@ -447,5 +676,84 @@ mod tests {
         registry.mint(&mut poi_a, "Alice".to_string()).unwrap();
         let result = registry.mint(&mut poi_b, "Bob".to_string());
         assert_eq!(result.unwrap_err(), RegistryError::DuplicateDataRoot);
+    }
+
+    #[test]
+    fn test_invariants_pass_normal_lifecycle() {
+        let mut registry = Registry::new();
+        // Empty registry passes invariants
+        let initial_rep = registry.check_invariants();
+        assert!(initial_rep.all_passed);
+
+        // Mint a batch
+        let mut poi = make_poi("CC-INVARIANT-1", 100, 199);
+        registry.mint(&mut poi, "OwnerA".to_string()).unwrap();
+        let mint_rep = registry.check_invariants();
+        assert!(mint_rep.all_passed);
+        assert!(mint_rep.inv1_poi_mandatory);
+        assert!(mint_rep.inv2_supply_cap);
+        assert!(mint_rep.inv3_serial_uniqueness);
+        assert!(mint_rep.inv4_burn_irreversibility);
+        assert!(mint_rep.inv5_poo_uniqueness);
+        assert!(mint_rep.inv6_poo_non_transferable);
+        assert!(mint_rep.inv7_poi_single_use);
+
+        // Burn part of batch
+        let burn_range = SerialRange::new(120, 149).unwrap();
+        registry
+            .burn(
+                "CC-INVARIANT-1",
+                burn_range,
+                "CorpBeneficiary".to_string(),
+                ClaimType::CorporateNetZero,
+            )
+            .unwrap();
+        let burn_rep = registry.check_invariants();
+        assert!(burn_rep.all_passed);
+    }
+
+    #[test]
+    fn test_invariant_3_detects_active_overlap() {
+        let mut registry = Registry::new();
+        let mut poi_a = make_poi("CC-A", 100, 199);
+        registry.mint(&mut poi_a, "OwnerA".to_string()).unwrap();
+
+        // Artificially inject an overlapping active slice to test detection
+        registry.credits[0].slices.push(SerialSlice {
+            range: SerialRange::new(150, 250).unwrap(),
+            status: CreditStatus::Active,
+        });
+
+        assert!(!registry.check_invariant_3());
+        assert!(!registry.check_invariants().all_passed);
+    }
+
+    #[test]
+    fn test_invariant_4_detects_burned_in_active() {
+        let mut registry = Registry::new();
+        let mut poi_a = make_poi("CC-A", 100, 199);
+        registry.mint(&mut poi_a, "OwnerA".to_string()).unwrap();
+
+        // Record 150-160 as burned, while it's still in the active batch
+        registry
+            .burned_ranges
+            .push(SerialRange::new(150, 160).unwrap());
+
+        assert!(!registry.check_invariant_4());
+        assert!(!registry.check_invariants().all_passed);
+    }
+
+    #[test]
+    fn test_invariant_5_detects_burned_overlap() {
+        let mut registry = Registry::new();
+        registry
+            .burned_ranges
+            .push(SerialRange::new(100, 200).unwrap());
+        registry
+            .burned_ranges
+            .push(SerialRange::new(150, 250).unwrap());
+
+        assert!(!registry.check_invariant_5());
+        assert!(!registry.check_invariants().all_passed);
     }
 }

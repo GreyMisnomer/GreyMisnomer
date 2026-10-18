@@ -1311,21 +1311,22 @@
         document.getElementById('cnt-retired').textContent = state.retired_total;
         document.getElementById('cnt-burned-ranges').textContent = fullState.burned_range_count;
 
+        const invReport = JSON.parse(registry.check_invariants());
+
         const grid = document.getElementById('auditGrid');
         grid.replaceChildren();
-        grid.appendChild(auditCard("1", "PoI is Mandatory for Minting", "Minting fails if no valid Proof-of-Integrity is supplied.", true));
-        const inv2Ok = (state.original_end - state.original_start + 1) <= firstBatch.totalCredits;
-        grid.appendChild(auditCard("2", "Supply Authorized Cap Limit", "Minted credits must be <= authorized PoI quantity.", inv2Ok));
-        grid.appendChild(auditCard("3", "Global Serial Locking Uniqueness", "Overlapping active serial ranges rejected.", true));
-        grid.appendChild(auditCard("4", "Burn Irreversibility (Spent Forever)", "Retired ranges blacklisted globally.", true));
-        grid.appendChild(auditCard("5", "PoO Uniqueness (Double-spending prevented)", "Retirements matching burned footprints rejected.", true));
-        grid.appendChild(auditCard("6", "PoO Non-Transferability", "Proof-of-Offset receipts bind permanently.", true));
-        const inv7Ok = firstBatch.poiStatus === "USED";
-        grid.appendChild(auditCard("7", "PoI Single-use Consumed State", "PoI marked used, blocking replay.", inv7Ok));
+        grid.appendChild(auditCard("1", "PoI is Mandatory for Minting", "Minting fails if no valid Proof-of-Integrity is supplied.", invReport.inv1_poi_mandatory));
+        grid.appendChild(auditCard("2", "Supply Authorized Cap Limit", "Minted credits must be <= authorized PoI quantity.", invReport.inv2_supply_cap));
+        grid.appendChild(auditCard("3", "Global Serial Locking Uniqueness", "Overlapping active serial ranges rejected.", invReport.inv3_serial_uniqueness));
+        grid.appendChild(auditCard("4", "Burn Irreversibility (Spent Forever)", "Retired ranges blacklisted globally.", invReport.inv4_burn_irreversibility));
+        grid.appendChild(auditCard("5", "PoO Uniqueness (Double-spending prevented)", "Retirements matching burned footprints rejected.", invReport.inv5_poo_uniqueness));
+        grid.appendChild(auditCard("6", "PoO Non-Transferability", "Proof-of-Offset receipts bind permanently.", invReport.inv6_poo_non_transferable));
+        grid.appendChild(auditCard("7", "PoI Single-use Consumed State", "PoI marked used, blocking replay.", invReport.inv7_poi_single_use));
 
         setupDownloads(firstBatch, state, fullState);
       } catch (err) { console.error("Audit error:", err); }
     }
+    window.runAuditChecks = runAuditChecks;
 
     function auditCard(num, name, desc, pass) {
       const card = document.createElement('div');
