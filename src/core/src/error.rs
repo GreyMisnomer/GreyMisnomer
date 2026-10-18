@@ -65,4 +65,44 @@ pub enum RegistryError {
     // RFC-002: Internal consistency check failed after mutation
     #[error("internal state consistency check failed: credit batch corrupted after mutation")]
     CorruptedState,
+
+    // RFC-005: Ed25519 signature verification failed
+    #[error("cryptographic signature verification failed")]
+    BadSignature,
+
+    // RFC-005: Transaction was not signed by the required authority or owner
+    #[error("unauthorized signer: {signer}")]
+    UnauthorizedSigner { signer: String },
+
+    // RFC-005: Referencing a VVB that is not in the accredited whitelist
+    #[error("unknown or unregistered VVB: {vvb}")]
+    UnknownVvb { vvb: String },
+
+    // RFC-005: VVB was revoked prior to this transaction
+    #[error("VVB has been revoked: {vvb}")]
+    VvbRevoked { vvb: String },
+
+    // RFC-005: Sequence mismatch on credit op_index
+    #[error("operation index mismatch: expected {expected}, found {found}")]
+    BadOpIndex { expected: u64, found: u64 },
+
+    // RFC-005: Sequence mismatch on authority_index
+    #[error("authority index mismatch: expected {expected}, found {found}")]
+    BadAuthorityIndex { expected: u64, found: u64 },
+
+    // RFC-005: Invalid public key encoding or small-order curve point
+    #[error("invalid Ed25519 public key: {0}")]
+    InvalidPublicKey(String),
+
+    // RFC-005: Signature was created for a different registry chain_id
+    #[error("chain_id mismatch: expected {expected}, found {found}")]
+    WrongChain { expected: String, found: String },
+
+    // RFC-005: Canonical line check failed (unknown fields, formatting, whitespace)
+    #[error("non-canonical line format on line {line}: {reason}")]
+    NonCanonicalLine { line: u64, reason: String },
+
+    // RFC-005: Current owner does not match expected batch owner
+    #[error("credit owner mismatch: expected {expected}, found {found}")]
+    OwnerMismatch { expected: String, found: String },
 }
