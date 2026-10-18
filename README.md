@@ -237,6 +237,7 @@ All protocol behavior is specified through RFCs before implementation:
 | [RFC-002](docs/rfc/rfc-002.md) | Credit Serialization Format & Range Locking | ✅ Implemented |
 | [RFC-003](docs/rfc/rfc-003.md) | MRV Data Commitment & Merkle Root Format | ✅ Implemented |
 | [RFC-004](docs/rfc/rfc-004.md) | Canonical Event Log Schema & Hash Chain Replayer | ✅ Implemented |
+| [RFC-005](docs/rfc/rfc-005.md) | Cryptographic Identity & Signed Events Specification | 📋 Proposed (Stage 1.5) |
 
 > New features require an accepted RFC before code is written. See the [RFC template](docs/rfc/rfc-template.md) to propose a new specification.
 
