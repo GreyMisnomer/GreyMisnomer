@@ -29,18 +29,34 @@ pub struct MRVCommitment {
 
 // --- hash_record ---------------------------------------------------------
 // RFC-003 §3.2: leaf nodes are Hash(normalized_record).
-// We serialize deterministically: "timestamp|value|unit|source"
-// This must be stable — changing the format invalidates all existing proofs.
+// Canonical length-prefixed binary encoding prevents collision attacks:
+// 0x00 (leaf domain) || len(ts) || ts || len(val) || val || len(unit) || unit || len(source) || source
 pub fn hash_record(record: &MRVRecord) -> [u8; 32] {
-    let data = format!(
-        "{}|{}|{}|{}",
-        record.timestamp, record.value, record.unit, record.source
-    );
-    blake3::hash(data.as_bytes()).into()
+    let mut hasher = blake3::Hasher::new();
+    // Domain separation: 0x00 for leaf nodes
+    hasher.update(&[0x00]);
+
+    // timestamp (u64, big-endian)
+    hasher.update(&(8u64).to_be_bytes());
+    hasher.update(&record.timestamp.to_be_bytes());
+
+    // value (u64 micro-units, big-endian)
+    hasher.update(&(8u64).to_be_bytes());
+    hasher.update(&record.value.to_be_bytes());
+
+    // unit (variable-length UTF-8)
+    hasher.update(&(record.unit.len() as u64).to_be_bytes());
+    hasher.update(record.unit.as_bytes());
+
+    // source (variable-length UTF-8)
+    hasher.update(&(record.source.len() as u64).to_be_bytes());
+    hasher.update(record.source.as_bytes());
+
+    hasher.finalize().into()
 }
 
 // --- build_merkle_root ---------------------------------------------------
-// RFC-003 §3.2: internal nodes are Hash(left_child || right_child).
+// RFC-003 §3.2: internal nodes are Hash(0x01 || left_child || right_child).
 // Odd leaf at any level is promoted unchanged (no duplication — avoids
 // second-preimage attacks from duplicate padding).
 // Returns [0u8; 32] for an empty dataset — caller must treat this as invalid.
@@ -58,8 +74,9 @@ pub fn build_merkle_root(records: &[MRVRecord]) -> [u8; 32] {
         let mut i = 0;
         while i < layer.len() {
             if i + 1 < layer.len() {
-                // Combine pair
+                // Combine pair with internal node domain separator 0x01
                 let mut hasher = blake3::Hasher::new();
+                hasher.update(&[0x01]);
                 hasher.update(&layer[i]);
                 hasher.update(&layer[i + 1]);
                 next.push(hasher.finalize().into());
@@ -112,6 +129,7 @@ pub fn generate_inclusion_proof(
                     }
                 }
                 let mut hasher = blake3::Hasher::new();
+                hasher.update(&[0x01]);
                 hasher.update(&layer[i]);
                 hasher.update(&layer[i + 1]);
                 next.push(hasher.finalize().into());
@@ -145,6 +163,7 @@ pub fn verify_inclusion_proof(
 
     for (sibling, is_right) in proof {
         let mut hasher = blake3::Hasher::new();
+        hasher.update(&[0x01]);
         if *is_right {
             // sibling is to the right — we are the left child
             hasher.update(&current);
@@ -275,5 +294,39 @@ mod tests {
         assert_eq!(c.timestamp, 9999);
         assert_eq!(c.hash_algorithm, "BLAKE3");
         assert_eq!(c.merkle_root, build_merkle_root(&records));
+    }
+
+    // Regression test for Bug 5: length-prefixed encoding prevents field boundary collision
+    #[test]
+    fn test_leaf_encoding_collision_resistance() {
+        let r1 = MRVRecord {
+            timestamp: 1000,
+            value: 50,
+            unit: "kWh|fake".to_string(),
+            source: "meter".to_string(),
+        };
+        let r2 = MRVRecord {
+            timestamp: 1000,
+            value: 50,
+            unit: "kWh".to_string(),
+            source: "fake|meter".to_string(),
+        };
+        assert_ne!(hash_record(&r1), hash_record(&r2));
+    }
+
+    // Domain separation test: leaf hash must not collide with internal node hash
+    #[test]
+    fn test_domain_separation_leaf_vs_internal() {
+        let record = make_record(1000, 50);
+        let leaf_hash = hash_record(&record);
+
+        // Internal node hash of two identical zero blocks
+        let mut hasher = blake3::Hasher::new();
+        hasher.update(&[0x01]);
+        hasher.update(&[0u8; 32]);
+        hasher.update(&[0u8; 32]);
+        let internal_hash: [u8; 32] = hasher.finalize().into();
+
+        assert_ne!(leaf_hash, internal_hash);
     }
 }
