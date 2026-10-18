@@ -30,9 +30,71 @@ fn js_err(msg: impl std::fmt::Display) -> JsValue {
 #[derive(Deserialize)]
 struct MrvInput {
     timestamp: u64,
-    value: f64,
+    #[serde(deserialize_with = "deserialize_micro_units")]
+    value: u64,
     unit: String,
     source: String,
+}
+
+fn deserialize_micro_units<'de, D>(deserializer: D) -> Result<u64, D::Error>
+where
+    D: serde::Deserializer<'de>,
+{
+    struct MicroUnitsVisitor;
+
+    impl<'de> serde::de::Visitor<'de> for MicroUnitsVisitor {
+        type Value = u64;
+
+        fn expecting(&self, formatter: &mut std::fmt::Formatter) -> std::fmt::Result {
+            formatter.write_str("an integer micro-unit or a floating-point value")
+        }
+
+        fn visit_u64<E>(self, v: u64) -> Result<Self::Value, E>
+        where
+            E: serde::de::Error,
+        {
+            Ok(v)
+        }
+
+        fn visit_i64<E>(self, v: i64) -> Result<Self::Value, E>
+        where
+            E: serde::de::Error,
+        {
+            if v < 0 {
+                return Err(E::custom("micro-unit value cannot be negative"));
+            }
+            Ok(v as u64)
+        }
+
+        fn visit_f64<E>(self, v: f64) -> Result<Self::Value, E>
+        where
+            E: serde::de::Error,
+        {
+            if v < 0.0 {
+                return Err(E::custom("micro-unit value cannot be negative"));
+            }
+            let micro = (v * 1_000_000.0).round();
+            if micro > u64::MAX as f64 {
+                return Err(E::custom("value overflow"));
+            }
+            Ok(micro as u64)
+        }
+
+        fn visit_str<E>(self, v: &str) -> Result<Self::Value, E>
+        where
+            E: serde::de::Error,
+        {
+            if let Ok(u) = v.parse::<u64>() {
+                Ok(u)
+            } else if let Ok(f) = v.parse::<f64>() {
+                self.visit_f64(f)
+            } else {
+                Err(E::custom(format!("invalid numeric string: {v}")))
+            }
+        }
+    }
+
+    deserializer.deserialize_any(MicroUnitsVisitor)
 }
 
 fn default_true() -> bool {

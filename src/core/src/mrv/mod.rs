@@ -7,8 +7,8 @@ use serde::{Deserialize, Serialize};
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct MRVRecord {
     pub timestamp: u64, // Unix epoch of the measurement
-    pub value: f64,     // Quantity measured (e.g. kWh generated, kg CO2 captured)
-    pub unit: String,   // Unit string — "kWh", "tCO2e", etc.
+    pub value: u64, // Quantity measured in integer micro-units (1 credit = 1_000_000 micro-credits)
+    pub unit: String, // Unit string — "kWh", "tCO2e", etc.
     pub source: String, // Data source identifier — sensor ID, satellite pass ID, etc.
 }
 
@@ -176,7 +176,7 @@ pub fn commit(records: &[MRVRecord], timestamp: u64) -> MRVCommitment {
 mod tests {
     use super::*;
 
-    fn make_record(ts: u64, val: f64) -> MRVRecord {
+    fn make_record(ts: u64, val: u64) -> MRVRecord {
         MRVRecord {
             timestamp: ts,
             value: val,
@@ -188,7 +188,7 @@ mod tests {
     // RFC-003 invariant: root computation is deterministic
     #[test]
     fn root_is_deterministic() {
-        let records = vec![make_record(1000, 42.0), make_record(1001, 38.5)];
+        let records = vec![make_record(1000, 42_000_000), make_record(1001, 38_500_000)];
         let root_a = build_merkle_root(&records);
         let root_b = build_merkle_root(&records);
         assert_eq!(root_a, root_b);
@@ -204,7 +204,7 @@ mod tests {
     // Single-record tree: root == hash of that record
     #[test]
     fn single_record_root_equals_leaf_hash() {
-        let r = make_record(500, 10.0);
+        let r = make_record(500, 10_000_000);
         let root = build_merkle_root(std::slice::from_ref(&r));
         assert_eq!(root, hash_record(&r));
     }
@@ -213,10 +213,10 @@ mod tests {
     #[test]
     fn inclusion_proof_valid_record() {
         let records = vec![
-            make_record(1, 10.0),
-            make_record(2, 20.0),
-            make_record(3, 30.0),
-            make_record(4, 40.0),
+            make_record(1, 10_000_000),
+            make_record(2, 20_000_000),
+            make_record(3, 30_000_000),
+            make_record(4, 40_000_000),
         ];
         let root = build_merkle_root(&records);
         for i in 0..records.len() {
@@ -231,12 +231,12 @@ mod tests {
     // Tampered leaf must NOT verify — RFC-003 invariant
     #[test]
     fn tampered_leaf_fails_proof() {
-        let records = vec![make_record(1, 10.0), make_record(2, 20.0)];
+        let records = vec![make_record(1, 10_000_000), make_record(2, 20_000_000)];
         let root = build_merkle_root(&records);
         let proof = generate_inclusion_proof(&records, 0).unwrap();
 
         // Tamper: change the value
-        let tampered = make_record(1, 99.0);
+        let tampered = make_record(1, 99_000_000);
         assert!(!verify_inclusion_proof(&tampered, &proof, &root));
     }
 
@@ -244,9 +244,9 @@ mod tests {
     #[test]
     fn odd_number_of_records() {
         let records = vec![
-            make_record(1, 10.0),
-            make_record(2, 20.0),
-            make_record(3, 30.0),
+            make_record(1, 10_000_000),
+            make_record(2, 20_000_000),
+            make_record(3, 30_000_000),
         ];
         let root = build_merkle_root(&records);
         for i in 0..records.len() {
@@ -261,15 +261,15 @@ mod tests {
     // Different data must produce different roots
     #[test]
     fn different_data_different_roots() {
-        let a = vec![make_record(1, 10.0), make_record(2, 20.0)];
-        let b = vec![make_record(1, 10.0), make_record(2, 99.0)];
+        let a = vec![make_record(1, 10_000_000), make_record(2, 20_000_000)];
+        let b = vec![make_record(1, 10_000_000), make_record(2, 99_000_000)];
         assert_ne!(build_merkle_root(&a), build_merkle_root(&b));
     }
 
     // commit() helper produces correct metadata
     #[test]
     fn commit_helper_correct_metadata() {
-        let records = vec![make_record(1, 5.0), make_record(2, 5.0)];
+        let records = vec![make_record(1, 5_000_000), make_record(2, 5_000_000)];
         let c = commit(&records, 9999);
         assert_eq!(c.leaf_count, 2);
         assert_eq!(c.timestamp, 9999);

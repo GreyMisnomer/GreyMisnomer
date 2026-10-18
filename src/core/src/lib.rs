@@ -10,3 +10,6 @@ pub mod poo; // Proof-of-Offset (RFC-001)
 pub mod project; // Project, ProjectStatus (RFC-001)
 pub mod registry; // Registry state machine — enforces all 7 invariants (RFC-001)
 pub mod serial; // SerialRange — fundamental primitive (RFC-002) // MRV data commitment, Merkle tree (RFC-003)
+
+/// 1 credit = 1_000_000 micro-credits (RFC-001 / Phase Alpha integer accounting)
+pub const MICRO_UNITS_PER_CREDIT: u64 = 1_000_000;

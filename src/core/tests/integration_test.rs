@@ -26,7 +26,7 @@ fn make_mrv_records() -> Vec<MRVRecord> {
     (0..30)
         .map(|day| MRVRecord {
             timestamp: 1_700_000_000 + day * 86_400,
-            value: 1_250.0 + (day as f64 * 3.5), // kWh — slight daily variation
+            value: 1_250_000_000 + (day * 3_500_000), // micro-units (1,250 kWh)
             unit: "kWh".to_string(),
             source: format!("SOLAR-SENSOR-{:03}", day % 4),
         })
@@ -150,7 +150,7 @@ fn tampered_mrv_does_not_verify() {
     // Attacker alters one record's value
     let tampered = MRVRecord {
         timestamp: records[5].timestamp,
-        value: 999_999.0, // fabricated
+        value: 999_999_000_000, // fabricated micro-units
         unit: records[5].unit.clone(),
         source: records[5].source.clone(),
     };
