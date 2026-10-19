@@ -7,6 +7,28 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ---
 
+## [1.3.0] - 2026-10-19
+
+### Milestone: Stage 1.5 (Cryptographic Transparency Log & Signed Events — RFC-005)
+
+This release elevates the GreyMisnomer protocol from an accounting log to a cryptographic transparency log per RFC-005. It eliminates sequencer trust by mandating Ed25519 cryptographic signatures on every state transition, introduces strict length-prefixed binary preimages, provides monotonic replay protection counters, enforces Invariants A1–A3, and adds sequencer-signed checkpoints with in-browser WebAssembly verification.
+
+### Added
+- **Ed25519 Cryptographic Signatures & Identity (RFC-005 §2):** Integrated `ed25519-dalek` (zero default features, `alloc` and `serde` enabled). Actors (Root Authority, Sequencer, Accredited VVBs, and Credit Owners) are strictly identified by 32-byte Ed25519 public keys.
+- **Canonical Binary Preimages & Domain Separation (§3.4):** Built deterministic big-endian length-prefixed binary preimages with isolated domain tags (`0x10`..`0x13`) for `Genesis`, `VvbRegister`, `VvbRevoke`, `Mint`, `Transfer`, `Burn`, and `Checkpoint`.
+- **Monotonic Replay Protection (§3.5):** Introduced per-batch `op_index` counters and an `authority_index` counter. Any reused or non-contiguous index is immediately rejected.
+- **Cryptographic Invariants A1–A3 (§3.8):**
+  - **Invariant A1 (Strict Signature Validity):** Every state transition must carry a valid Ed25519 signature under the accredited party's public key (Authority for VVB events, VVB for credit minting, current Owner for transfers and burns).
+  - **Invariant A2 (Operation Index Contiguity):** Mutations strictly increment monotonically without gaps or repeats.
+  - **Invariant A3 (Domain Separation):** All events and checkpoints must target the active `chain_id`.
+- **Byte-Identical Canonical-Line Rule (§3.6):** Strict JSONL parser and canonical renderer in `event_log.rs` ensuring zero byte discrepancies, whitespace malleability, or unescaped sequences.
+- **Signed Checkpoints & Equivocation Detection (§3.7):** Sequencer publishes signed checkpoint files (`checkpoints/<size>.json`) referencing log size and head hash. Includes client-side algorithm to detect equivocation across audits.
+- **CLI Key Management & Checkpoint Tools:** Added subcommands to `grey-misnomer-cli`: `keygen`, `sign-checkpoint`, `checkpoint`, and `verify-checkpoint`, plus `--checkpoints <dir>` audit flag for `replay`.
+- **In-Browser WASM Verifier & Trust Root UI:** Compiled native WebAssembly verifying Ed25519 signatures, checkpoints, and Invariants A1–A3 with zero backend trust.
+- **Automated Playwright E2E Suite:** 8/8 end-to-end browser tests verifying protocol lifecycle, RBAC, live ledger replay, and tamper rejection.
+
+---
+
 ## [1.2.0] - 2026-10-18
 
 ### Milestone: Stage 0 (P0 Critical Audit Fixes) & Stage 1 (Public Alpha Ledger)
