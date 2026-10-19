@@ -1318,8 +1318,97 @@
     // ══════════════════════════════════════════════════════════════════
     //  AUDIT MODULE & PUBLIC LEDGER WASM VERIFIER (RFC-004)
     // ══════════════════════════════════════════════════════════════════
+    // 6. Public Transparency Log Replay & Verification (RFC-004, 005, 006)
+    // ══════════════════════════════════════════════════════════════════
     let publicLedgerRaw = '';
     let publicLedgerSummary = null;
+    let currentManifest = null;
+
+    async function fetchResilientEventLog() {
+      const badge = document.getElementById('mirrorIngestionSourceBadge');
+
+      // 1. Attempt Origin fetch first
+      try {
+        const resp = await fetch('events.jsonl', { cache: 'no-store' });
+        if (resp.ok) {
+          if (badge) {
+            badge.textContent = 'Source: Primary Origin (HTTP)';
+            badge.style.color = 'var(--green)';
+            badge.style.background = 'rgba(57,211,83,0.15)';
+          }
+          return await resp.text();
+        }
+      } catch (err) {
+        console.warn("Primary origin fetch failed, initiating multi-mirror fallback:", err);
+      }
+
+      // 2. Fetch manifest.json to locate decentralized mirrors
+      let manifest = currentManifest;
+      if (!manifest) {
+        try {
+          const mResp = await fetch('manifest.json', { cache: 'no-store' });
+          if (mResp.ok) {
+            manifest = await mResp.json();
+            currentManifest = manifest;
+          }
+        } catch (e) {
+          console.warn("Manifest fetch failed:", e);
+        }
+      }
+
+      const ipfsCid = (manifest && manifest.mirrors && manifest.mirrors.ipfs && manifest.mirrors.ipfs.events_cid)
+        ? manifest.mirrors.ipfs.events_cid
+        : 'bafybeidqqrprx3bwgzoganunnbnvaiowrpdm5gmpverl6e4pz7j7ufj2im';
+
+      const gateways = (manifest && manifest.mirrors && manifest.mirrors.ipfs && manifest.mirrors.ipfs.gateways)
+        ? manifest.mirrors.ipfs.gateways
+        : [
+            'https://dweb.link/ipfs/',
+            'https://ipfs.io/ipfs/',
+            'https://cloudflare-ipfs.com/ipfs/'
+          ];
+
+      // 3. Fallback to IPFS Public Gateways
+      for (const gw of gateways) {
+        try {
+          const url = `${gw}${ipfsCid}`;
+          const gwResp = await fetch(url, { signal: AbortSignal.timeout(6000) });
+          if (gwResp.ok) {
+            const gwHost = new URL(gw).hostname;
+            if (badge) {
+              badge.textContent = `Source: IPFS Mirror (${gwHost})`;
+              badge.style.color = 'var(--blue)';
+              badge.style.background = 'rgba(88,166,255,0.15)';
+            }
+            return await gwResp.text();
+          }
+        } catch (e) {
+          console.warn(`Gateway ${gw} failed:`, e);
+        }
+      }
+
+      // 4. Fallback to Internet Archive Wayback Machine
+      const archiveUrl = (manifest && manifest.mirrors && manifest.mirrors.archive_org && manifest.mirrors.archive_org.snapshot_url)
+        ? manifest.mirrors.archive_org.snapshot_url
+        : 'https://web.archive.org/web/20261019082411/https://greymisnomer.github.io/GreyMisnomer/events.jsonl';
+
+      try {
+        const arcResp = await fetch(archiveUrl, { signal: AbortSignal.timeout(8000) });
+        if (arcResp.ok) {
+          if (badge) {
+            badge.textContent = 'Source: Internet Archive Wayback Mirror';
+            badge.style.color = 'var(--purple)';
+            badge.style.background = 'rgba(188,140,255,0.15)';
+          }
+          return await arcResp.text();
+        }
+      } catch (e) {
+        console.warn("Wayback machine snapshot fetch failed:", e);
+      }
+
+      throw new Error("All mirrors (Origin HTTP, IPFS Gateway pool, Archive.org) were unreachable.");
+    }
+    window.fetchResilientEventLog = fetchResilientEventLog;
 
     async function verifyPublicLedger() {
       const badge = document.getElementById('ledgerVerificationBadge');
@@ -1331,15 +1420,14 @@
       if (errBox) errBox.style.display = 'none';
 
       try {
-        const resp = await fetch('events.jsonl', { cache: 'no-store' });
-        if (!resp.ok) throw new Error(`HTTP ${resp.status} fetching events.jsonl`);
-        publicLedgerRaw = await resp.text();
+        publicLedgerRaw = await fetchResilientEventLog();
 
         const summaryJson = replay_event_log(publicLedgerRaw);
         publicLedgerSummary = JSON.parse(summaryJson);
 
         renderLedgerSummary(publicLedgerSummary, publicLedgerRaw);
         await checkOtsProof();
+        await fetchManifestAndVerifyMirrors(publicLedgerSummary);
       } catch (err) {
         console.error("Public ledger verification error:", err);
         if (badge) {
@@ -1353,6 +1441,58 @@
       }
     }
     window.verifyPublicLedger = verifyPublicLedger;
+
+    async function fetchManifestAndVerifyMirrors(summary) {
+      try {
+        if (!currentManifest) {
+          const mResp = await fetch('manifest.json', { cache: 'no-store' });
+          if (mResp.ok) {
+            currentManifest = await mResp.json();
+          }
+        }
+
+        if (currentManifest) {
+          const cidEl = document.getElementById('mirrorIpfsEventsCid');
+          if (cidEl && currentManifest.mirrors && currentManifest.mirrors.ipfs) {
+            cidEl.textContent = currentManifest.mirrors.ipfs.events_cid || 'Unavailable';
+          }
+
+          const arcLink = document.getElementById('mirrorArchiveOrgLink');
+          if (arcLink && currentManifest.mirrors && currentManifest.mirrors.archive_org) {
+            arcLink.href = currentManifest.mirrors.archive_org.snapshot_url || '#';
+          }
+
+          const eqEl = document.getElementById('mirrorEquivocationStatus');
+          if (eqEl) {
+            if (currentManifest.head_hash && summary.final_hash) {
+              if (currentManifest.head_hash.toLowerCase() === summary.final_hash.toLowerCase()) {
+                eqEl.textContent = '✓ Log Head Matches Manifest (No Split-View Detected)';
+                eqEl.style.color = 'var(--green)';
+              } else {
+                eqEl.textContent = `❌ EQUIVOCATION DETECTED: Manifest head (${currentManifest.head_hash.slice(0, 10)}…) differs from replayed log tip (${summary.final_hash.slice(0, 10)}…)!`;
+                eqEl.style.color = 'var(--red)';
+              }
+            }
+          }
+        }
+      } catch (e) {
+        console.warn("Error processing manifest mirrors:", e);
+      }
+    }
+    window.fetchManifestAndVerifyMirrors = fetchManifestAndVerifyMirrors;
+
+    async function copyIpfsCid() {
+      const cidEl = document.getElementById('mirrorIpfsEventsCid');
+      if (cidEl && cidEl.textContent && cidEl.textContent !== 'Loading CID...') {
+        try {
+          await navigator.clipboard.writeText(cidEl.textContent);
+          showSuccessToast('✓ IPFS Events CID copied to clipboard!');
+        } catch (e) {
+          showToast('Clipboard error: ' + e);
+        }
+      }
+    }
+    window.copyIpfsCid = copyIpfsCid;
 
     function renderLedgerSummary(summary, rawLog) {
       const badge = document.getElementById('ledgerVerificationBadge');

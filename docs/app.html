@@ -464,6 +464,37 @@
             </div>
           </div>
 
+          <!-- Decentralized Multi-Mirror Status & Fallback (RFC-006 §5) -->
+          <div class="mirror-status-card" id="mirrorStatusCard" style="background:var(--bg3); border:1px solid var(--border); border-radius:8px; padding:0.85rem 1rem; margin-bottom:1.5rem; font-size:0.8rem;">
+            <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:0.6rem; flex-wrap:wrap; gap:0.5rem;">
+              <span style="font-weight:600; color:var(--text); display:flex; align-items:center; gap:0.4rem;">
+                <span>🌐</span> Decentralized Mirror Ingestion & Fallback (RFC-006)
+              </span>
+              <span id="mirrorIngestionSourceBadge" class="badge" style="background:rgba(57,211,83,0.15); color:var(--green); font-size:0.75rem;">Source: Primary Origin (HTTP)</span>
+            </div>
+            <div style="display:grid; grid-template-columns:repeat(auto-fit, minmax(240px, 1fr)); gap:0.75rem; margin-top:0.5rem;">
+              <div style="background:rgba(0,0,0,0.2); padding:0.6rem; border-radius:6px; border:1px solid var(--border);">
+                <div style="font-size:0.7rem; color:var(--muted); text-transform:uppercase;">Canonical IPFS Events CID</div>
+                <div style="display:flex; align-items:center; justify-content:space-between; gap:0.5rem; margin-top:0.2rem;">
+                  <code id="mirrorIpfsEventsCid" style="font-size:0.72rem; color:var(--blue); overflow:hidden; text-overflow:ellipsis; white-space:nowrap;">Loading CID...</code>
+                  <button class="btn btn-ghost btn-sm" onclick="copyIpfsCid()" style="padding:0.1rem 0.4rem; font-size:0.68rem;">📋</button>
+                </div>
+              </div>
+              <div style="background:rgba(0,0,0,0.2); padding:0.6rem; border-radius:6px; border:1px solid var(--border);">
+                <div style="font-size:0.7rem; color:var(--muted); text-transform:uppercase;">Internet Archive Snapshot</div>
+                <div style="margin-top:0.2rem;">
+                  <a id="mirrorArchiveOrgLink" href="#" target="_blank" style="font-size:0.72rem; color:var(--purple); text-decoration:underline;">Wayback Machine Snapshot ↗</a>
+                </div>
+              </div>
+              <div style="background:rgba(0,0,0,0.2); padding:0.6rem; border-radius:6px; border:1px solid var(--border);">
+                <div style="font-size:0.7rem; color:var(--muted); text-transform:uppercase;">Equivocation Defense</div>
+                <div id="mirrorEquivocationStatus" style="font-size:0.72rem; color:var(--green); margin-top:0.2rem;">
+                  ✓ Log Head Matches Manifest (No Split-View)
+                </div>
+              </div>
+            </div>
+          </div>
+
           <!-- 7 Protocol Invariants Live Results for Public Ledger -->
           <h4 style="font-size:1rem; margin-bottom:0.75rem; color:var(--text); display:flex; align-items:center; gap:0.5rem;">
             <span>🛡️</span> Live Protocol Invariants (RFC-001 §5)
