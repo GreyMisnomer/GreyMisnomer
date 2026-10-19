@@ -7,6 +7,42 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ---
 
+## [1.4.0] - 2026-10-19
+
+### Milestone: Stage 2 (The People's Ledger Protocol & Sovereign Multi-Mirror Publishing — RFC-006)
+
+This release implements the full Stage 2 architecture specified in RFC-006 ("The People's Ledger Protocol"). It eliminates all dependency on centralized RPCs, gas tokens, EVM chains, and paid infrastructure, transforming GreyMisnomer into a completely sovereign, locally-deployable, distributed ledger with an in-browser cryptographic signing enclave, zero-gas asynchronous submission channels, canonical distribution manifests, IPFS Content Identifier (CID) integration, and automatic gateway fallback.
+
+### Added
+- **RFC-006 Protocol Specification (`docs/rfc/rfc-006.md`):** Complete, formal architecture specifying the 5-tier zero-cost storage topology, sovereign client-side transaction signing, canonical distribution manifest, and multi-mirror gateway failover.
+- **WebAssembly Ed25519 Signing Enclave (`src/wasm/`):**
+  - `generate_keypair_wasm()`, `derive_pubkey_wasm()`, `sign_transfer_intent_wasm()`, `sign_burn_intent_wasm()`, and `sign_mint_intent_wasm()`.
+  - `simulate_apply_wasm()`: Client-side pre-flight simulation engine that dry-runs proposed transactions against current state in local WASM memory and renders byte-identical canonical JSONL lines before any submission.
+- **In-Browser Sovereign Key Manager UI (`docs/app.html` & `docs/js/app.js`):**
+  - Local Ed25519 keypair generator, public/secret key viewer with reveal toggle, secure clipboard export, and air-gapped JSON identity download.
+  - Preset ledger identities for instant testing and auditing: Infosys Corporate Buyer, Tata Solar Developer, TUV NORD Carbon Bureau, Root Registry Authority, and Sequencer.
+- **In-Browser Transaction Intent Builder (`#view-signer`):**
+  - Interactive signing interfaces for Transfer, Burn/Retire (with legal claim rationales: `CorporateNetZero`, `Payg`, `Compliance`), and Accredited VVB Minting.
+  - Automated `op_index` replay protection detector querying current state machine history.
+  - Live pre-flight simulation metrics: Projected Sequence #, Next Batch `op_index`, Active Supply, and Retired Supply.
+- **Zero-Gas Asynchronous Submission Assistant:**
+  - One-click GitHub Issue submission assistant with pre-filled markdown templates containing canonical event lines.
+  - Air-gapped `.gmline` single-event bundle download for offline sequencers.
+- **Canonical Multi-Mirror Manifest (`manifest.json` & `docs/manifest.json`):**
+  - Commits `chain_id`, `log_size`, `head_hash`, latest signed checkpoint, Git & GitHub Pages mirrors, IPFS UnixFS CIDs, public gateway pool, and Internet Archive Wayback Machine snapshot links.
+- **Automated Multi-Mirror Publishing Engine (`scripts/publish_mirrors.py` & CI):**
+  - Deterministically computes standard IPFS UnixFS CIDv1 without external daemons.
+  - Interacts with Internet Archive Save Page Now 2 (SPN2) public API to archive public releases.
+  - Integrated into `.github/workflows/pages.yml`.
+- **In-Browser Resilient Verification & Gateway Failover:**
+  - Web app automatically falls back from Origin HTTP to public IPFS gateways (`dweb.link`, `ipfs.io`, `cloudflare-ipfs.com`) and Archive.org upon network interruption or CDN outage.
+  - Real-time Equivocation Defense card alerting auditors if manifest head hash diverges from replayed log tip.
+- **Expanded Playwright E2E Test Suite (14 Tests):**
+  - Added `test/e2e/signer.spec.js` (Key Manager, intent signing, WASM simulation, rejection of unauthorized keys, op_index replay prevention).
+  - Added `test/e2e/mirrors.spec.js` (Multi-mirror status, IPFS CID display, Wayback link, and simulated Origin failover).
+
+---
+
 ## [1.3.0] - 2026-10-19
 
 ### Milestone: Stage 1.5 (Cryptographic Transparency Log & Signed Events — RFC-005)
