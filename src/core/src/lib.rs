@@ -3,6 +3,7 @@
 // We do NOT use wildcard re-exports to avoid name collisions.
 
 pub mod auth; // Ed25519, canonical encoding (enc), preimages (RFC-005)
+pub mod checkpoint; // Signed checkpoints & equivocation detection (RFC-005 §3.7)
 pub mod credit; // CarbonCredit, CreditBatch (RFC-001 + RFC-002)
 pub mod error; // RegistryError — all protocol failure modes
 pub mod event_log; // EventEntry, schema & hash chaining for events.jsonl (RFC-004)

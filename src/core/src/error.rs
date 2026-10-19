@@ -105,4 +105,22 @@ pub enum RegistryError {
     // RFC-005: Current owner does not match expected batch owner
     #[error("credit owner mismatch: expected {expected}, found {found}")]
     OwnerMismatch { expected: String, found: String },
+
+    // RFC-005 §3.7: Checkpoint head hash does not match replayed event log head
+    #[error("checkpoint head hash mismatch at size {size}: expected {expected}, found {found}")]
+    CheckpointHeadMismatch {
+        size: u64,
+        expected: String,
+        found: String,
+    },
+
+    // RFC-005 §3.7: Two different valid head hashes for the same checkpoint size
+    #[error(
+        "checkpoint equivocation detected at size {size}: conflicting heads {head_a} vs {head_b}"
+    )]
+    CheckpointEquivocation {
+        size: u64,
+        head_a: String,
+        head_b: String,
+    },
 }

@@ -340,6 +340,9 @@ pub struct ReplaySummary {
     pub invariant_report: InvariantReport,
     /// The final evaluated registry state
     pub state: RegistryState,
+    /// Ordered list of entry hashes for checkpoint verification
+    #[serde(default)]
+    pub entry_hashes: Vec<String>,
 }
 
 /// Errors encountered while replaying an event log.
@@ -473,6 +476,7 @@ where
     let mut expected_seq: u64 = 0;
     let mut expected_prev_hash: String = GENESIS_PREV_HASH.to_string();
     let mut events_count: u64 = 0;
+    let mut entry_hashes: Vec<String> = Vec::new();
 
     #[allow(clippy::explicit_counter_loop)]
     for (line_idx, raw_line) in lines.into_iter().enumerate() {
@@ -548,6 +552,7 @@ where
             });
         }
 
+        entry_hashes.push(entry.hash.clone());
         expected_prev_hash = entry.hash;
         expected_seq += 1;
         events_count += 1;
@@ -584,6 +589,7 @@ where
         batches_count,
         invariant_report,
         state,
+        entry_hashes,
     })
 }
 

@@ -238,6 +238,7 @@ version = "0.1.0"
 dependencies = [
  "anyhow",
  "grey-misnomer-core",
+ "hex",
  "serde",
  "serde_json",
 ]
