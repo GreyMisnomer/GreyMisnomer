@@ -1,0 +1,11 @@
+{
+  "checkpoints": [
+    {
+      "file": "checkpoints/5.json",
+      "head_hash": "6aee877e18f2327eeb730ee01b29568ed18ae17280850a15b9e23d34176054b4",
+      "sequencer": "27ef3b8a333ca785002f12cc9071922848fa2fa460d3eb127994a90f24ee5715",
+      "size": 5,
+      "timestamp": 1700000000
+    }
+  ]
+}

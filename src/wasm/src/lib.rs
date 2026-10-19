@@ -814,3 +814,31 @@ pub fn replay_event_log(events_jsonl: &str) -> Result<String, JsValue> {
         Err(err) => Err(js_err(format!("Replay verification failed: {err}"))),
     }
 }
+
+/// In-browser checkpoint verifier (RFC-005 §3.7):
+/// Verifies strict Ed25519 detached signature under the authorized sequencer public key.
+#[wasm_bindgen]
+pub fn verify_checkpoint(
+    checkpoint_json: &str,
+    sequencer_pubkey_hex: &str,
+) -> Result<bool, JsValue> {
+    let cp = grey_misnomer_core::checkpoint::Checkpoint::from_json(checkpoint_json)
+        .map_err(|e| js_err(format!("Invalid checkpoint JSON: {e}")))?;
+    let pk = PubKey::from_hex(sequencer_pubkey_hex)
+        .map_err(|e| js_err(format!("Invalid sequencer public key: {e}")))?;
+    cp.verify(&pk).map_err(js_err)?;
+    Ok(true)
+}
+
+/// In-browser checkpoint equivocation detector (RFC-005 §3.7):
+/// Parses a JSON array of checkpoints and verifies no two valid checkpoints claim the same size with different heads.
+#[wasm_bindgen]
+pub fn detect_equivocation_wasm(checkpoints_json: &str) -> Result<String, JsValue> {
+    let checkpoints: Vec<grey_misnomer_core::checkpoint::Checkpoint> =
+        serde_json::from_str(checkpoints_json)
+            .map_err(|e| js_err(format!("Invalid checkpoints JSON: {e}")))?;
+    match grey_misnomer_core::checkpoint::detect_equivocation(&checkpoints) {
+        Some(proof) => serde_json::to_string(&proof).map_err(js_err),
+        None => Ok("null".to_string()),
+    }
+}

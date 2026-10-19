@@ -159,7 +159,7 @@ test.describe('Role-Based Access Control (RBAC) Core Flows', () => {
 
     // Check chain status and metrics
     await expect(page.locator('#ledgerChainStatus')).toContainText('VALID');
-    await expect(page.locator('#ledgerEventsCount')).toContainText('3');
+    await expect(page.locator('#ledgerEventsCount')).toContainText('5');
     await expect(page.locator('#ledgerActiveSupply')).toContainText('800');
     await expect(page.locator('#ledgerRetiredSupply')).toContainText('200');
 
@@ -170,9 +170,16 @@ test.describe('Role-Based Access Control (RBAC) Core Flows', () => {
       await expect(publicCards.nth(i)).toHaveClass(/ok/);
     }
 
-    // Check that sequential events table rendered all 3 events
+    // Check all 3 cryptographic authorization invariant cards
+    const authCards = page.locator('#publicLedgerAuthGrid .audit-card');
+    await expect(authCards).toHaveCount(3);
+    for (let i = 0; i < 3; i++) {
+      await expect(authCards.nth(i)).toHaveClass(/ok/);
+    }
+
+    // Check that sequential events table rendered all 5 events
     const rows = page.locator('#ledgerEventsTableBody tr');
-    await expect(rows).toHaveCount(3);
+    await expect(rows).toHaveCount(5);
   });
 
   test('Public Ledger Tamper Sandbox detects forged entry and displays cryptographic rejection', async ({ page }) => {

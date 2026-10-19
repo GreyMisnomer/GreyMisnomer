@@ -1,4 +1,4 @@
-    import init, { build_commitment, verify_inclusion, WasmRegistry, replay_event_log } from '../pkg/grey_misnomer_wasm.js';
+    import init, { build_commitment, verify_inclusion, WasmRegistry, replay_event_log, verify_checkpoint, detect_equivocation_wasm } from '../pkg/grey_misnomer_wasm.js';
 
     // ══════════════════════════════════════════════════════════════════
     //  STATE
@@ -1349,7 +1349,7 @@
 
       const chainEl = document.getElementById('ledgerChainStatus');
       if (chainEl) {
-        chainEl.textContent = summary.chain_valid ? 'VALID (SHA-256)' : 'INVALID';
+        chainEl.textContent = summary.chain_valid ? 'VALID (BLAKE3 Canonical Preimages)' : 'INVALID';
         chainEl.style.color = summary.chain_valid ? 'var(--green)' : 'var(--red)';
       }
 
@@ -1365,7 +1365,23 @@
       const tipHashEl = document.getElementById('ledgerTipHash');
       if (tipHashEl) tipHashEl.textContent = summary.final_hash;
 
-      // Invariants
+      // Identity & Trust Roots
+      const chainIdEl = document.getElementById('ledgerChainId');
+      if (chainIdEl && summary.state && summary.state.chain_id) {
+        chainIdEl.textContent = typeof summary.state.chain_id === 'string'
+          ? summary.state.chain_id
+          : Array.from(summary.state.chain_id).map(b => b.toString(16).padStart(2, '0')).join('');
+      }
+      const authEl = document.getElementById('ledgerAuthorityKey');
+      if (authEl && summary.state && summary.state.authority) {
+        authEl.textContent = summary.state.authority;
+      }
+      const seqEl = document.getElementById('ledgerSequencerKey');
+      if (seqEl && summary.state && summary.state.sequencer) {
+        seqEl.textContent = summary.state.sequencer;
+      }
+
+      // Protocol Invariants (1 to 7)
       const invGrid = document.getElementById('publicLedgerInvariantsGrid');
       if (invGrid && summary.invariant_report) {
         invGrid.replaceChildren();
@@ -1379,6 +1395,19 @@
         invGrid.appendChild(auditCard("7", "PoI Single-use Consumed State", "PoI marked used, blocking replay.", inv.inv7_poi_single_use));
       }
 
+      // Cryptographic Authorization Invariants (A1 to A3)
+      const authGrid = document.getElementById('publicLedgerAuthGrid');
+      if (authGrid && summary.invariant_report) {
+        authGrid.replaceChildren();
+        const inv = summary.invariant_report;
+        authGrid.appendChild(auditCard("A1", "Strict Ed25519 Signatures", "Detached signature verified under authorized public key.", inv.inva1_signature_validity !== false));
+        authGrid.appendChild(auditCard("A2", "Operation Index Contiguity", "Per-credit op_index strictly contiguous (replay impossible).", inv.inva2_op_index_contiguity !== false));
+        authGrid.appendChild(auditCard("A3", "Domain Separation & Chain ID", "All signatures strictly bound to 32-byte registry chain_id.", inv.inva3_chain_id_binding !== false));
+      }
+
+      // Checkpoints rendering
+      renderCheckpoints(summary);
+
       // Populate events table
       renderEventsTable(rawLog);
 
@@ -1386,6 +1415,78 @@
       const tamperInput = document.getElementById('tamperLogInput');
       if (tamperInput && !tamperInput.value) {
         tamperInput.value = rawLog.trim();
+      }
+    }
+
+    async function renderCheckpoints(summary) {
+      const container = document.getElementById('checkpointsContainer');
+      if (!container) return;
+      container.replaceChildren();
+
+      try {
+        let cpList = [];
+        const resp = await fetch('checkpoints/5.json', { cache: 'no-store' });
+        if (resp.ok) {
+          const cpText = await resp.text();
+          const cp = JSON.parse(cpText);
+          cpList.push({ file: 'checkpoints/5.json', raw: cpText, data: cp });
+        }
+
+        for (const item of cpList) {
+          const card = document.createElement('div');
+          card.className = 'result-card';
+          card.style.padding = '0.85rem 1rem';
+          card.style.marginBottom = '0.5rem';
+          card.style.display = 'flex';
+          card.style.justifyContent = 'space-between';
+          card.style.alignItems = 'center';
+          card.style.flexWrap = 'wrap';
+          card.style.gap = '0.75rem';
+
+          let verified = false;
+          try {
+            if (summary.state && summary.state.sequencer) {
+              verified = verify_checkpoint(item.raw, summary.state.sequencer);
+            }
+          } catch (e) {
+            console.error('Checkpoint verify error:', e);
+          }
+
+          const left = document.createElement('div');
+          left.style.display = 'flex';
+          left.style.alignItems = 'center';
+          left.style.gap = '0.6rem';
+
+          const badge = document.createElement('span');
+          badge.className = `status-badge ${verified ? 'active' : 'expired'}`;
+          badge.textContent = verified ? 'SEQUENCER VERIFIED ✓' : 'VERIFICATION FAILED ✗';
+          badge.style.fontSize = '0.75rem';
+
+          const title = document.createElement('span');
+          title.style.fontWeight = '600';
+          title.style.fontSize = '0.85rem';
+          title.textContent = `Checkpoint Size ${item.data.size}`;
+
+          const hash = document.createElement('span');
+          hash.className = 'mono-hash';
+          hash.textContent = `Head: ${item.data.head_hash.slice(0, 16)}...`;
+          hash.title = item.data.head_hash;
+
+          left.appendChild(badge);
+          left.appendChild(title);
+          left.appendChild(hash);
+
+          const right = document.createElement('div');
+          right.style.fontSize = '0.78rem';
+          right.style.color = 'var(--muted)';
+          right.textContent = `Signed: ${new Date(item.data.timestamp * 1000).toLocaleString()}`;
+
+          card.appendChild(left);
+          card.appendChild(right);
+          container.appendChild(card);
+        }
+      } catch (e) {
+        console.error('Error rendering checkpoints:', e);
       }
     }
 
@@ -1414,7 +1515,15 @@
           const typeBadge = document.createElement('span');
           typeBadge.className = 'status-badge';
           const t = (entry.type || '').toLowerCase();
-          if (t === 'mint') {
+          if (t === 'genesis') {
+            typeBadge.style.background = 'rgba(56, 189, 248, 0.15)';
+            typeBadge.style.color = '#38bdf8';
+            typeBadge.textContent = 'GENESIS';
+          } else if (t === 'vvb_register') {
+            typeBadge.style.background = 'rgba(74, 222, 128, 0.15)';
+            typeBadge.style.color = '#4ade80';
+            typeBadge.textContent = 'VVB REGISTER';
+          } else if (t === 'mint') {
             typeBadge.style.background = 'rgba(88, 166, 255, 0.15)';
             typeBadge.style.color = 'var(--blue)';
             typeBadge.textContent = 'MINT';
@@ -1455,15 +1564,27 @@
           // 5. Transition Details
           const tdDetails = document.createElement('td');
           tdDetails.style.fontSize = '0.82rem';
-          if (t === 'mint' && entry.payload && entry.payload.poi) {
-            const p = entry.payload.poi;
-            tdDetails.textContent = `Project ${p.project_id || ''} · ${p.amount_tco2e || ''} credits minted to ${entry.payload.owner || ''}`;
+          if (t === 'genesis' && entry.payload) {
+            const p = entry.payload;
+            tdDetails.textContent = `Domain "${p.chain_name || ''}" initialized · Authority: ${(p.authority || '').slice(0, 10)}... · Sequencer: ${(p.sequencer || '').slice(0, 10)}...`;
+          } else if (t === 'vvb_register' && entry.payload) {
+            const p = entry.payload;
+            tdDetails.textContent = `Accredited VVB "${p.label || ''}" · Key: ${(p.vvb || '').slice(0, 10)}...`;
+          } else if (t === 'mint' && entry.payload) {
+            const p = entry.payload;
+            const ownerStr = (p.initial_owner || (p.poi ? p.poi.owner : '') || '').slice(0, 10) + '...';
+            const amt = p.cc_mint_amount || (p.poi ? p.poi.amount_tco2e : '');
+            tdDetails.textContent = `Project ${p.project_id || ''} · ${amt} credits minted to ${ownerStr}`;
           } else if (t === 'transfer' && entry.payload) {
-            tdDetails.textContent = `Credit ${entry.payload.credit_id || ''} transferred to ${entry.payload.new_owner || ''}`;
-          } else if (t === 'burn' && entry.payload && entry.payload.burn_range) {
-            const br = entry.payload.burn_range;
-            const count = (br.end - br.start + 1);
-            tdDetails.textContent = `Serial range [${br.start}-${br.end}] (${count} credits) retired for "${entry.payload.beneficiary || ''}"`;
+            const p = entry.payload;
+            const newOwner = (p.new_owner || '').slice(0, 10) + '...';
+            tdDetails.textContent = `Credit ${p.credit_id || ''} transferred to ${newOwner} (op_index ${p.op_index ?? ''})`;
+          } else if (t === 'burn' && entry.payload) {
+            const p = entry.payload;
+            const start = p.range_start ?? (p.burn_range ? p.burn_range.start : 0);
+            const end = p.range_end ?? (p.burn_range ? p.burn_range.end : 0);
+            const count = end - start + 1;
+            tdDetails.textContent = `Serial range [${start}-${end}] (${count} credits) retired for "${p.beneficiary || ''}"`;
           } else {
             tdDetails.textContent = JSON.stringify(entry.payload || {});
           }
@@ -1577,6 +1698,14 @@
         grid.appendChild(auditCard("5", "PoO Uniqueness (Double-spending prevented)", "Retirements matching burned footprints rejected.", invReport.inv5_poo_uniqueness));
         grid.appendChild(auditCard("6", "PoO Non-Transferability", "Proof-of-Offset receipts bind permanently.", invReport.inv6_poo_non_transferable));
         grid.appendChild(auditCard("7", "PoI Single-use Consumed State", "PoI marked used, blocking replay.", invReport.inv7_poi_single_use));
+
+        const authGrid = document.getElementById('auditAuthGrid');
+        if (authGrid) {
+          authGrid.replaceChildren();
+          authGrid.appendChild(auditCard("A1", "Strict Ed25519 Signatures", "Detached signature verified under authorized public key.", invReport.inva1_signature_validity !== false));
+          authGrid.appendChild(auditCard("A2", "Operation Index Contiguity", "Per-credit op_index strictly contiguous (replay impossible).", invReport.inva2_op_index_contiguity !== false));
+          authGrid.appendChild(auditCard("A3", "Domain Separation & Chain ID", "All signatures strictly bound to 32-byte registry chain_id.", invReport.inva3_chain_id_binding !== false));
+        }
 
         setupDownloads(firstBatch, state, fullState);
       } catch (err) { console.error("Audit error:", err); }

@@ -435,7 +435,7 @@
             </div>
           </div>
 
-          <!-- Cryptographic Tip & Genesis Hashes -->
+          <!-- Cryptographic Tip & Genesis Hashes & Identity Roots -->
           <div style="background:var(--bg3); border:1px solid var(--border); border-radius:8px; padding:0.75rem 1rem; margin-bottom:1.5rem; display:flex; flex-direction:column; gap:0.4rem; font-size:0.8rem;">
             <div style="display:flex; justify-content:space-between; align-items:center; gap:1rem; flex-wrap:wrap;">
               <span style="color:var(--muted)">Genesis Prev-Hash:</span>
@@ -445,13 +445,37 @@
               <span style="color:var(--muted)">Replayed Tip Hash:</span>
               <span class="mono-hash" id="ledgerTipHash">...</span>
             </div>
+            <div style="display:flex; justify-content:space-between; align-items:center; gap:1rem; flex-wrap:wrap;">
+              <span style="color:var(--muted)">Registry Chain ID:</span>
+              <span class="mono-hash" id="ledgerChainId">0000000000000000000000000000000000000000000000000000000000000000</span>
+            </div>
+            <div style="display:flex; justify-content:space-between; align-items:center; gap:1rem; flex-wrap:wrap;">
+              <span style="color:var(--muted)">Root Authority:</span>
+              <span class="mono-hash" id="ledgerAuthorityKey">...</span>
+            </div>
+            <div style="display:flex; justify-content:space-between; align-items:center; gap:1rem; flex-wrap:wrap;">
+              <span style="color:var(--muted)">Checkpoint Sequencer:</span>
+              <span class="mono-hash" id="ledgerSequencerKey">...</span>
+            </div>
           </div>
 
           <!-- 7 Protocol Invariants Live Results for Public Ledger -->
           <h4 style="font-size:1rem; margin-bottom:0.75rem; color:var(--text); display:flex; align-items:center; gap:0.5rem;">
-            <span>🛡️</span> Live Invariant Checks on Replayed State (RFC-001 §5)
+            <span>🛡️</span> Live Protocol Invariants (RFC-001 §5)
           </h4>
           <div class="audit-grid" id="publicLedgerInvariantsGrid" style="display:grid; grid-template-columns:repeat(2,1fr); gap:1rem;"></div>
+
+          <!-- Cryptographic Authorization Invariants (RFC-005 §3.8) -->
+          <h4 style="font-size:1rem; margin-top:1.5rem; margin-bottom:0.75rem; color:var(--text); display:flex; align-items:center; gap:0.5rem;">
+            <span>🔑</span> Cryptographic Authorization Invariants (RFC-005 §3.8)
+          </h4>
+          <div class="audit-grid" id="publicLedgerAuthGrid" style="display:grid; grid-template-columns:repeat(3,1fr); gap:1rem;"></div>
+
+          <!-- Signed Checkpoints & Bitcoin Anchoring (RFC-005 §3.7) -->
+          <h4 style="font-size:1rem; margin-top:1.5rem; margin-bottom:0.75rem; color:var(--text); display:flex; align-items:center; gap:0.5rem;">
+            <span>⚓</span> Bitcoin-Anchored Signed Checkpoints (RFC-005 §3.7)
+          </h4>
+          <div id="checkpointsContainer" style="display:flex; flex-direction:column; gap:0.75rem;"></div>
 
           <!-- Replayed Events Breakdown Table -->
           <div style="margin-top:1.5rem;">

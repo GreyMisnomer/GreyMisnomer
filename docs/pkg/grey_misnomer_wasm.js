@@ -12,6 +12,21 @@ export class WasmRegistry {
         wasm.__wbg_wasmregistry_free(ptr, 0);
     }
     /**
+     * @returns {string}
+     */
+    authority() {
+        let deferred1_0;
+        let deferred1_1;
+        try {
+            const ret = wasm.wasmregistry_authority(this.__wbg_ptr);
+            deferred1_0 = ret[0];
+            deferred1_1 = ret[1];
+            return getStringFromWasm0(ret[0], ret[1]);
+        } finally {
+            wasm.__wbindgen_free(deferred1_0, deferred1_1, 1);
+        }
+    }
+    /**
      * @param {string} credit_id
      * @returns {string}
      */
@@ -57,6 +72,21 @@ export class WasmRegistry {
             return getStringFromWasm0(ptr2, len2);
         } finally {
             wasm.__wbindgen_free(deferred3_0, deferred3_1, 1);
+        }
+    }
+    /**
+     * @returns {string}
+     */
+    chain_id() {
+        let deferred1_0;
+        let deferred1_1;
+        try {
+            const ret = wasm.wasmregistry_chain_id(this.__wbg_ptr);
+            deferred1_0 = ret[0];
+            deferred1_1 = ret[1];
+            return getStringFromWasm0(ret[0], ret[1]);
+        } finally {
+            wasm.__wbindgen_free(deferred1_0, deferred1_1, 1);
         }
     }
     /**
@@ -116,7 +146,31 @@ export class WasmRegistry {
         return ret !== 0;
     }
     /**
-     * Evaluates all 7 RFC-001 protocol invariants and returns a JSON InvariantReport.
+     * Invariant A1: Cryptographic Authorization Validity.
+     * @returns {boolean}
+     */
+    check_invariant_a1() {
+        const ret = wasm.wasmregistry_check_invariant_a1(this.__wbg_ptr);
+        return ret !== 0;
+    }
+    /**
+     * Invariant A2: Operation Index Contiguity (Replay Prevention).
+     * @returns {boolean}
+     */
+    check_invariant_a2() {
+        const ret = wasm.wasmregistry_check_invariant_a2(this.__wbg_ptr);
+        return ret !== 0;
+    }
+    /**
+     * Invariant A3: Multi-Tenant Registry Domain Separation.
+     * @returns {boolean}
+     */
+    check_invariant_a3() {
+        const ret = wasm.wasmregistry_check_invariant_a3(this.__wbg_ptr);
+        return ret !== 0;
+    }
+    /**
+     * Evaluates all protocol invariants (RFC-001 + RFC-005) and returns a JSON InvariantReport.
      * @returns {string}
      */
     check_invariants() {
@@ -187,6 +241,21 @@ export class WasmRegistry {
         this.__wbg_ptr = ret;
         WasmRegistryFinalization.register(this, this.__wbg_ptr, this);
         return this;
+    }
+    /**
+     * @returns {string}
+     */
+    sequencer() {
+        let deferred1_0;
+        let deferred1_1;
+        try {
+            const ret = wasm.wasmregistry_sequencer(this.__wbg_ptr);
+            deferred1_0 = ret[0];
+            deferred1_1 = ret[1];
+            return getStringFromWasm0(ret[0], ret[1]);
+        } finally {
+            wasm.__wbindgen_free(deferred1_0, deferred1_1, 1);
+        }
     }
     /**
      * @param {string} records_json
@@ -276,6 +345,33 @@ export function build_commitment(records_json, timestamp) {
 }
 
 /**
+ * In-browser checkpoint equivocation detector (RFC-005 §3.7):
+ * Parses a JSON array of checkpoints and verifies no two valid checkpoints claim the same size with different heads.
+ * @param {string} checkpoints_json
+ * @returns {string}
+ */
+export function detect_equivocation_wasm(checkpoints_json) {
+    let deferred3_0;
+    let deferred3_1;
+    try {
+        const ptr0 = passStringToWasm0(checkpoints_json, wasm.__wbindgen_malloc, wasm.__wbindgen_realloc);
+        const len0 = WASM_VECTOR_LEN;
+        const ret = wasm.detect_equivocation_wasm(ptr0, len0);
+        var ptr2 = ret[0];
+        var len2 = ret[1];
+        if (ret[3]) {
+            ptr2 = 0; len2 = 0;
+            throw takeFromExternrefTable0(ret[2]);
+        }
+        deferred3_0 = ptr2;
+        deferred3_1 = len2;
+        return getStringFromWasm0(ptr2, len2);
+    } finally {
+        wasm.__wbindgen_free(deferred3_0, deferred3_1, 1);
+    }
+}
+
+/**
  * In-browser event log replayer (RFC-004 / Stage 1):
  * Parses `events.jsonl`, validates the cryptographic hash chain,
  * replays every state transition through pure `apply()`, and verifies all 7 invariants.
@@ -301,6 +397,25 @@ export function replay_event_log(events_jsonl) {
     } finally {
         wasm.__wbindgen_free(deferred3_0, deferred3_1, 1);
     }
+}
+
+/**
+ * In-browser checkpoint verifier (RFC-005 §3.7):
+ * Verifies strict Ed25519 detached signature under the authorized sequencer public key.
+ * @param {string} checkpoint_json
+ * @param {string} sequencer_pubkey_hex
+ * @returns {boolean}
+ */
+export function verify_checkpoint(checkpoint_json, sequencer_pubkey_hex) {
+    const ptr0 = passStringToWasm0(checkpoint_json, wasm.__wbindgen_malloc, wasm.__wbindgen_realloc);
+    const len0 = WASM_VECTOR_LEN;
+    const ptr1 = passStringToWasm0(sequencer_pubkey_hex, wasm.__wbindgen_malloc, wasm.__wbindgen_realloc);
+    const len1 = WASM_VECTOR_LEN;
+    const ret = wasm.verify_checkpoint(ptr0, len0, ptr1, len1);
+    if (ret[2]) {
+        throw takeFromExternrefTable0(ret[1]);
+    }
+    return ret[0] !== 0;
 }
 
 /**

@@ -3,6 +3,7 @@ name = "grey-misnomer-cli"
 version = "0.1.0"
 edition = "2021"
 license = "MIT"
+default-run = "grey-misnomer-cli"
 
 [dependencies]
 grey-misnomer-core = { path = "../core" }
