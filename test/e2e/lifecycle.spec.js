@@ -68,9 +68,11 @@ test.describe('End-to-End Carbon Credit Lifecycle', () => {
     await expect(retireBtn).toBeVisible({ timeout: 5000 });
     await retireBtn.click();
 
-    // Verify PoO Receipt generated
+    // Verify PoO Receipt generated with Export PDF Certificate and Download JSON Receipt buttons
     const pooReceipt = page.locator('h4:has-text("PoO Receipt")').first();
     await expect(pooReceipt).toBeVisible({ timeout: 5000 });
+    await expect(page.locator('button:has-text("Export PDF Certificate")').first()).toBeVisible();
+    await expect(page.locator('button:has-text("Download JSON Receipt")').first()).toBeVisible();
 
     // 7. Audit view verification of in-memory session invariants
     await page.click('#nav-audit');

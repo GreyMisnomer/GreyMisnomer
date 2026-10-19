@@ -41,6 +41,34 @@ async function main() {
   await page.screenshot({ path: path.join(outDir, '04_audit_ledger.png'), fullPage: false });
   console.log('Screenshot 04_audit_ledger saved');
 
+  // 5. Portfolio view with Retired Credit & Proof-of-Offset Certificate
+  await page.selectOption('#roleSwitcher', 'developer');
+  await page.click('#nav-projects');
+  await page.fill('#prj-name', 'Maharashtra Solar Phase-1');
+  await page.fill('#prj-id', 'PRJ-SOLAR-001');
+  await page.click('button:has-text("Register Project")');
+  await page.click('#nav-mrv');
+  await page.selectOption('#mrv-project-select', 'PRJ-SOLAR-001');
+  await page.click('button:has-text("Seed Demo Dataset")');
+  await page.click('button:has-text("Compute Merkle Tree Commitment")');
+  await page.selectOption('#roleSwitcher', 'validator');
+  await page.click('#nav-verification');
+  await page.click('button:has-text("Approve & Issue PoI")');
+  await page.selectOption('#roleSwitcher', 'developer');
+  await page.click('#nav-projects');
+  await page.click('button:has-text("Mint")');
+  await page.click('#nav-portfolio');
+  await page.waitForTimeout(500);
+  await page.click('button:has-text("Execute Retirement")');
+  await page.waitForTimeout(800);
+  await page.evaluate(() => {
+    const el = document.querySelector('.content');
+    if (el) el.scrollTop = 9999;
+  });
+  await page.waitForTimeout(400);
+  await page.screenshot({ path: path.join(outDir, '05_portfolio_poo_certificate.png'), fullPage: false });
+  console.log('Screenshot 05_portfolio_poo_certificate saved');
+
   await browser.close();
   console.log('Done capturing screenshots!');
 }

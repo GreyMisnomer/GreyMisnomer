@@ -1183,6 +1183,7 @@
           l1.textContent = 'Burn Start';
           const inp1 = document.createElement('input');
           inp1.type = 'number';
+          inp1.className = 'input-modern';
           inp1.id = `burn-start-${bIdx}`;
           inp1.value = retireStart;
           f1.appendChild(l1);
@@ -1195,6 +1196,7 @@
           l2.textContent = 'Burn End';
           const inp2 = document.createElement('input');
           inp2.type = 'number';
+          inp2.className = 'input-modern';
           inp2.id = `burn-end-${bIdx}`;
           inp2.value = retireEnd;
           f2.appendChild(l2);
@@ -1206,6 +1208,7 @@
           const l3 = document.createElement('label');
           l3.textContent = 'Claim Type';
           const sel3 = document.createElement('select');
+          sel3.className = 'input-modern';
           sel3.id = `burn-claim-${bIdx}`;
           const optMap = [
             ['CorporateNetZero', 'Corporate Net Zero'],
@@ -1231,9 +1234,10 @@
           const f4 = document.createElement('div');
           f4.className = 'field';
           const l4 = document.createElement('label');
-          l4.textContent = 'Beneficiary';
+          l4.textContent = 'Beneficiary Legal Name';
           const inp4 = document.createElement('input');
           inp4.type = 'text';
+          inp4.className = 'input-modern';
           inp4.id = `burn-beneficiary-${bIdx}`;
           inp4.value = currentOrg;
           f4.appendChild(l4);
@@ -1243,6 +1247,7 @@
 
           const retBtn = document.createElement('button');
           retBtn.className = 'btn btn-primary btn-sm';
+          retBtn.style.marginTop = '0.85rem';
           retBtn.textContent = '🔥 Execute Retirement';
           retBtn.onclick = () => retireCredits(bIdx);
           retireDiv.appendChild(retBtn);
@@ -1282,6 +1287,27 @@
               r.appendChild(vs);
               pooCard.appendChild(r);
             });
+
+            // Action row: Buyer Certificate & Receipt Export
+            const actionRow = document.createElement('div');
+            actionRow.style.marginTop = '0.85rem';
+            actionRow.style.display = 'flex';
+            actionRow.style.gap = '0.6rem';
+            actionRow.style.flexWrap = 'wrap';
+
+            const btnPdf = document.createElement('button');
+            btnPdf.className = 'btn btn-primary btn-sm';
+            btnPdf.innerHTML = '<span>📄</span> Export PDF Certificate';
+            btnPdf.onclick = () => exportPooPdfCertificate(bIdx, pi);
+            actionRow.appendChild(btnPdf);
+
+            const btnJson = document.createElement('button');
+            btnJson.className = 'btn btn-secondary btn-sm';
+            btnJson.innerHTML = '<span>💾</span> Download JSON Receipt';
+            btnJson.onclick = () => downloadPooReceiptJson(bIdx, pi);
+            actionRow.appendChild(btnJson);
+
+            pooCard.appendChild(actionRow);
             pooWrap.appendChild(pooCard);
           });
           card.appendChild(pooWrap);
@@ -1937,7 +1963,152 @@
     }
 
     // ══════════════════════════════════════════════════════════════════
-    //  PDF EXPORT
+    //  BUYER PROOF-OF-OFFSET (PoO) RETIREMENT CERTIFICATE EXPORT
+    // ══════════════════════════════════════════════════════════════════
+    function exportPooPdfCertificate(bIdx, pi) {
+      const batch = mintedBatches[bIdx];
+      if (!batch || !batch.pooReceipts || !batch.pooReceipts[pi]) {
+        showToast('Proof-of-Offset record not found.');
+        return;
+      }
+      const poo = batch.pooReceipts[pi];
+      try {
+        if (!window.jspdf || !window.jspdf.jsPDF) {
+          showToast('PDF generator library loading, please try again in a moment.');
+          return;
+        }
+        const { jsPDF } = window.jspdf;
+        const doc = new jsPDF({ unit: 'mm', format: 'a4' });
+        const ts = new Date().toISOString();
+
+        // Dark header banner
+        doc.setFillColor(10, 13, 20);
+        doc.rect(0, 0, 210, 42, 'F');
+
+        doc.setTextColor(57, 211, 83);
+        doc.setFontSize(22);
+        doc.setFont('helvetica', 'bold');
+        doc.text('GREYMISNOMER', 15, 17);
+
+        doc.setFontSize(10.5);
+        doc.setTextColor(188, 140, 242);
+        doc.text('SOVEREIGN CARBON CREDIT REGISTRY · RFC-001 / RFC-005', 15, 25);
+
+        doc.setFontSize(8);
+        doc.setTextColor(132, 146, 166);
+        doc.text(`Official Cryptographic Proof-of-Offset · Generated: ${ts}`, 15, 33);
+
+        // Certificate Title Banner
+        let y = 52;
+        doc.setFillColor(22, 28, 43);
+        doc.rect(10, y - 5, 190, 12, 'F');
+        doc.setFontSize(12);
+        doc.setFont('helvetica', 'bold');
+        doc.setTextColor(88, 166, 255);
+        doc.text('OFFICIAL CERTIFICATE OF CARBON OFFSET RETIREMENT', 15, y + 3);
+        y += 18;
+
+        const field = (key, value, highlight) => {
+          doc.setFontSize(9);
+          doc.setFont('helvetica', 'bold');
+          doc.setTextColor(132, 146, 166);
+          doc.text(key, 15, y);
+
+          doc.setFont('courier', highlight ? 'bold' : 'normal');
+          doc.setFontSize(9);
+          if (highlight === 'green') doc.setTextColor(57, 211, 83);
+          else if (highlight === 'blue') doc.setTextColor(88, 166, 255);
+          else if (highlight === 'purple') doc.setTextColor(188, 140, 242);
+          else doc.setTextColor(240, 242, 245);
+
+          const lines = doc.splitTextToSize(String(value), 125);
+          doc.text(lines, 72, y);
+          y += lines.length * 5.5 + 2;
+          if (y > 270) { doc.addPage(); y = 20; }
+        };
+
+        const section = (title) => {
+          doc.setFillColor(15, 20, 32);
+          doc.rect(10, y - 5, 190, 8, 'F');
+          doc.setFontSize(9.5);
+          doc.setFont('helvetica', 'bold');
+          doc.setTextColor(57, 211, 83);
+          doc.text(title, 14, y);
+          y += 9;
+        };
+
+        section('1. RETIREMENT DETAILS & BENEFICIARY');
+        field('Beneficiary Entity', poo.beneficiary, 'blue');
+        field('Retired Amount', `${poo.cc_amount} tCO2e (Metric Tonnes)`, 'green');
+        field('Serial Range Burned', `[${poo.serial_start} – ${poo.serial_end}]`, 'green');
+        field('Claim Rationale', poo.claim_type || 'CorporateNetZero');
+        field('Retirement Status', 'PERMANENTLY RETIRED (FINALIZED)', 'purple');
+        y += 3;
+
+        section('2. ASSET ORIGIN & PROJECT BINDING');
+        field('Credit Batch ID', batch.creditId);
+        field('Project Name', batch.projectName || 'Grid Connected Renewable Energy');
+        field('Project ID', poo.project_id || batch.projectId || 'PRJ-SOLAR-001');
+        field('Batch Original Range', `[${batch.originalStart} – ${batch.originalEnd}]`);
+        field('Owner at Burn', batch.owner);
+        y += 3;
+
+        section('3. CRYPTOGRAPHIC VERIFICATION & AUDIT TRAIL');
+        field('Burn Tx Hash', poo.burn_tx_hash);
+        if (commitment && commitment.merkle_root_hex) {
+          field('BLAKE3 MRV Root', commitment.merkle_root_hex);
+        }
+        field('Chain Binding', '6713110c8ac6ba73638381f2ec9bde8eb236e894b1a34b4293a9f69933069e95');
+        field('Protocol Guarantee', 'Strict Ed25519 authorization, Op-Index replay immunity, BLAKE3 chain-hash.');
+        y += 5;
+
+        // Legal / Protocol Note
+        doc.setFillColor(12, 17, 28);
+        doc.rect(10, y, 190, 22, 'F');
+        doc.setFontSize(7.5);
+        doc.setFont('helvetica', 'italic');
+        doc.setTextColor(132, 146, 166);
+        const legalNotice = "LEGAL STATEMENT: This certificate provides immutable cryptographic proof that the specified serial range has been permanently removed from circulation via pure state transition in the GreyMisnomer sovereign registry. The credits represented herein can never be re-minted, transferred, or double-claimed.";
+        const legalLines = doc.splitTextToSize(legalNotice, 180);
+        doc.text(legalLines, 14, y + 5);
+
+        // Footer
+        const pageCount = doc.getNumberOfPages();
+        for (let i = 1; i <= pageCount; i++) {
+          doc.setPage(i);
+          doc.setFontSize(7.5);
+          doc.setTextColor(132, 146, 166);
+          doc.text('GreyMisnomer Protocol · RFC-001/RFC-005/RFC-006 Sovereign Carbon Registry', 14, 289);
+          doc.text(`Page ${i} of ${pageCount}`, 185, 289, { align: 'right' });
+        }
+
+        const safeBeneficiary = (poo.beneficiary || 'beneficiary').replace(/[^a-zA-Z0-9_-]/g, '_');
+        doc.save(`PoO_Certificate_${batch.creditId}_${safeBeneficiary}.pdf`);
+        showSuccessToast('✓ Proof-of-Offset certificate exported as PDF');
+      } catch (err) {
+        console.error('PDF generation error:', err);
+        showToast(`PDF generation failed: ${err.message}`);
+      }
+    }
+    window.exportPooPdfCertificate = exportPooPdfCertificate;
+
+    function downloadPooReceiptJson(bIdx, pi) {
+      const batch = mintedBatches[bIdx];
+      if (!batch || !batch.pooReceipts || !batch.pooReceipts[pi]) return;
+      const poo = batch.pooReceipts[pi];
+      const dataStr = "data:text/json;charset=utf-8," + encodeURIComponent(JSON.stringify(poo, null, 2));
+      const a = document.createElement('a');
+      a.href = dataStr;
+      a.download = `poo_receipt_${batch.creditId}_#${pi + 1}.json`;
+      document.body.appendChild(a);
+      a.click();
+      document.body.removeChild(a);
+      showSuccessToast('✓ PoO JSON receipt downloaded');
+    }
+    window.downloadPooReceiptJson = downloadPooReceiptJson;
+
+    // ══════════════════════════════════════════════════════════════════
+    //  PDF EXPORT (SESSION WIDE)
     // ══════════════════════════════════════════════════════════════════
     function exportPdfCertificate() {
       if (mintedBatches.length === 0) { showToast('Complete the full workflow first.'); return; }
