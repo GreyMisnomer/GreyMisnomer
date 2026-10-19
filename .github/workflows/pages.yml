@@ -95,13 +95,17 @@ jobs:
           # Print proof info for workflow audit trail
           ots info events.jsonl.ots
 
-      - name: Commit updated .ots proofs if changed
+      - name: Publish Decentralized Multi-Mirrors (IPFS & Archive.org)
+        run: |
+          python3 scripts/publish_mirrors.py
+
+      - name: Commit updated .ots proofs and multi-mirror manifest if changed
         run: |
           git config user.name "github-actions[bot]"
           git config user.email "github-actions[bot]@users.noreply.github.com"
-          git add events.jsonl.ots docs/events.jsonl docs/events.jsonl.ots
+          git add events.jsonl.ots docs/events.jsonl docs/events.jsonl.ots manifest.json docs/manifest.json
           if ! git diff --cached --quiet; then
-            git commit -m "ci: OpenTimestamps Bitcoin anchoring update [skip ci]"
+            git commit -m "ci: OpenTimestamps & multi-mirror manifest update [skip ci]"
             git push || echo "Push skipped or not permitted in this context"
           fi
 
