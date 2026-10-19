@@ -1,4 +1,17 @@
-    import init, { build_commitment, verify_inclusion, WasmRegistry, replay_event_log, verify_checkpoint, detect_equivocation_wasm } from '../pkg/grey_misnomer_wasm.js';
+    import init, {
+      build_commitment,
+      verify_inclusion,
+      WasmRegistry,
+      replay_event_log,
+      verify_checkpoint,
+      detect_equivocation_wasm,
+      generate_keypair_wasm,
+      derive_pubkey_wasm,
+      sign_transfer_intent_wasm,
+      sign_burn_intent_wasm,
+      sign_mint_intent_wasm,
+      simulate_apply_wasm
+    } from '../pkg/grey_misnomer_wasm.js';
 
     // ══════════════════════════════════════════════════════════════════
     //  STATE
@@ -46,6 +59,7 @@
         document.getElementById('loadingOverlay').classList.remove('show');
       }
       applyRolePermissions();
+      initKeyManager();
       refreshDashboard();
       verifyPublicLedger();
     });
@@ -86,11 +100,11 @@
     //  ROLE MANAGEMENT
     // ══════════════════════════════════════════════════════════════════
     const roleAccess = {
-      admin:     ['dashboard','governance','projects','mrv','verification','registry','marketplace','portfolio','audit','admin'],
-      developer: ['dashboard','projects','mrv','registry','marketplace','portfolio','audit'],
-      validator: ['dashboard','governance','verification','registry','audit'],
-      buyer:     ['dashboard','marketplace','portfolio','registry','audit'],
-      auditor:   ['dashboard','registry','audit']
+      admin:     ['dashboard','governance','projects','mrv','verification','registry','marketplace','portfolio','audit','admin','signer'],
+      developer: ['dashboard','projects','mrv','registry','marketplace','portfolio','audit','signer'],
+      validator: ['dashboard','governance','verification','registry','audit','signer'],
+      buyer:     ['dashboard','marketplace','portfolio','registry','audit','signer'],
+      auditor:   ['dashboard','registry','audit','signer']
     };
 
     function switchRole(role) {
@@ -112,7 +126,7 @@
 
     function applyRolePermissions() {
       const allowed = roleAccess[currentRole] || [];
-      const allViews = ['dashboard','governance','projects','mrv','verification','registry','marketplace','portfolio','audit','admin'];
+      const allViews = ['dashboard','governance','projects','mrv','verification','registry','marketplace','portfolio','audit','admin','signer'];
       allViews.forEach(v => {
         const nav = document.getElementById(`nav-${v}`);
         if (!nav) return;
@@ -1890,3 +1904,476 @@
       }
     }
     window.resetAll = resetAll;
+
+    // ══════════════════════════════════════════════════════════════════
+    //  RFC-006: KEY MANAGER & SOVEREIGN SIGNER
+    // ══════════════════════════════════════════════════════════════════
+    const PRESET_KEYS = [
+      {
+        id: 'infosys',
+        label: 'Infosys Corporate Buyer',
+        role: 'Credit Owner / Corporate Buyer',
+        secret_key: '0f40aafb63d6f2157cef51206b800cc8142fd8204d0bd075d205555129bc7f3b',
+        pubkey: '3fec9121bb0c0204f46e5401f552ccb23bcba63e6e745d1cc2dbbe70f9c0ba28'
+      },
+      {
+        id: 'tata',
+        label: 'Tata Solar Developer',
+        role: 'Project Developer',
+        secret_key: '01ea03956a3e58257e65fd4d05990e5d3fc01f6c4c55d497744a8b3c78fe4c6a',
+        pubkey: 'dcc59196196d6c686652e43f1303665c79edaba5e07834a910ddd1c057576a8a'
+      },
+      {
+        id: 'tuv',
+        label: 'TUV NORD Carbon Bureau',
+        role: 'Accredited VVB',
+        secret_key: '645666f0a7cff4bd65a766a531d2767cfd8bb3dd58addfff237364ab40e825b9',
+        pubkey: 'aa48ecc7ca6f6bcfcc7bace7bae03cf0ab4ded800be5f50b3d4c3b5dd0cb3892'
+      },
+      {
+        id: 'authority',
+        label: 'Root Registry Authority',
+        role: 'Registry Governance',
+        secret_key: '5c29be6d22e5402a10645e876e6b69d1516443b5f8e2b91f4958a6a89d4ce4f1',
+        pubkey: '09afad81c26934a34c39c431932576c3fbb1d0920df767c31a13fccb25fdfcae'
+      },
+      {
+        id: 'sequencer',
+        label: 'Log Sequencer',
+        role: 'Checkpoint Ordering',
+        secret_key: '5639156043909ee807959732549ed904b628d8e3deec39b741f2e933320e1f9a',
+        pubkey: '27ef3b8a333ca785002f12cc9071922848fa2fa460d3eb127994a90f24ee5715'
+      }
+    ];
+
+    let activeKey = PRESET_KEYS[0];
+    let secretKeyRevealed = false;
+    let activeSignerTab = 'transfer';
+    let latestCanonicalLine = '';
+    let cachedEventsJsonl = '';
+
+    function initKeyManager() {
+      updateKeyManagerUI();
+      renderPresetActorsGrid();
+    }
+
+    function updateKeyManagerUI() {
+      const topbarLabel = document.getElementById('topbarKeyLabel');
+      if (topbarLabel) {
+        topbarLabel.textContent = `Actor: ${activeKey.label.split(' ')[0]} (${activeKey.pubkey.slice(0, 6)}…)`;
+      }
+
+      const modalLabel = document.getElementById('modalActiveActorLabel');
+      if (modalLabel) modalLabel.textContent = `${activeKey.label} (${activeKey.role})`;
+
+      const modalPubkey = document.getElementById('modalActivePubkey');
+      if (modalPubkey) modalPubkey.textContent = activeKey.pubkey;
+
+      const modalSecret = document.getElementById('modalActiveSecret');
+      if (modalSecret) {
+        modalSecret.textContent = secretKeyRevealed
+          ? activeKey.secret_key
+          : '••••••••••••••••••••••••••••••••••••••••••••••••••••••••••••••••';
+      }
+
+      const btnReveal = document.getElementById('btnToggleSecret');
+      if (btnReveal) {
+        btnReveal.textContent = secretKeyRevealed ? '🙈 Hide' : '👁️ Reveal';
+      }
+
+      const signerPubkey = document.getElementById('signerActivePubkey');
+      if (signerPubkey) signerPubkey.textContent = activeKey.pubkey;
+
+      const signerLabel = document.getElementById('signerActiveLabel');
+      if (signerLabel) signerLabel.textContent = `${activeKey.label} (${activeKey.role})`;
+
+      const signerChain = document.getElementById('signerChainId');
+      if (signerChain) {
+        signerChain.textContent = '6713110c8ac6ba73638381f2ec9bde8eb236e894b1a34b4293a9f69933069e95';
+      }
+    }
+
+    function renderPresetActorsGrid() {
+      const grid = document.getElementById('presetActorGrid');
+      if (!grid) return;
+      grid.replaceChildren();
+
+      PRESET_KEYS.forEach(k => {
+        const btn = document.createElement('button');
+        btn.type = 'button';
+        btn.className = `preset-actor-btn ${k.id === activeKey.id ? 'active' : ''}`;
+        btn.onclick = () => selectPresetKey(k.id);
+
+        const nameSpan = document.createElement('span');
+        nameSpan.textContent = k.label;
+
+        const roleSpan = document.createElement('span');
+        roleSpan.className = 'actor-role';
+        roleSpan.textContent = k.role;
+
+        btn.appendChild(nameSpan);
+        btn.appendChild(roleSpan);
+        grid.appendChild(btn);
+      });
+    }
+
+    function selectPresetKey(id) {
+      const match = PRESET_KEYS.find(k => k.id === id);
+      if (match) {
+        activeKey = match;
+        updateKeyManagerUI();
+        renderPresetActorsGrid();
+        showSuccessToast(`✓ Identity switched to: ${match.label}`);
+      }
+    }
+    window.selectPresetKey = selectPresetKey;
+
+    function openKeyManagerModal() {
+      const modal = document.getElementById('modalKeyManager');
+      if (modal) {
+        updateKeyManagerUI();
+        renderPresetActorsGrid();
+        modal.classList.add('show');
+      }
+    }
+    window.openKeyManagerModal = openKeyManagerModal;
+
+    function closeKeyManagerModal() {
+      const modal = document.getElementById('modalKeyManager');
+      if (modal) modal.classList.remove('show');
+    }
+    window.closeKeyManagerModal = closeKeyManagerModal;
+
+    function toggleSecretKeyReveal() {
+      secretKeyRevealed = !secretKeyRevealed;
+      updateKeyManagerUI();
+    }
+    window.toggleSecretKeyReveal = toggleSecretKeyReveal;
+
+    async function copyModalPubkey() {
+      try {
+        await navigator.clipboard.writeText(activeKey.pubkey);
+        showSuccessToast('✓ Public key copied to clipboard');
+      } catch (e) {
+        showToast('Clipboard error: ' + e);
+      }
+    }
+    window.copyModalPubkey = copyModalPubkey;
+
+    async function copyModalSecret() {
+      try {
+        await navigator.clipboard.writeText(activeKey.secret_key);
+        showSuccessToast('✓ Secret key copied to clipboard');
+      } catch (e) {
+        showToast('Clipboard error: ' + e);
+      }
+    }
+    window.copyModalSecret = copyModalSecret;
+
+    async function copySignerPubkey() {
+      try {
+        await navigator.clipboard.writeText(activeKey.pubkey);
+        showSuccessToast('✓ Active signer public key copied');
+      } catch (e) {
+        showToast('Clipboard error: ' + e);
+      }
+    }
+    window.copySignerPubkey = copySignerPubkey;
+
+    function generateFreshKeypair() {
+      try {
+        const rawJson = generate_keypair_wasm();
+        const parsed = JSON.parse(rawJson);
+        const customKey = {
+          id: 'custom-' + Date.now(),
+          label: 'Custom Ephemeral Identity',
+          role: 'Custom Sovereign Actor',
+          secret_key: parsed.secret_key,
+          pubkey: parsed.pubkey
+        };
+        activeKey = customKey;
+        PRESET_KEYS.push(customKey);
+        updateKeyManagerUI();
+        renderPresetActorsGrid();
+        showSuccessToast('✓ Generated fresh Ed25519 keypair!');
+      } catch (err) {
+        showToast('Key generation failed: ' + err);
+      }
+    }
+    window.generateFreshKeypair = generateFreshKeypair;
+
+    function importCustomSecretKey() {
+      const input = document.getElementById('inputImportSecret');
+      if (!input) return;
+      const hex = input.value.trim().toLowerCase();
+      if (hex.length !== 64) {
+        showToast('Invalid secret key: must be exactly 64 lowercase hexadecimal characters');
+        return;
+      }
+      try {
+        const pubkey = derive_pubkey_wasm(hex);
+        const importedKey = {
+          id: 'imported-' + Date.now(),
+          label: 'Imported Identity',
+          role: 'Custom Signer',
+          secret_key: hex,
+          pubkey: pubkey
+        };
+        activeKey = importedKey;
+        PRESET_KEYS.push(importedKey);
+        input.value = '';
+        updateKeyManagerUI();
+        renderPresetActorsGrid();
+        showSuccessToast('✓ Custom secret key successfully imported and activated!');
+      } catch (err) {
+        showToast('Import error: ' + err);
+      }
+    }
+    window.importCustomSecretKey = importCustomSecretKey;
+
+    function exportKeypairJson() {
+      const envelope = {
+        protocol: 'GreyMisnomer',
+        version: 1,
+        exported_at: new Date().toISOString(),
+        label: activeKey.label,
+        role: activeKey.role,
+        pubkey: activeKey.pubkey,
+        secret_key: activeKey.secret_key
+      };
+      const blob = new Blob([JSON.stringify(envelope, null, 2)], { type: 'application/json' });
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = url;
+      a.download = `greymisnomer_key_${activeKey.pubkey.slice(0, 8)}.json`;
+      document.body.appendChild(a);
+      a.click();
+      document.body.removeChild(a);
+      URL.revokeObjectURL(url);
+      showSuccessToast('✓ Key envelope exported');
+    }
+    window.exportKeypairJson = exportKeypairJson;
+
+    function switchSignerTab(tab) {
+      activeSignerTab = tab;
+      const tabs = ['transfer', 'burn', 'mint'];
+      tabs.forEach(t => {
+        const btn = document.getElementById(`btnTab${t.charAt(0).toUpperCase() + t.slice(1)}`);
+        const form = document.getElementById(`formSigner${t.charAt(0).toUpperCase() + t.slice(1)}`);
+        if (btn) btn.classList.toggle('active', t === tab);
+        if (form) form.style.display = (t === tab) ? 'block' : 'none';
+      });
+      if (tab === 'mint' && activeKey.id !== 'tuv') {
+        selectPresetKey('tuv');
+      } else if (tab === 'transfer' && activeKey.id === 'tuv') {
+        selectPresetKey('infosys');
+      }
+    }
+    window.switchSignerTab = switchSignerTab;
+
+    async function autoFillOpIndex() {
+      try {
+        let events = cachedEventsJsonl;
+        if (!events) {
+          const res = await fetch('events.jsonl');
+          events = await res.text();
+          cachedEventsJsonl = events;
+        }
+        const summaryJson = replay_event_log(events);
+        const summary = JSON.parse(summaryJson);
+        const targetCreditId = (activeSignerTab === 'burn')
+          ? document.getElementById('burn-credit-id').value.trim()
+          : document.getElementById('tx-credit-id').value.trim();
+
+        const batch = summary.state.credits.find(b => b.credit_id === targetCreditId);
+        if (batch) {
+          const nextOp = batch.op_index;
+          if (activeSignerTab === 'burn') {
+            document.getElementById('burn-op-index').value = nextOp;
+          } else {
+            document.getElementById('tx-op-index').value = nextOp;
+          }
+          showSuccessToast(`✓ Detected next op_index: ${nextOp} for batch ${targetCreditId}`);
+        } else {
+          showToast(`Batch "${targetCreditId}" not found in replayed state.`);
+        }
+      } catch (err) {
+        showToast('Failed to auto-detect op_index: ' + err);
+      }
+    }
+    window.autoFillOpIndex = autoFillOpIndex;
+
+    async function executeSignIntent() {
+      const chainId = '6713110c8ac6ba73638381f2ec9bde8eb236e894b1a34b4293a9f69933069e95';
+      const simBanner = document.getElementById('simBanner');
+      const simBadge = document.getElementById('simBadge');
+      const simMetrics = document.getElementById('simMetricsGrid');
+      const canonicalBox = document.getElementById('canonicalLineBox');
+      const btnCopy = document.getElementById('btnCopyCanonical');
+      const assistantBox = document.getElementById('submissionAssistantBox');
+
+      try {
+        let events = cachedEventsJsonl;
+        if (!events) {
+          const res = await fetch('events.jsonl');
+          events = await res.text();
+          cachedEventsJsonl = events;
+        }
+
+        let signedResultJson = '';
+        if (activeSignerTab === 'transfer') {
+          const creditId = document.getElementById('tx-credit-id').value.trim();
+          const recipient = document.getElementById('tx-recipient-pubkey').value.trim();
+          const opIndex = parseInt(document.getElementById('tx-op-index').value) || 0;
+          const params = {
+            chain_id: chainId,
+            credit_id: creditId,
+            op_index: opIndex,
+            new_owner: recipient
+          };
+          signedResultJson = sign_transfer_intent_wasm(JSON.stringify(params), activeKey.secret_key);
+        } else if (activeSignerTab === 'burn') {
+          const creditId = document.getElementById('burn-credit-id').value.trim();
+          const rangeStart = parseInt(document.getElementById('burn-range-start').value) || 0;
+          const rangeEnd = parseInt(document.getElementById('burn-range-end').value) || 0;
+          const beneficiary = document.getElementById('burn-beneficiary').value.trim();
+          const claimType = document.getElementById('burn-claim-type').value;
+          const opIndex = parseInt(document.getElementById('burn-op-index').value) || 0;
+          const params = {
+            chain_id: chainId,
+            credit_id: creditId,
+            op_index: opIndex,
+            range_start: rangeStart,
+            range_end: rangeEnd,
+            beneficiary: beneficiary,
+            claim_type: claimType
+          };
+          signedResultJson = sign_burn_intent_wasm(JSON.stringify(params), activeKey.secret_key);
+        } else if (activeSignerTab === 'mint') {
+          const projectId = document.getElementById('mint-project-id').value.trim();
+          const creditId = document.getElementById('mint-credit-id').value.trim();
+          const rangeStart = parseInt(document.getElementById('mint-range-start').value) || 0;
+          const rangeEnd = parseInt(document.getElementById('mint-range-end').value) || 0;
+          const amount = parseInt(document.getElementById('mint-amount').value) || 0;
+          const initialOwner = document.getElementById('mint-initial-owner').value.trim();
+          const merkleRoot = document.getElementById('mint-merkle-root').value.trim();
+          const leafCount = parseInt(document.getElementById('mint-leaf-count').value) || 0;
+          const methodology = document.getElementById('mint-methodology').value.trim();
+          const params = {
+            chain_id: chainId,
+            project_id: projectId,
+            credit_id: creditId,
+            range_start: rangeStart,
+            range_end: rangeEnd,
+            cc_mint_amount: amount,
+            merkle_root: merkleRoot,
+            leaf_count: leafCount,
+            mrv_timestamp: 1700000000,
+            methodology_hash: methodology,
+            jurisdiction: 'IN',
+            market_scope: 'Vcm',
+            valid_from: 1700000000,
+            valid_until: 1730000000,
+            initial_owner: initialOwner
+          };
+          signedResultJson = sign_mint_intent_wasm(JSON.stringify(params), activeKey.secret_key);
+        }
+
+        const signedResult = JSON.parse(signedResultJson);
+        const simResultJson = simulate_apply_wasm(events, signedResult.event_json);
+        const sim = JSON.parse(simResultJson);
+
+        if (sim.valid) {
+          latestCanonicalLine = sim.canonical_line;
+          simBadge.textContent = 'VALID';
+          simBadge.style.background = 'rgba(57,211,83,0.15)';
+          simBadge.style.color = 'var(--green)';
+
+          simBanner.className = 'sim-status-banner valid';
+          simBanner.replaceChildren();
+          const checkIcon = document.createElement('span');
+          checkIcon.textContent = '✅';
+          const msgSpan = document.createElement('span');
+          msgSpan.textContent = `Pre-flight simulation SUCCESS: Signed by ${activeKey.label} under Invariants 1–7 & A1–A3. Ready to sequence!`;
+          simBanner.appendChild(checkIcon);
+          simBanner.appendChild(msgSpan);
+
+          document.getElementById('simSeq').textContent = sim.seq;
+          document.getElementById('simNextOp').textContent = (sim.next_op_index !== undefined && sim.next_op_index !== null) ? sim.next_op_index : '-';
+          document.getElementById('simActiveSupply').textContent = sim.active_credits.toLocaleString() + ' credits';
+          document.getElementById('simRetiredSupply').textContent = sim.retired_credits.toLocaleString() + ' credits';
+          simMetrics.style.display = 'grid';
+
+          canonicalBox.textContent = sim.canonical_line;
+          btnCopy.disabled = false;
+          assistantBox.style.display = 'block';
+
+          showSuccessToast('✓ Transaction successfully signed and mathematically verified!');
+        } else {
+          simBadge.textContent = 'REJECTED';
+          simBadge.style.background = 'rgba(248,81,73,0.15)';
+          simBadge.style.color = 'var(--red)';
+
+          simBanner.className = 'sim-status-banner invalid';
+          simBanner.replaceChildren();
+          const errIcon = document.createElement('span');
+          errIcon.textContent = '❌';
+          const errMsg = document.createElement('span');
+          errMsg.textContent = `WASM Pre-Flight Rejection: ${sim.error || 'Invariant violation'}`;
+          simBanner.appendChild(errIcon);
+          simBanner.appendChild(errMsg);
+
+          simMetrics.style.display = 'none';
+          canonicalBox.textContent = `// Simulated action was rejected by the state machine:\n// ${sim.error}`;
+          btnCopy.disabled = true;
+          assistantBox.style.display = 'none';
+          showToast(`Rejection: ${sim.error}`);
+        }
+      } catch (err) {
+        console.error('Sign/simulation error:', err);
+        showToast('Error: ' + err);
+      }
+    }
+    window.executeSignIntent = executeSignIntent;
+
+    async function copyCanonicalLine() {
+      if (!latestCanonicalLine) return;
+      try {
+        await navigator.clipboard.writeText(latestCanonicalLine);
+        showSuccessToast('✓ Canonical line copied! Ready to append or submit.');
+      } catch (e) {
+        showToast('Clipboard error: ' + e);
+      }
+    }
+    window.copyCanonicalLine = copyCanonicalLine;
+
+    function openGitHubIssueSubmission() {
+      if (!latestCanonicalLine) return;
+      const title = encodeURIComponent(`RFC-006 Signed Event Submission: ${activeSignerTab.toUpperCase()} (${activeKey.label})`);
+      const body = encodeURIComponent(
+        `### GreyMisnomer RFC-006 Signed Event Submission\n\n` +
+        `**Action Type:** \`${activeSignerTab}\`\n` +
+        `**Signer Public Key:** \`${activeKey.pubkey}\`\n` +
+        `**Signer Label:** ${activeKey.label}\n\n` +
+        `#### Canonical Event Line\n` +
+        `\`\`\`json\n${latestCanonicalLine}\n\`\`\`\n\n` +
+        `*Generated via In-Browser Sovereign Signer ($0 Infrastructure).*`
+      );
+      window.open(`https://github.com/GreyMisnomer/GreyMisnomer/issues/new?title=${title}&body=${body}`, '_blank');
+    }
+    window.openGitHubIssueSubmission = openGitHubIssueSubmission;
+
+    function downloadGmlineFile() {
+      if (!latestCanonicalLine) return;
+      const blob = new Blob([latestCanonicalLine + '\n'], { type: 'text/plain' });
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = url;
+      a.download = `event_${activeSignerTab}_${Date.now()}.gmline`;
+      document.body.appendChild(a);
+      a.click();
+      document.body.removeChild(a);
+      URL.revokeObjectURL(url);
+      showSuccessToast('✓ .gmline bundle saved for air-gapped submission');
+    }
+    window.downloadGmlineFile = downloadGmlineFile;

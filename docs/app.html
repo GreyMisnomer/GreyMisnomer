@@ -59,6 +59,9 @@
         <span class="nav-icon">🛒</span> Marketplace
         <span class="nav-badge" id="badge-marketplace">0</span>
       </div>
+      <div class="nav-item" onclick="navigate('signer')" id="nav-signer">
+        <span class="nav-icon">✍️</span> Sovereign Signer
+      </div>
     </div>
 
     <div class="nav-section">
@@ -84,10 +87,12 @@
   <!-- ═══ Main Content ═══ -->
   <div class="main-wrapper">
     <!-- Top Bar -->
-    ﻿    <!-- Top Bar -->
     <header class="topbar">
       <div class="demo-badge">🔥 LOCAL DEMO - Session State</div>
-      <div style="display:flex; gap: 2rem; align-items:center;">
+      <div style="display:flex; gap: 1.5rem; align-items:center; flex-wrap:wrap;">
+        <button id="btnKeyManager" class="btn btn-secondary" onclick="openKeyManagerModal()" style="padding:0.35rem 0.75rem; font-size:0.8rem; display:flex; align-items:center; gap:0.4rem; cursor:pointer;">
+          <span>🔑</span> <span id="topbarKeyLabel">Actor Key: Loading...</span>
+        </button>
         <div class="role-switcher">
           <label>Role:</label>
           <select id="roleSwitcher" onchange="switchRole(this.value)">
@@ -595,7 +600,264 @@
       </div>
 
 
+      <!-- ✍️ VIEW: Sovereign Signer (RFC-006) -->
+      <div class="view" id="view-signer">
+        <div style="display:flex; justify-content:space-between; align-items:flex-start; flex-wrap:wrap; gap:1rem;">
+          <div>
+            <h2 class="page-title">✍️ Sovereign Transaction Signer (RFC-006)</h2>
+            <p class="page-desc">Sign carbon credit lifecycle actions with client-side Ed25519 identity, simulate transitions in local WASM, and generate canonical event lines for zero-gas submission.</p>
+          </div>
+          <button class="btn btn-secondary btn-sm" onclick="openKeyManagerModal()" style="display:flex; align-items:center; gap:0.5rem;">
+            <span>🔑</span> Manage Keys / Identities
+          </button>
+        </div>
+
+        <!-- Active Signer Status Card -->
+        <div class="result-card" style="margin-top:1.5rem; border-color:rgba(57, 211, 83, 0.3); background: rgba(57, 211, 83, 0.03);">
+          <div style="display:flex; justify-content:space-between; align-items:center; flex-wrap:wrap; gap:1rem;">
+            <div>
+              <div style="font-size:0.75rem; font-family:var(--mono); color:var(--muted); text-transform:uppercase; letter-spacing:0.05em;">Active Signer Key</div>
+              <div style="font-size:0.95rem; font-family:var(--mono); font-weight:700; color:var(--green); margin-top:0.25rem; display:flex; align-items:center; gap:0.5rem; flex-wrap:wrap;">
+                <span id="signerActivePubkey">Loading public key...</span>
+                <button class="btn btn-ghost btn-sm" onclick="copySignerPubkey()" style="padding:0.15rem 0.5rem; font-size:0.72rem;">📋 Copy</button>
+              </div>
+            </div>
+            <div style="display:flex; gap:1.5rem; align-items:center; flex-wrap:wrap;">
+              <div>
+                <div style="font-size:0.72rem; color:var(--muted); text-transform:uppercase;">Signer Label</div>
+                <div id="signerActiveLabel" style="font-weight:600; color:var(--text); font-size:0.88rem;">Infosys Corporate Buyer</div>
+              </div>
+              <div>
+                <div style="font-size:0.72rem; color:var(--muted); text-transform:uppercase;">Registry Chain</div>
+                <div id="signerChainId" style="font-family:var(--mono); font-size:0.8rem; color:var(--purple);">6713110c...</div>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <!-- Intent Builder & Simulation Grid -->
+        <div class="signer-grid">
+          <!-- Column 1: Intent Form -->
+          <div class="result-card">
+            <div class="signer-tab-nav">
+              <button class="signer-tab-btn active" id="btnTabTransfer" onclick="switchSignerTab('transfer')">📤 Transfer</button>
+              <button class="signer-tab-btn" id="btnTabBurn" onclick="switchSignerTab('burn')">🔥 Retire / Burn</button>
+              <button class="signer-tab-btn" id="btnTabMint" onclick="switchSignerTab('mint')">🪙 VVB Mint</button>
+            </div>
+
+            <!-- Form: Transfer -->
+            <div id="formSignerTransfer" class="signer-subform">
+              <div class="form-grid">
+                <div class="field" style="grid-column: span 2;">
+                  <label>Credit Batch ID</label>
+                  <input type="text" id="tx-credit-id" value="CC-IN-SOLAR-2026-001" class="input-modern" placeholder="e.g. CC-IN-SOLAR-2026-001">
+                </div>
+                <div class="field" style="grid-column: span 2;">
+                  <label>Recipient Public Key (64 hex characters)</label>
+                  <input type="text" id="tx-recipient-pubkey" value="dcc59196196d6c686652e43f1303665c79edaba5e07834a910ddd1c057576a8a" class="input-modern" placeholder="32-byte Ed25519 public key in lowercase hex">
+                </div>
+                <div class="field">
+                  <label>Operation Index (op_index) <button type="button" class="btn btn-ghost btn-sm" onclick="autoFillOpIndex()" style="font-size:0.7rem; padding:0 0.3rem;">🔄 Auto-detect</button></label>
+                  <input type="number" id="tx-op-index" value="2" class="input-modern" min="0">
+                </div>
+              </div>
+            </div>
+
+            <!-- Form: Burn -->
+            <div id="formSignerBurn" class="signer-subform" style="display:none;">
+              <div class="form-grid">
+                <div class="field" style="grid-column: span 2;">
+                  <label>Credit Batch ID</label>
+                  <input type="text" id="burn-credit-id" value="CC-IN-SOLAR-2026-001" class="input-modern">
+                </div>
+                <div class="field">
+                  <label>Range Start Serial</label>
+                  <input type="number" id="burn-range-start" value="1000400" class="input-modern">
+                </div>
+                <div class="field">
+                  <label>Range End Serial</label>
+                  <input type="number" id="burn-range-end" value="1000599" class="input-modern">
+                </div>
+                <div class="field" style="grid-column: span 2;">
+                  <label>Beneficiary / Legal Entity</label>
+                  <input type="text" id="burn-beneficiary" value="Acme Clean Logistics Net Zero 2026" class="input-modern">
+                </div>
+                <div class="field">
+                  <label>Claim Rationale</label>
+                  <select id="burn-claim-type" class="input-modern">
+                    <option value="CorporateNetZero">CorporateNetZero (Scope 1/2/3)</option>
+                    <option value="Payg">Payg (Pay-As-You-Go Mobility)</option>
+                    <option value="Compliance">Compliance (Regulatory Mandate)</option>
+                  </select>
+                </div>
+                <div class="field">
+                  <label>Operation Index (op_index) <button type="button" class="btn btn-ghost btn-sm" onclick="autoFillOpIndex()" style="font-size:0.7rem; padding:0 0.3rem;">🔄 Auto-detect</button></label>
+                  <input type="number" id="burn-op-index" value="2" class="input-modern" min="0">
+                </div>
+              </div>
+            </div>
+
+            <!-- Form: Mint -->
+            <div id="formSignerMint" class="signer-subform" style="display:none;">
+              <div class="form-grid">
+                <div class="field">
+                  <label>Project ID</label>
+                  <input type="text" id="mint-project-id" value="PRJ-002" class="input-modern">
+                </div>
+                <div class="field">
+                  <label>New Credit Batch ID</label>
+                  <input type="text" id="mint-credit-id" value="CC-IN-WIND-2026-002" class="input-modern">
+                </div>
+                <div class="field">
+                  <label>Serial Range Start</label>
+                  <input type="number" id="mint-range-start" value="2000000" class="input-modern">
+                </div>
+                <div class="field">
+                  <label>Serial Range End</label>
+                  <input type="number" id="mint-range-end" value="2000999" class="input-modern">
+                </div>
+                <div class="field">
+                  <label>Credit Mint Amount</label>
+                  <input type="number" id="mint-amount" value="1000" class="input-modern">
+                </div>
+                <div class="field">
+                  <label>Initial Owner Public Key</label>
+                  <input type="text" id="mint-initial-owner" value="dcc59196196d6c686652e43f1303665c79edaba5e07834a910ddd1c057576a8a" class="input-modern">
+                </div>
+                <div class="field" style="grid-column: span 2;">
+                  <label>MRV BLAKE3 Merkle Root (64 hex)</label>
+                  <input type="text" id="mint-merkle-root" value="536f6c61724d65726b6c65526f6f743230323600000000000000000000000000" class="input-modern">
+                </div>
+                <div class="field">
+                  <label>Leaf Count</label>
+                  <input type="number" id="mint-leaf-count" value="25" class="input-modern">
+                </div>
+                <div class="field">
+                  <label>Methodology Hash</label>
+                  <input type="text" id="mint-methodology" value="0xMETH-ACM0002" class="input-modern">
+                </div>
+              </div>
+            </div>
+
+            <div style="margin-top:1.5rem; display:flex; justify-content:flex-end;">
+              <button class="btn btn-primary" onclick="executeSignIntent()" id="btnSignIntent" style="display:flex; align-items:center; gap:0.5rem;">
+                <span>✍️</span> Sign Intent & Simulate in WASM
+              </button>
+            </div>
+          </div>
+
+          <!-- Column 2: Simulation & Canonical Line Preview -->
+          <div class="simulation-card">
+            <h4 style="margin:0; font-size:1.05rem; display:flex; align-items:center; justify-content:space-between;">
+              <span>🧪 Pre-Flight WASM Simulation</span>
+              <span id="simBadge" class="badge" style="font-size:0.75rem; background:rgba(255,255,255,0.06); color:var(--muted);">STANDBY</span>
+            </h4>
+
+            <div id="simBanner" class="sim-status-banner standby">
+              <span>ℹ️</span> Fill the form on the left and click "Sign Intent & Simulate in WASM" to test against the active protocol engine.
+            </div>
+
+            <div id="simMetricsGrid" style="display:none; grid-template-columns:repeat(2,1fr); gap:0.75rem;">
+              <div style="background:rgba(0,0,0,0.25); padding:0.6rem 0.8rem; border-radius:8px; border:1px solid var(--border);">
+                <div style="font-size:0.7rem; color:var(--muted); text-transform:uppercase;">Projected Seq #</div>
+                <div id="simSeq" style="font-family:var(--mono); font-weight:700; color:var(--purple); font-size:1.1rem;">-</div>
+              </div>
+              <div style="background:rgba(0,0,0,0.25); padding:0.6rem 0.8rem; border-radius:8px; border:1px solid var(--border);">
+                <div style="font-size:0.7rem; color:var(--muted); text-transform:uppercase;">Next Batch op_index</div>
+                <div id="simNextOp" style="font-family:var(--mono); font-weight:700; color:var(--green); font-size:1.1rem;">-</div>
+              </div>
+              <div style="background:rgba(0,0,0,0.25); padding:0.6rem 0.8rem; border-radius:8px; border:1px solid var(--border);">
+                <div style="font-size:0.7rem; color:var(--muted); text-transform:uppercase;">Active Supply</div>
+                <div id="simActiveSupply" style="font-family:var(--mono); font-weight:700; color:var(--blue); font-size:1.1rem;">-</div>
+              </div>
+              <div style="background:rgba(0,0,0,0.25); padding:0.6rem 0.8rem; border-radius:8px; border:1px solid var(--border);">
+                <div style="font-size:0.7rem; color:var(--muted); text-transform:uppercase;">Retired Supply</div>
+                <div id="simRetiredSupply" style="font-family:var(--mono); font-weight:700; color:var(--amber); font-size:1.1rem;">-</div>
+              </div>
+            </div>
+
+            <div>
+              <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:0.4rem;">
+                <label style="font-size:0.75rem; font-family:var(--mono); text-transform:uppercase; color:var(--muted);">Canonical Event Line (RFC-005 §3.6)</label>
+                <button class="btn btn-ghost btn-sm" id="btnCopyCanonical" onclick="copyCanonicalLine()" style="font-size:0.72rem; padding:0.2rem 0.5rem;" disabled>📋 Copy Line</button>
+              </div>
+              <div id="canonicalLineBox" class="canonical-code-box">// Canonical line will appear here after signing and pre-flight simulation...</div>
+            </div>
+
+            <!-- Submission Assistant -->
+            <div id="submissionAssistantBox" style="display:none; margin-top:0.5rem; padding-top:0.75rem; border-top:1px solid var(--border);">
+              <div style="font-size:0.75rem; color:var(--muted); text-transform:uppercase; letter-spacing:0.05em; margin-bottom:0.5rem;">Asynchronous Zero-Gas Submission</div>
+              <div style="display:flex; gap:0.6rem; flex-wrap:wrap;">
+                <button class="btn btn-primary btn-sm" onclick="openGitHubIssueSubmission()" style="display:flex; align-items:center; gap:0.4rem; background:#238636;">
+                  <span>🐙</span> Submit via GitHub Issue
+                </button>
+                <button class="btn btn-secondary btn-sm" onclick="downloadGmlineFile()" style="display:flex; align-items:center; gap:0.4rem;">
+                  <span>💾</span> Download .gmline File
+                </button>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+
 </main>
+  </div>
+
+  <!-- 🔑 MODAL: Key Manager (RFC-006) -->
+  <div class="modal-backdrop" id="modalKeyManager" onclick="if(event.target === this) closeKeyManagerModal()">
+    <div class="modal-dialog">
+      <div class="modal-header">
+        <h3><span>🔑</span> Ed25519 Key Manager</h3>
+        <button class="modal-close-btn" onclick="closeKeyManagerModal()">&times;</button>
+      </div>
+      <div class="modal-body">
+        <p style="font-size:0.82rem; color:var(--muted); margin:0;">In GreyMisnomer, actors are identified strictly by 32-byte Ed25519 public keys. No accounts, no usernames, and zero gas.</p>
+
+        <!-- Current Key Card -->
+        <div class="key-identity-card">
+          <div class="key-field-row">
+            <div class="key-field-label"><span>Active Actor Identity</span> <span id="modalActiveActorLabel" style="color:var(--text); font-weight:600;">Infosys Corporate Buyer</span></div>
+          </div>
+          <div class="key-field-row">
+            <div class="key-field-label"><span>Public Key (VerifyingKey)</span> <span style="color:var(--muted)">32 bytes</span></div>
+            <div class="key-field-value">
+              <code id="modalActivePubkey">...</code>
+              <button class="btn btn-ghost btn-sm" onclick="copyModalPubkey()" style="padding:0.2rem 0.5rem; font-size:0.72rem;">📋 Copy</button>
+            </div>
+          </div>
+          <div class="key-field-row">
+            <div class="key-field-label"><span>Secret Key (SigningKey)</span> <button type="button" class="btn btn-ghost btn-sm" onclick="toggleSecretKeyReveal()" id="btnToggleSecret" style="padding:0; font-size:0.7rem; color:var(--blue);">👁️ Reveal</button></div>
+            <div class="key-field-value">
+              <code id="modalActiveSecret">••••••••••••••••••••••••••••••••••••••••••••••••••••••••••••••••</code>
+              <button class="btn btn-ghost btn-sm" onclick="copyModalSecret()" style="padding:0.2rem 0.5rem; font-size:0.72rem;">📋 Copy</button>
+            </div>
+          </div>
+        </div>
+
+        <!-- Quick Switch Preset Actors -->
+        <div>
+          <label style="font-size:0.75rem; font-family:var(--mono); text-transform:uppercase; color:var(--muted); margin-bottom:0.5rem; display:block;">Switch Identity to Known Ledger Actor</label>
+          <div class="preset-actor-grid" id="presetActorGrid"></div>
+        </div>
+
+        <!-- Custom Keypair Actions -->
+        <div style="border-top:1px solid var(--border); padding-top:1rem; display:flex; flex-direction:column; gap:0.75rem;">
+          <div style="font-size:0.75rem; font-family:var(--mono); text-transform:uppercase; color:var(--muted);">Generate or Import Custom Identity</div>
+          <div style="display:flex; gap:0.6rem; flex-wrap:wrap;">
+            <button class="btn btn-secondary btn-sm" onclick="generateFreshKeypair()" style="display:flex; align-items:center; gap:0.4rem;">
+              <span>🎲</span> Generate Fresh Keypair
+            </button>
+            <button class="btn btn-secondary btn-sm" onclick="exportKeypairJson()" style="display:flex; align-items:center; gap:0.4rem;">
+              <span>💾</span> Export Key JSON
+            </button>
+          </div>
+          <div style="display:flex; gap:0.5rem; margin-top:0.25rem;">
+            <input type="text" id="inputImportSecret" placeholder="Paste 64-character lowercase secret key hex..." class="input-modern" style="font-size:0.78rem; font-family:var(--mono);">
+            <button class="btn btn-primary btn-sm" onclick="importCustomSecretKey()" style="white-space:nowrap;">📥 Import</button>
+          </div>
+        </div>
+      </div>
+    </div>
   </div>
 
   <!-- Loading overlay -->
