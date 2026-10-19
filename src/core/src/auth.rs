@@ -180,6 +180,7 @@ impl<'de> Deserialize<'de> for Signature {
 // --- Keypair (for test, demo & CLI tooling) --------------------------------
 
 /// Secret signing key wrapper for local signing operations.
+#[derive(Clone)]
 pub struct Keypair {
     pub signing_key: SigningKey,
 }
@@ -189,6 +190,26 @@ impl Keypair {
         Self {
             signing_key: SigningKey::from_bytes(secret_bytes),
         }
+    }
+
+    pub fn from_seed_str(seed: &str) -> Self {
+        let hash = blake3::hash(seed.as_bytes());
+        Self::from_bytes(hash.as_bytes())
+    }
+
+    pub fn generate() -> Self {
+        use std::sync::atomic::{AtomicU64, Ordering};
+        static COUNTER: AtomicU64 = AtomicU64::new(1);
+        let count = COUNTER.fetch_add(1, Ordering::SeqCst);
+        let time = std::time::SystemTime::now()
+            .duration_since(std::time::UNIX_EPOCH)
+            .map(|d| d.as_nanos())
+            .unwrap_or(0);
+        let mut hasher = blake3::Hasher::new();
+        hasher.update(&count.to_be_bytes());
+        hasher.update(&time.to_be_bytes());
+        let hash = hasher.finalize();
+        Self::from_bytes(hash.as_bytes())
     }
 
     pub fn pubkey(&self) -> PubKey {

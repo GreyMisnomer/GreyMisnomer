@@ -11,12 +11,15 @@ use wasm_bindgen::prelude::*;
 
 // Pull in everything we need from the core crate
 use grey_misnomer_core::{
+    auth::{
+        build_authority_event_preimage, build_burn_preimage, build_genesis_preimage,
+        build_mint_preimage, build_transfer_preimage, build_vvb_register_payload, Keypair,
+        MintAttestationParams, PubKey,
+    },
     credit::CreditStatus,
     mrv::{self, MRVCommitment, MRVRecord},
-    poi::{PoI, PoIStatus},
     poo::ClaimType,
-    project::MarketScope,
-    registry::Registry,
+    registry::{Registry, RegistryEvent},
     serial::SerialRange,
 };
 
@@ -110,6 +113,7 @@ struct PoiInput {
     cc_mint_amount: u64,
     jurisdiction: String,
     methodology_hash: String,
+    #[allow(dead_code)]
     vvb_signature: String,
     owner: String,
     #[serde(default = "default_true")]
@@ -267,16 +271,104 @@ pub struct WasmRegistry {
     inner: Registry,
     commitments: HashMap<String, MRVCommitment>,
     last_commitment: Option<MRVCommitment>,
+    #[allow(dead_code)]
+    authority_key: Keypair,
+    #[allow(dead_code)]
+    sequencer_key: Keypair,
+    vvb_key: Keypair,
+    owner_keys: HashMap<PubKey, Keypair>,
+    wallet_aliases: HashMap<String, PubKey>,
+    pubkey_aliases: HashMap<PubKey, String>,
+}
+
+impl WasmRegistry {
+    fn resolve_owner(&mut self, owner_str: &str) -> (PubKey, Keypair) {
+        if let Some(pk) = self.wallet_aliases.get(owner_str) {
+            if let Some(kp) = self.owner_keys.get(pk) {
+                return (*pk, kp.clone());
+            }
+        }
+        if let Ok(pk) = PubKey::from_hex(owner_str) {
+            if let Some(kp) = self.owner_keys.get(&pk) {
+                self.wallet_aliases.insert(owner_str.to_string(), pk);
+                self.pubkey_aliases.insert(pk, owner_str.to_string());
+                return (pk, kp.clone());
+            }
+        }
+        let kp = Keypair::from_seed_str(owner_str);
+        let pk = kp.pubkey();
+        self.owner_keys.insert(pk, kp.clone());
+        self.wallet_aliases.insert(owner_str.to_string(), pk);
+        self.pubkey_aliases.insert(pk, owner_str.to_string());
+        (pk, kp)
+    }
+
+    fn owner_display_str(&self, pk: &PubKey) -> String {
+        self.pubkey_aliases
+            .get(pk)
+            .cloned()
+            .unwrap_or_else(|| pk.to_hex())
+    }
 }
 
 #[wasm_bindgen]
 impl WasmRegistry {
     #[wasm_bindgen(constructor)]
     pub fn new() -> WasmRegistry {
+        let authority_key = Keypair::from_seed_str("wasm-demo-authority-seed-00000000");
+        let sequencer_key = Keypair::from_seed_str("wasm-demo-sequencer-seed-00000000");
+        let vvb_key = Keypair::from_seed_str("wasm-demo-vvb-seed-000000000000");
+
+        let mut inner = Registry::new();
+        let nonce = [42u8; 32];
+        let created_at = 1_700_000_000;
+        let genesis_msg = build_genesis_preimage(
+            "GreyMisnomer-Wasm",
+            &authority_key.pubkey(),
+            &sequencer_key.pubkey(),
+            &nonce,
+            created_at,
+        );
+        let genesis_event = RegistryEvent::Genesis {
+            chain_name: "GreyMisnomer-Wasm".to_string(),
+            authority: authority_key.pubkey(),
+            sequencer: sequencer_key.pubkey(),
+            nonce,
+            created_at,
+            authority_sig: authority_key.sign(&genesis_msg),
+        };
+        inner
+            .apply_event(&genesis_event)
+            .expect("genesis must succeed");
+
+        let vvb_payload = build_vvb_register_payload(&vvb_key.pubkey(), "Wasm-Default-VVB");
+        let vvb_msg =
+            build_authority_event_preimage("vvb-register", &inner.chain_id, 0, &vvb_payload);
+        let vvb_event = RegistryEvent::VvbRegister {
+            authority_index: 0,
+            vvb: vvb_key.pubkey(),
+            label: "Wasm-Default-VVB".to_string(),
+            authority_sig: authority_key.sign(&vvb_msg),
+        };
+        inner
+            .apply_event(&vvb_event)
+            .expect("vvb register must succeed");
+
+        let mut owner_keys = HashMap::new();
+        owner_keys.insert(authority_key.pubkey(), authority_key.clone());
+        owner_keys.insert(sequencer_key.pubkey(), sequencer_key.clone());
+        owner_keys.insert(vvb_key.pubkey(), vvb_key.clone());
+
         WasmRegistry {
-            inner: Registry::new(),
+            inner,
             commitments: HashMap::new(),
             last_commitment: None,
+            authority_key,
+            sequencer_key,
+            vvb_key,
+            owner_keys,
+            wallet_aliases: HashMap::new(),
+            pubkey_aliases: HashMap::new(),
         }
     }
 
@@ -325,6 +417,10 @@ impl WasmRegistry {
         let input: PoiInput =
             serde_json::from_str(poi_json).map_err(|e| js_err(format!("Invalid PoI JSON: {e}")))?;
 
+        if !input.poi_valid {
+            return Err(js_err("PoI is marked invalid or not issued"));
+        }
+
         let commitment = self
             .commitments
             .get(&input.project_id)
@@ -347,30 +443,53 @@ impl WasmRegistry {
             )));
         }
 
-        let mut poi = PoI {
-            project_id: input.project_id.clone(),
-            mrv_commitment: commitment,
-            methodology_hash: input.methodology_hash,
-            vvb_signature: input.vvb_signature,
-            serialization_range: range,
-            amount_tco2e: input.cc_mint_amount,
-            jurisdiction: input.jurisdiction,
-            market_scope: MarketScope::Vcm,
-            credit_id: input.credit_id.clone(),
+        let (owner_pk, _) = self.resolve_owner(&input.owner);
+
+        let mint_params = MintAttestationParams {
+            chain_id: &self.inner.chain_id,
+            project_id: &input.project_id,
+            credit_id: &input.credit_id,
+            range_start: input.serial_start,
+            range_end: input.serial_end,
+            cc_mint_amount: input.cc_mint_amount,
+            merkle_root: &commitment.merkle_root,
+            leaf_count: commitment.leaf_count,
+            mrv_timestamp: commitment.timestamp,
+            methodology_hash: &input.methodology_hash,
+            jurisdiction: &input.jurisdiction,
+            market_scope: "Vcm",
             valid_from: 0,
             valid_until: 9_999_999_999,
-            poi_valid: input.poi_valid,
+            initial_owner: &owner_pk,
+        };
+        let mint_msg = build_mint_preimage(&mint_params);
+        let vvb_sig = self.vvb_key.sign(&mint_msg);
+
+        let event = RegistryEvent::Mint {
+            project_id: input.project_id.clone(),
+            credit_id: input.credit_id.clone(),
+            range_start: input.serial_start,
+            range_end: input.serial_end,
             cc_mint_amount: input.cc_mint_amount,
-            owner: input.owner.clone(),
-            status: PoIStatus::Valid,
+            merkle_root: commitment.merkle_root,
+            leaf_count: commitment.leaf_count,
+            mrv_timestamp: commitment.timestamp,
+            methodology_hash: input.methodology_hash,
+            jurisdiction: input.jurisdiction,
+            market_scope: "Vcm".to_string(),
+            valid_from: 0,
+            valid_until: 9_999_999_999,
+            initial_owner: owner_pk,
+            vvb: self.vvb_key.pubkey(),
+            vvb_sig,
         };
 
-        let batch = self.inner.mint(&mut poi, input.owner).map_err(js_err)?;
+        let batch = self.inner.mint(&event).map_err(js_err)?;
 
         let out = MintOutput {
             credit_id: batch.credit_id.clone(),
             project_id: batch.project_id.clone(),
-            owner: batch.owner.to_hex(),
+            owner: self.owner_display_str(&batch.owner),
             original_start: batch.original_range.start,
             original_end: batch.original_range.end,
             total_credits: batch.original_range.size().map_err(js_err)?,
@@ -382,10 +501,35 @@ impl WasmRegistry {
 
     #[wasm_bindgen]
     pub fn transfer(&mut self, credit_id: &str, new_owner: &str) -> Result<String, JsValue> {
-        self.inner
-            .transfer(credit_id, new_owner.to_string())
-            .map_err(js_err)?;
+        let batch = self
+            .inner
+            .credits
+            .iter()
+            .find(|b| b.credit_id == credit_id)
+            .ok_or_else(|| js_err(format!("Credit not found: {credit_id}")))?
+            .clone();
 
+        let (new_pk, _) = self.resolve_owner(new_owner);
+        let owner_kp = self.owner_keys.get(&batch.owner).cloned().ok_or_else(|| {
+            js_err(format!(
+                "No private key found for owner {}",
+                batch.owner.to_hex()
+            ))
+        })?;
+
+        let op_index = batch.op_index;
+        let transfer_msg =
+            build_transfer_preimage(&self.inner.chain_id, credit_id, op_index, &new_pk);
+        let owner_sig = owner_kp.sign(&transfer_msg);
+
+        let event = RegistryEvent::Transfer {
+            credit_id: credit_id.to_string(),
+            op_index,
+            new_owner: new_pk,
+            owner_sig,
+        };
+
+        self.inner.transfer(&event).map_err(js_err)?;
         self.batch_state(credit_id)
     }
 
@@ -394,7 +538,13 @@ impl WasmRegistry {
         let input: BurnInput = serde_json::from_str(burn_json)
             .map_err(|e| js_err(format!("Invalid burn JSON: {e}")))?;
 
-        let burn_range = SerialRange::new(input.burn_start, input.burn_end).map_err(js_err)?;
+        let batch = self
+            .inner
+            .credits
+            .iter()
+            .find(|b| b.credit_id == input.credit_id)
+            .ok_or_else(|| js_err(format!("Credit not found: {}", input.credit_id)))?
+            .clone();
 
         let claim_type = match input.claim_type.as_str() {
             "CorporateNetZero" => ClaimType::CorporateNetZero,
@@ -403,10 +553,36 @@ impl WasmRegistry {
             other => return Err(js_err(format!("Unknown claim type: {other}"))),
         };
 
-        let poo = self
-            .inner
-            .burn(&input.credit_id, burn_range, input.beneficiary, claim_type)
-            .map_err(js_err)?;
+        let owner_kp = self.owner_keys.get(&batch.owner).cloned().ok_or_else(|| {
+            js_err(format!(
+                "No private key found for owner {}",
+                batch.owner.to_hex()
+            ))
+        })?;
+
+        let op_index = batch.op_index;
+        let burn_msg = build_burn_preimage(
+            &self.inner.chain_id,
+            &input.credit_id,
+            op_index,
+            input.burn_start,
+            input.burn_end,
+            &input.beneficiary,
+            claim_type.as_str(),
+        );
+        let owner_sig = owner_kp.sign(&burn_msg);
+
+        let event = RegistryEvent::Burn {
+            credit_id: input.credit_id.clone(),
+            op_index,
+            range_start: input.burn_start,
+            range_end: input.burn_end,
+            beneficiary: input.beneficiary.clone(),
+            claim_type,
+            owner_sig,
+        };
+
+        let poo = self.inner.burn(&event).map_err(js_err)?;
 
         let claim_str = match poo.claim_type {
             ClaimType::CorporateNetZero => "CorporateNetZero",
@@ -470,7 +646,7 @@ impl WasmRegistry {
 
         let out = BatchStateOutput {
             credit_id: batch.credit_id.clone(),
-            owner: batch.owner.to_hex(),
+            owner: self.owner_display_str(&batch.owner),
             original_start: batch.original_range.start,
             original_end: batch.original_range.end,
             slices,
@@ -521,7 +697,7 @@ impl WasmRegistry {
 
             credits.push(BatchStateOutput {
                 credit_id: b.credit_id.clone(),
-                owner: b.owner.to_hex(),
+                owner: self.owner_display_str(&b.owner),
                 original_start: b.original_range.start,
                 original_end: b.original_range.end,
                 slices,
@@ -539,7 +715,22 @@ impl WasmRegistry {
         serde_json::to_string(&state).map_err(js_err)
     }
 
-    /// Evaluates all 7 RFC-001 protocol invariants and returns a JSON InvariantReport.
+    #[wasm_bindgen]
+    pub fn chain_id(&self) -> String {
+        hex::encode(self.inner.chain_id)
+    }
+
+    #[wasm_bindgen]
+    pub fn authority(&self) -> String {
+        self.inner.authority.to_hex()
+    }
+
+    #[wasm_bindgen]
+    pub fn sequencer(&self) -> String {
+        self.inner.sequencer.to_hex()
+    }
+
+    /// Evaluates all protocol invariants (RFC-001 + RFC-005) and returns a JSON InvariantReport.
     #[wasm_bindgen]
     pub fn check_invariants(&self) -> Result<String, JsValue> {
         let report = self.inner.check_invariants();
@@ -586,6 +777,24 @@ impl WasmRegistry {
     #[wasm_bindgen]
     pub fn check_invariant_7(&self) -> bool {
         self.inner.check_invariant_7()
+    }
+
+    /// Invariant A1: Cryptographic Authorization Validity.
+    #[wasm_bindgen]
+    pub fn check_invariant_a1(&self) -> bool {
+        self.inner.check_invariant_a1()
+    }
+
+    /// Invariant A2: Operation Index Contiguity (Replay Prevention).
+    #[wasm_bindgen]
+    pub fn check_invariant_a2(&self) -> bool {
+        self.inner.check_invariant_a2()
+    }
+
+    /// Invariant A3: Multi-Tenant Registry Domain Separation.
+    #[wasm_bindgen]
+    pub fn check_invariant_a3(&self) -> bool {
+        self.inner.check_invariant_a3()
     }
 }
 

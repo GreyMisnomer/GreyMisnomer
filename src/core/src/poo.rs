@@ -19,6 +19,16 @@ pub enum ClaimType {
     Compliance,
 }
 
+impl ClaimType {
+    pub fn as_str(&self) -> &'static str {
+        match self {
+            ClaimType::CorporateNetZero => "CorporateNetZero",
+            ClaimType::Payg => "Payg",
+            ClaimType::Compliance => "Compliance",
+        }
+    }
+}
+
 // Proof-of-Offset (PoO) represents a formally retired carbon credit.
 // As defined in RFC-001 §3.2, it contains the immutable cryptographic proof
 // that specific serial ranges have been burned and claimed.

@@ -25,6 +25,9 @@ js-sys = "0.3"
 # getrandom with wasm support (needed by some transitive deps)
 getrandom = { version = "0.2", features = ["js"] }
 
+# hex encoding/decoding
+hex = "0.4"
+
 [dependencies.web-sys]
 version  = "0.3"
 features = ["console"]
