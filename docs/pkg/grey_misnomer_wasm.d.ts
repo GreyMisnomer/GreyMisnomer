@@ -67,10 +67,20 @@ export class WasmRegistry {
 export function build_commitment(records_json: string, timestamp: bigint): string;
 
 /**
+ * Derives the 32-byte Ed25519 public key hex from a 32-byte secret key hex.
+ */
+export function derive_pubkey_wasm(secret_key_hex: string): string;
+
+/**
  * In-browser checkpoint equivocation detector (RFC-005 §3.7):
  * Parses a JSON array of checkpoints and verifies no two valid checkpoints claim the same size with different heads.
  */
 export function detect_equivocation_wasm(checkpoints_json: string): string;
+
+/**
+ * Generates a cryptographically secure Ed25519 keypair in the browser using CSPRNG.
+ */
+export function generate_keypair_wasm(): string;
 
 /**
  * In-browser event log replayer (RFC-004 / Stage 1):
@@ -78,6 +88,27 @@ export function detect_equivocation_wasm(checkpoints_json: string): string;
  * replays every state transition through pure `apply()`, and verifies all 7 invariants.
  */
 export function replay_event_log(events_jsonl: string): string;
+
+/**
+ * Signs a burn/retirement intent with an owner's secret key, producing a valid `RegistryEvent::Burn`.
+ */
+export function sign_burn_intent_wasm(params_json: string, secret_key_hex: string): string;
+
+/**
+ * Signs a mint intent with a VVB secret key, producing a valid `RegistryEvent::Mint`.
+ */
+export function sign_mint_intent_wasm(params_json: string, vvb_secret_key_hex: string): string;
+
+/**
+ * Signs a transfer intent with an owner's secret key, producing a valid `RegistryEvent::Transfer`.
+ */
+export function sign_transfer_intent_wasm(params_json: string, secret_key_hex: string): string;
+
+/**
+ * Simulates applying a proposed event against the current replayed event log.
+ * Returns whether the event is valid, the projected canonical line, and new supply metrics.
+ */
+export function simulate_apply_wasm(events_jsonl: string, event_json: string): string;
 
 /**
  * In-browser checkpoint verifier (RFC-005 §3.7):
@@ -96,8 +127,14 @@ export interface InitOutput {
     readonly memory: WebAssembly.Memory;
     readonly __wbg_wasmregistry_free: (a: number, b: number) => void;
     readonly build_commitment: (a: number, b: number, c: bigint) => [number, number, number, number];
+    readonly derive_pubkey_wasm: (a: number, b: number) => [number, number, number, number];
     readonly detect_equivocation_wasm: (a: number, b: number) => [number, number, number, number];
+    readonly generate_keypair_wasm: () => [number, number, number, number];
     readonly replay_event_log: (a: number, b: number) => [number, number, number, number];
+    readonly sign_burn_intent_wasm: (a: number, b: number, c: number, d: number) => [number, number, number, number];
+    readonly sign_mint_intent_wasm: (a: number, b: number, c: number, d: number) => [number, number, number, number];
+    readonly sign_transfer_intent_wasm: (a: number, b: number, c: number, d: number) => [number, number, number, number];
+    readonly simulate_apply_wasm: (a: number, b: number, c: number, d: number) => [number, number, number, number];
     readonly verify_checkpoint: (a: number, b: number, c: number, d: number) => [number, number, number];
     readonly verify_inclusion: (a: number, b: number, c: number, d: number, e: number) => [number, number, number, number];
     readonly wasmregistry_authority: (a: number) => [number, number];
@@ -122,6 +159,8 @@ export interface InitOutput {
     readonly wasmregistry_store_commitment: (a: number, b: number, c: number, d: bigint, e: number, f: number) => [number, number];
     readonly wasmregistry_store_project_commitment: (a: number, b: number, c: number, d: number, e: number, f: bigint) => [number, number];
     readonly wasmregistry_transfer: (a: number, b: number, c: number, d: number, e: number) => [number, number, number, number];
+    readonly __wbindgen_exn_store: (a: number) => void;
+    readonly __externref_table_alloc: () => number;
     readonly __wbindgen_externrefs: WebAssembly.Table;
     readonly __wbindgen_malloc: (a: number, b: number) => number;
     readonly __wbindgen_realloc: (a: number, b: number, c: number, d: number) => number;

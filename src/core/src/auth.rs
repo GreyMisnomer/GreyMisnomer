@@ -216,6 +216,33 @@ impl Keypair {
         PubKey(self.signing_key.verifying_key().to_bytes())
     }
 
+    pub fn secret_bytes(&self) -> [u8; 32] {
+        self.signing_key.to_bytes()
+    }
+
+    pub fn secret_hex(&self) -> String {
+        hex::encode(self.secret_bytes())
+    }
+
+    pub fn from_hex(s: &str) -> Result<Self, RegistryError> {
+        let s = s.trim();
+        if s.len() != 64 {
+            return Err(RegistryError::InvalidPublicKey(format!(
+                "expected 64 hex characters for secret key, found {}",
+                s.len()
+            )));
+        }
+        if s.chars().any(|c| c.is_ascii_uppercase()) {
+            return Err(RegistryError::InvalidPublicKey(
+                "secret key hex must be strictly lowercase".to_string(),
+            ));
+        }
+        let mut bytes = [0u8; 32];
+        hex::decode_to_slice(s, &mut bytes)
+            .map_err(|e| RegistryError::InvalidPublicKey(format!("invalid secret key hex: {e}")))?;
+        Ok(Self::from_bytes(&bytes))
+    }
+
     pub fn sign(&self, msg: &[u8]) -> Signature {
         Signature(self.signing_key.sign(msg).to_bytes())
     }
@@ -621,5 +648,20 @@ mod tests {
 
         let entry_hash = compute_entry_hash(1, &[0u8; 32], &mint_preimage);
         assert_ne!(entry_hash, [0u8; 32]);
+    }
+
+    #[test]
+    fn test_keypair_hex_roundtrip() {
+        let kp1 = Keypair::from_seed_str("test_secret_seed_roundtrip");
+        let hex = kp1.secret_hex();
+        assert_eq!(hex.len(), 64);
+        let kp2 = Keypair::from_hex(&hex).expect("must parse valid hex");
+        assert_eq!(kp1.pubkey(), kp2.pubkey());
+        assert_eq!(kp1.secret_bytes(), kp2.secret_bytes());
+
+        // Test uppercase rejection
+        assert!(Keypair::from_hex(&hex.to_uppercase()).is_err());
+        // Test length mismatch
+        assert!(Keypair::from_hex(&hex[..60]).is_err());
     }
 }

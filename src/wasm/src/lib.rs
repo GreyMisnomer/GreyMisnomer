@@ -842,3 +842,495 @@ pub fn detect_equivocation_wasm(checkpoints_json: &str) -> Result<String, JsValu
         None => Ok("null".to_string()),
     }
 }
+
+// ── RFC-006: In-Browser Key Generation & Transaction Signing Bindings ───────────
+
+#[derive(Serialize)]
+pub struct KeypairResponse {
+    pub pubkey: String,
+    pub secret_key: String,
+}
+
+#[derive(Serialize)]
+pub struct SignedIntentResult {
+    pub event_json: String,
+    pub signer_pubkey: String,
+    pub signature: String,
+    pub preimage_hex: String,
+}
+
+#[derive(Deserialize)]
+struct TransferIntentInput {
+    chain_id: String,
+    credit_id: String,
+    op_index: u64,
+    new_owner: String,
+}
+
+#[derive(Deserialize)]
+struct BurnIntentInput {
+    chain_id: String,
+    credit_id: String,
+    op_index: u64,
+    range_start: u64,
+    range_end: u64,
+    beneficiary: String,
+    claim_type: String,
+}
+
+#[derive(Deserialize)]
+struct MintIntentInput {
+    chain_id: String,
+    project_id: String,
+    credit_id: String,
+    range_start: u64,
+    range_end: u64,
+    cc_mint_amount: u64,
+    merkle_root: String,
+    leaf_count: u64,
+    mrv_timestamp: u64,
+    methodology_hash: String,
+    jurisdiction: String,
+    market_scope: String,
+    valid_from: u64,
+    valid_until: u64,
+    initial_owner: String,
+}
+
+#[derive(Serialize)]
+pub struct SimulationResult {
+    pub valid: bool,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub error: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub seq: Option<u64>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub prev_hash: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub entry_hash: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub canonical_line: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub active_credits: Option<u64>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub retired_credits: Option<u64>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub next_op_index: Option<u64>,
+}
+
+/// Generates a cryptographically secure Ed25519 keypair in the browser using CSPRNG.
+#[wasm_bindgen]
+pub fn generate_keypair_wasm() -> Result<String, JsValue> {
+    let mut seed = [0u8; 32];
+    getrandom::getrandom(&mut seed).map_err(|e| js_err(format!("CSPRNG failure: {e}")))?;
+    let kp = grey_misnomer_core::auth::Keypair::from_bytes(&seed);
+    let res = KeypairResponse {
+        pubkey: kp.pubkey().to_hex(),
+        secret_key: kp.secret_hex(),
+    };
+    serde_json::to_string(&res).map_err(js_err)
+}
+
+/// Derives the 32-byte Ed25519 public key hex from a 32-byte secret key hex.
+#[wasm_bindgen]
+pub fn derive_pubkey_wasm(secret_key_hex: &str) -> Result<String, JsValue> {
+    let kp = grey_misnomer_core::auth::Keypair::from_hex(secret_key_hex).map_err(js_err)?;
+    Ok(kp.pubkey().to_hex())
+}
+
+/// Signs a transfer intent with an owner's secret key, producing a valid `RegistryEvent::Transfer`.
+#[wasm_bindgen]
+pub fn sign_transfer_intent_wasm(
+    params_json: &str,
+    secret_key_hex: &str,
+) -> Result<String, JsValue> {
+    let input: TransferIntentInput = serde_json::from_str(params_json)
+        .map_err(|e| js_err(format!("Invalid params JSON: {e}")))?;
+    let kp = grey_misnomer_core::auth::Keypair::from_hex(secret_key_hex).map_err(js_err)?;
+
+    let mut chain_id = [0u8; 32];
+    hex::decode_to_slice(&input.chain_id, &mut chain_id)
+        .map_err(|e| js_err(format!("Invalid chain_id hex: {e}")))?;
+
+    let new_owner = PubKey::from_hex(&input.new_owner).map_err(js_err)?;
+
+    let preimage = grey_misnomer_core::auth::build_transfer_preimage(
+        &chain_id,
+        &input.credit_id,
+        input.op_index,
+        &new_owner,
+    );
+    let signature = kp.sign(&preimage);
+
+    let event = RegistryEvent::Transfer {
+        credit_id: input.credit_id,
+        op_index: input.op_index,
+        new_owner,
+        owner_sig: signature,
+    };
+
+    let event_json = serde_json::to_string(&event).map_err(js_err)?;
+
+    let res = SignedIntentResult {
+        event_json,
+        signer_pubkey: kp.pubkey().to_hex(),
+        signature: signature.to_hex(),
+        preimage_hex: hex::encode(&preimage),
+    };
+    serde_json::to_string(&res).map_err(js_err)
+}
+
+/// Signs a burn/retirement intent with an owner's secret key, producing a valid `RegistryEvent::Burn`.
+#[wasm_bindgen]
+pub fn sign_burn_intent_wasm(params_json: &str, secret_key_hex: &str) -> Result<String, JsValue> {
+    let input: BurnIntentInput = serde_json::from_str(params_json)
+        .map_err(|e| js_err(format!("Invalid params JSON: {e}")))?;
+    let kp = grey_misnomer_core::auth::Keypair::from_hex(secret_key_hex).map_err(js_err)?;
+
+    let mut chain_id = [0u8; 32];
+    hex::decode_to_slice(&input.chain_id, &mut chain_id)
+        .map_err(|e| js_err(format!("Invalid chain_id hex: {e}")))?;
+
+    let claim_type = match input.claim_type.as_str() {
+        "CorporateNetZero" | "corporate_net_zero" => {
+            grey_misnomer_core::poo::ClaimType::CorporateNetZero
+        }
+        "Payg" | "payg" => grey_misnomer_core::poo::ClaimType::Payg,
+        "Compliance" | "compliance" => grey_misnomer_core::poo::ClaimType::Compliance,
+        other => {
+            return Err(js_err(format!(
+                "Invalid claim_type '{other}': must be 'CorporateNetZero', 'Payg', or 'Compliance'"
+            )))
+        }
+    };
+
+    let preimage = grey_misnomer_core::auth::build_burn_preimage(
+        &chain_id,
+        &input.credit_id,
+        input.op_index,
+        input.range_start,
+        input.range_end,
+        &input.beneficiary,
+        claim_type.as_str(),
+    );
+    let signature = kp.sign(&preimage);
+
+    let event = RegistryEvent::Burn {
+        credit_id: input.credit_id,
+        op_index: input.op_index,
+        range_start: input.range_start,
+        range_end: input.range_end,
+        beneficiary: input.beneficiary,
+        claim_type,
+        owner_sig: signature,
+    };
+
+    let event_json = serde_json::to_string(&event).map_err(js_err)?;
+
+    let res = SignedIntentResult {
+        event_json,
+        signer_pubkey: kp.pubkey().to_hex(),
+        signature: signature.to_hex(),
+        preimage_hex: hex::encode(&preimage),
+    };
+    serde_json::to_string(&res).map_err(js_err)
+}
+
+/// Signs a mint intent with a VVB secret key, producing a valid `RegistryEvent::Mint`.
+#[wasm_bindgen]
+pub fn sign_mint_intent_wasm(
+    params_json: &str,
+    vvb_secret_key_hex: &str,
+) -> Result<String, JsValue> {
+    let input: MintIntentInput = serde_json::from_str(params_json)
+        .map_err(|e| js_err(format!("Invalid params JSON: {e}")))?;
+    let vvb_kp = grey_misnomer_core::auth::Keypair::from_hex(vvb_secret_key_hex).map_err(js_err)?;
+
+    let mut chain_id = [0u8; 32];
+    hex::decode_to_slice(&input.chain_id, &mut chain_id)
+        .map_err(|e| js_err(format!("Invalid chain_id hex: {e}")))?;
+
+    let mut merkle_root = [0u8; 32];
+    hex::decode_to_slice(&input.merkle_root, &mut merkle_root)
+        .map_err(|e| js_err(format!("Invalid merkle_root hex: {e}")))?;
+
+    let initial_owner = PubKey::from_hex(&input.initial_owner).map_err(js_err)?;
+
+    let params = grey_misnomer_core::auth::MintAttestationParams {
+        chain_id: &chain_id,
+        project_id: &input.project_id,
+        credit_id: &input.credit_id,
+        range_start: input.range_start,
+        range_end: input.range_end,
+        cc_mint_amount: input.cc_mint_amount,
+        merkle_root: &merkle_root,
+        leaf_count: input.leaf_count,
+        mrv_timestamp: input.mrv_timestamp,
+        methodology_hash: &input.methodology_hash,
+        jurisdiction: &input.jurisdiction,
+        market_scope: &input.market_scope,
+        valid_from: input.valid_from,
+        valid_until: input.valid_until,
+        initial_owner: &initial_owner,
+    };
+
+    let preimage = grey_misnomer_core::auth::build_mint_preimage(&params);
+    let signature = vvb_kp.sign(&preimage);
+
+    let event = RegistryEvent::Mint {
+        project_id: input.project_id,
+        credit_id: input.credit_id,
+        range_start: input.range_start,
+        range_end: input.range_end,
+        cc_mint_amount: input.cc_mint_amount,
+        merkle_root,
+        leaf_count: input.leaf_count,
+        mrv_timestamp: input.mrv_timestamp,
+        methodology_hash: input.methodology_hash,
+        jurisdiction: input.jurisdiction,
+        market_scope: input.market_scope,
+        valid_from: input.valid_from,
+        valid_until: input.valid_until,
+        initial_owner,
+        vvb: vvb_kp.pubkey(),
+        vvb_sig: signature,
+    };
+
+    let event_json = serde_json::to_string(&event).map_err(js_err)?;
+
+    let res = SignedIntentResult {
+        event_json,
+        signer_pubkey: vvb_kp.pubkey().to_hex(),
+        signature: signature.to_hex(),
+        preimage_hex: hex::encode(&preimage),
+    };
+    serde_json::to_string(&res).map_err(js_err)
+}
+
+/// Simulates applying a proposed event against the current replayed event log.
+/// Returns whether the event is valid, the projected canonical line, and new supply metrics.
+#[wasm_bindgen]
+pub fn simulate_apply_wasm(events_jsonl: &str, event_json: &str) -> Result<String, JsValue> {
+    // 1. Replay current event log
+    let summary = match grey_misnomer_core::event_log::replay_log_str(events_jsonl) {
+        Ok(s) => s,
+        Err(e) => {
+            let res = SimulationResult {
+                valid: false,
+                error: Some(format!("Existing log failed verification: {e}")),
+                seq: None,
+                prev_hash: None,
+                entry_hash: None,
+                canonical_line: None,
+                active_credits: None,
+                retired_credits: None,
+                next_op_index: None,
+            };
+            return serde_json::to_string(&res).map_err(js_err);
+        }
+    };
+
+    // 2. Parse event JSON
+    let event: RegistryEvent = match serde_json::from_str(event_json) {
+        Ok(ev) => ev,
+        Err(e) => {
+            let res = SimulationResult {
+                valid: false,
+                error: Some(format!("Invalid event JSON: {e}")),
+                seq: None,
+                prev_hash: None,
+                entry_hash: None,
+                canonical_line: None,
+                active_credits: None,
+                retired_credits: None,
+                next_op_index: None,
+            };
+            return serde_json::to_string(&res).map_err(js_err);
+        }
+    };
+
+    // 3. Dry-run apply()
+    let new_state = match grey_misnomer_core::registry::apply(&summary.state, &event) {
+        Ok(st) => st,
+        Err(err) => {
+            let res = SimulationResult {
+                valid: false,
+                error: Some(err.to_string()),
+                seq: None,
+                prev_hash: None,
+                entry_hash: None,
+                canonical_line: None,
+                active_credits: None,
+                retired_credits: None,
+                next_op_index: None,
+            };
+            return serde_json::to_string(&res).map_err(js_err);
+        }
+    };
+
+    // 4. Verify invariants
+    let report = new_state.check_invariants();
+    if !report.all_passed {
+        let res = SimulationResult {
+            valid: false,
+            error: Some("Simulated event violated registry invariants".to_string()),
+            seq: None,
+            prev_hash: None,
+            entry_hash: None,
+            canonical_line: None,
+            active_credits: None,
+            retired_credits: None,
+            next_op_index: None,
+        };
+        return serde_json::to_string(&res).map_err(js_err);
+    }
+
+    // 5. Build canonical line preview
+    let seq = summary.events_count;
+    let prev_hash = summary.final_hash;
+    let entry = match grey_misnomer_core::event_log::EventEntry::new(seq, prev_hash.clone(), event)
+    {
+        Ok(e) => e,
+        Err(err) => {
+            let res = SimulationResult {
+                valid: false,
+                error: Some(format!("Failed to construct entry: {err}")),
+                seq: None,
+                prev_hash: None,
+                entry_hash: None,
+                canonical_line: None,
+                active_credits: None,
+                retired_credits: None,
+                next_op_index: None,
+            };
+            return serde_json::to_string(&res).map_err(js_err);
+        }
+    };
+
+    let canonical_line = grey_misnomer_core::event_log::render_canonical_line(&entry);
+    let entry_hash = entry.hash.clone();
+
+    // 6. Calculate new supply & next_op_index for affected batch
+    let mut active: u64 = 0;
+    let mut retired: u64 = 0;
+    for b in &new_state.credits {
+        for s in &b.slices {
+            if let Ok(sz) = s.range.size() {
+                match s.status {
+                    grey_misnomer_core::credit::CreditStatus::Active => {
+                        active = active.saturating_add(sz)
+                    }
+                    grey_misnomer_core::credit::CreditStatus::Retired => {
+                        retired = retired.saturating_add(sz)
+                    }
+                    grey_misnomer_core::credit::CreditStatus::Expired => {}
+                }
+            }
+        }
+    }
+
+    let next_op_index = match &entry.event {
+        RegistryEvent::Transfer { credit_id, .. } | RegistryEvent::Burn { credit_id, .. } => {
+            new_state
+                .credits
+                .iter()
+                .find(|b| &b.credit_id == credit_id)
+                .map(|b| b.op_index)
+        }
+        RegistryEvent::Mint { credit_id, .. } => new_state
+            .credits
+            .iter()
+            .find(|b| &b.credit_id == credit_id)
+            .map(|b| b.op_index),
+        _ => None,
+    };
+
+    let res = SimulationResult {
+        valid: true,
+        error: None,
+        seq: Some(seq),
+        prev_hash: Some(prev_hash),
+        entry_hash: Some(entry_hash),
+        canonical_line: Some(canonical_line),
+        active_credits: Some(active),
+        retired_credits: Some(retired),
+        next_op_index,
+    };
+
+    serde_json::to_string(&res).map_err(js_err)
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_wasm_keygen_and_derive() {
+        let key_json = generate_keypair_wasm().expect("keygen must succeed");
+        let parsed: serde_json::Value = serde_json::from_str(&key_json).expect("valid json");
+        let pk = parsed["pubkey"].as_str().unwrap();
+        let sk = parsed["secret_key"].as_str().unwrap();
+        assert_eq!(pk.len(), 64);
+        assert_eq!(sk.len(), 64);
+
+        let derived = derive_pubkey_wasm(sk).expect("derive must succeed");
+        assert_eq!(pk, derived);
+    }
+
+    #[test]
+    fn test_wasm_sign_and_simulate() {
+        let events_jsonl = include_str!("../../../events.jsonl");
+        let summary_json = replay_event_log(events_jsonl).expect("replay must pass");
+        let summary: serde_json::Value = serde_json::from_str(&summary_json).unwrap();
+        let chain_id = summary["state"]["chain_id"].as_str().unwrap();
+
+        // Infosys key is the current owner with op_index 2
+        let infosys =
+            grey_misnomer_core::auth::Keypair::from_seed_str("infosys-corporate-buyer-2026");
+        let bob = grey_misnomer_core::auth::Keypair::from_seed_str("bob-recipient-key");
+
+        let transfer_params = serde_json::json!({
+            "chain_id": chain_id,
+            "credit_id": "CC-IN-SOLAR-2026-001",
+            "op_index": 2,
+            "new_owner": bob.pubkey().to_hex(),
+        });
+
+        let signed_json =
+            sign_transfer_intent_wasm(&transfer_params.to_string(), &infosys.secret_hex())
+                .expect("sign transfer must pass");
+        let signed: serde_json::Value = serde_json::from_str(&signed_json).unwrap();
+        let event_json = signed["event_json"].as_str().unwrap();
+
+        // Simulate apply
+        let sim_json =
+            simulate_apply_wasm(events_jsonl, event_json).expect("simulation call succeeds");
+        let sim: serde_json::Value = serde_json::from_str(&sim_json).unwrap();
+        assert_eq!(sim["valid"], true);
+        assert_eq!(sim["seq"], 5);
+        assert_eq!(sim["next_op_index"], 3);
+        assert!(sim["canonical_line"].as_str().unwrap().contains("transfer"));
+
+        // Negative test: wrong op_index
+        let bad_params = serde_json::json!({
+            "chain_id": chain_id,
+            "credit_id": "CC-IN-SOLAR-2026-001",
+            "op_index": 99,
+            "new_owner": bob.pubkey().to_hex(),
+        });
+        let bad_signed =
+            sign_transfer_intent_wasm(&bad_params.to_string(), &infosys.secret_hex()).unwrap();
+        let bad_event = serde_json::from_str::<serde_json::Value>(&bad_signed).unwrap()
+            ["event_json"]
+            .as_str()
+            .unwrap()
+            .to_string();
+        let bad_sim = simulate_apply_wasm(events_jsonl, &bad_event).unwrap();
+        let bad_res: serde_json::Value = serde_json::from_str(&bad_sim).unwrap();
+        assert_eq!(bad_res["valid"], false);
+        assert!(bad_res["error"]
+            .as_str()
+            .unwrap()
+            .contains("operation index mismatch"));
+    }
+}
