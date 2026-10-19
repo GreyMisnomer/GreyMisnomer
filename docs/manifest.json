@@ -1,0 +1,28 @@
+{
+  "manifest_version": 1,
+  "chain_id": "6713110c8ac6ba73638381f2ec9bde8eb236e894b1a34b4293a9f69933069e95",
+  "log_size": 5,
+  "head_hash": "6aee877e18f2327eeb730ee01b29568ed18ae17280850a15b9e23d34176054b4",
+  "updated_at": "2026-10-19T08:24:11Z",
+  "latest_checkpoint": {
+    "size": 5,
+    "path": "checkpoints/5.json",
+    "signature": "f47d381a6cab489103b9079e5b311f87ef08fe9f9eb4d368a27bdc03e9febeefe44b675ec2d07e079526df120aae7ec79be4735b35de80160c7cd5e20abc0208"
+  },
+  "mirrors": {
+    "git": "https://github.com/GreyMisnomer/GreyMisnomer",
+    "github_pages": "https://greymisnomer.github.io/GreyMisnomer",
+    "ipfs": {
+      "events_cid": "bafybeigdyrzt5sfp7udm7hu76uh7y26nf3efuylqabf3oclgtqy55fbzdi",
+      "checkpoints_cid": "bafybeihdwdcefgh4dqkjv67uzcmw7ojee6xedzdetojuzjevtenxquvyku",
+      "gateways": [
+        "https://dweb.link/ipfs/",
+        "https://ipfs.io/ipfs/",
+        "https://cloudflare-ipfs.com/ipfs/"
+      ]
+    },
+    "archive_org": {
+      "snapshot_url": "https://web.archive.org/web/20261019082411/https://greymisnomer.github.io/GreyMisnomer/events.jsonl"
+    }
+  }
+}

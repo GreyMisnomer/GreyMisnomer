@@ -7,6 +7,7 @@ pub mod checkpoint; // Signed checkpoints & equivocation detection (RFC-005 §3.
 pub mod credit; // CarbonCredit, CreditBatch (RFC-001 + RFC-002)
 pub mod error; // RegistryError — all protocol failure modes
 pub mod event_log; // EventEntry, schema & hash chaining for events.jsonl (RFC-004)
+pub mod manifest; // Canonical Distribution Manifest (RFC-006 §5.2)
 pub mod mrv;
 pub mod poi; // Proof-of-Integrity (RFC-001)
 pub mod poo; // Proof-of-Offset (RFC-001)

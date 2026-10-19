@@ -176,8 +176,38 @@ fn main() {
     fs::write("docs/checkpoints/5.json", &cp_json).expect("write docs/checkpoints/5.json");
     println!("✓ Written signed checkpoints/5.json and docs/checkpoints/5.json");
 
-    // Write manifest for easy browser discovery
-    let manifest = serde_json::json!({
+    // Create canonical distribution manifest (RFC-006 §5.2)
+    let manifest = grey_misnomer_core::manifest::Manifest {
+        manifest_version: 1,
+        chain_id: hex::encode(state.chain_id),
+        log_size: entries.len() as u64,
+        head_hash: entries.last().unwrap().hash.clone(),
+        updated_at: "2026-10-19T08:24:11Z".to_string(),
+        latest_checkpoint: grey_misnomer_core::manifest::ManifestCheckpoint {
+            size: 5,
+            path: "checkpoints/5.json".to_string(),
+            signature: cp.sig.to_hex(),
+        },
+        mirrors: grey_misnomer_core::manifest::ManifestMirrors {
+            git: "https://github.com/GreyMisnomer/GreyMisnomer".to_string(),
+            github_pages: "https://greymisnomer.github.io/GreyMisnomer".to_string(),
+            ipfs: grey_misnomer_core::manifest::ManifestIpfs {
+                events_cid: Some("bafybeigdyrzt5sfp7udm7hu76uh7y26nf3efuylqabf3oclgtqy55fbzdi".to_string()),
+                checkpoints_cid: Some("bafybeihdwdcefgh4dqkjv67uzcmw7ojee6xedzdetojuzjevtenxquvyku".to_string()),
+                gateways: grey_misnomer_core::manifest::Manifest::default_gateways(),
+            },
+            archive_org: grey_misnomer_core::manifest::ManifestArchiveOrg {
+                snapshot_url: Some("https://web.archive.org/web/20261019082411/https://greymisnomer.github.io/GreyMisnomer/events.jsonl".to_string()),
+            },
+        },
+    };
+    let manifest_json = format!("{}\n", manifest.to_json_pretty().unwrap());
+    fs::write("manifest.json", &manifest_json).expect("write manifest.json");
+    fs::write("docs/manifest.json", &manifest_json).expect("write docs/manifest.json");
+    println!("✓ Written canonical distribution manifest.json and docs/manifest.json");
+
+    // Write checkpoint manifest for backward compatibility
+    let cp_manifest = serde_json::json!({
         "checkpoints": [
             {
                 "size": 5,
@@ -190,7 +220,7 @@ fn main() {
     });
     fs::write(
         "docs/checkpoints/manifest.json",
-        serde_json::to_string_pretty(&manifest).unwrap(),
+        serde_json::to_string_pretty(&cp_manifest).unwrap(),
     )
     .unwrap();
     println!("✓ Written docs/checkpoints/manifest.json");
