@@ -2104,7 +2104,10 @@
       }
 
       const modalLabel = document.getElementById('modalActiveActorLabel');
-      if (modalLabel) modalLabel.textContent = `${activeKey.label} (${activeKey.role})`;
+      if (modalLabel) modalLabel.textContent = activeKey.label;
+
+      const modalRole = document.getElementById('modalActiveActorRole');
+      if (modalRole) modalRole.textContent = activeKey.role;
 
       const modalPubkey = document.getElementById('modalActivePubkey');
       if (modalPubkey) modalPubkey.textContent = activeKey.pubkey;

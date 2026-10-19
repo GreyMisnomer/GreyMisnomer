@@ -90,8 +90,10 @@
     <header class="topbar">
       <div class="demo-badge">🔥 LOCAL DEMO - Session State</div>
       <div style="display:flex; gap: 1.5rem; align-items:center; flex-wrap:wrap;">
-        <button id="btnKeyManager" class="btn btn-secondary" onclick="openKeyManagerModal()" style="padding:0.35rem 0.75rem; font-size:0.8rem; display:flex; align-items:center; gap:0.4rem; cursor:pointer;">
-          <span>🔑</span> <span id="topbarKeyLabel">Actor Key: Loading...</span>
+        <button id="btnKeyManager" class="topbar-key-btn" onclick="openKeyManagerModal()">
+          <span class="key-dot"></span>
+          <span>🔑</span>
+          <span id="topbarKeyLabel">Actor: Loading...</span>
         </button>
         <div class="role-switcher">
           <label>Role:</label>
@@ -633,35 +635,35 @@
 
       <!-- ✍️ VIEW: Sovereign Signer (RFC-006) -->
       <div class="view" id="view-signer">
-        <div style="display:flex; justify-content:space-between; align-items:flex-start; flex-wrap:wrap; gap:1rem;">
-          <div>
-            <h2 class="page-title">✍️ Sovereign Transaction Signer (RFC-006)</h2>
-            <p class="page-desc">Sign carbon credit lifecycle actions with client-side Ed25519 identity, simulate transitions in local WASM, and generate canonical event lines for zero-gas submission.</p>
-          </div>
-          <button class="btn btn-secondary btn-sm" onclick="openKeyManagerModal()" style="display:flex; align-items:center; gap:0.5rem;">
-            <span>🔑</span> Manage Keys / Identities
-          </button>
+        <div class="signer-header-block">
+          <h2 class="page-title" style="margin-bottom:0.25rem;">✍️ Sovereign Transaction Signer (RFC-006)</h2>
+          <p class="page-desc" style="margin-bottom:0.85rem; font-size:0.88rem;">Sign carbon credit lifecycle actions with client-side Ed25519 identity, simulate transitions in local WASM, and generate canonical event lines for zero-gas submission.</p>
         </div>
 
         <!-- Active Signer Status Card -->
-        <div class="result-card" style="margin-top:1.5rem; border-color:rgba(57, 211, 83, 0.3); background: rgba(57, 211, 83, 0.03);">
-          <div style="display:flex; justify-content:space-between; align-items:center; flex-wrap:wrap; gap:1rem;">
-            <div>
-              <div style="font-size:0.75rem; font-family:var(--mono); color:var(--muted); text-transform:uppercase; letter-spacing:0.05em;">Active Signer Key</div>
-              <div style="font-size:0.95rem; font-family:var(--mono); font-weight:700; color:var(--green); margin-top:0.25rem; display:flex; align-items:center; gap:0.5rem; flex-wrap:wrap;">
-                <span id="signerActivePubkey">Loading public key...</span>
-                <button class="btn btn-ghost btn-sm" onclick="copySignerPubkey()" style="padding:0.15rem 0.5rem; font-size:0.72rem;">📋 Copy</button>
+        <div class="result-card signer-active-card">
+          <div class="signer-active-inner">
+            <div class="signer-active-key-col">
+              <div class="signer-active-kicker">Active Signer Key</div>
+              <div class="signer-active-key-line">
+                <span id="signerActivePubkey" class="signer-key-hex">Loading public key...</span>
+                <button class="btn btn-ghost btn-xs" onclick="copySignerPubkey()" style="padding:0.15rem 0.5rem; font-size:0.72rem;">📋 Copy</button>
               </div>
             </div>
-            <div style="display:flex; gap:1.5rem; align-items:center; flex-wrap:wrap;">
-              <div>
-                <div style="font-size:0.72rem; color:var(--muted); text-transform:uppercase;">Signer Label</div>
-                <div id="signerActiveLabel" style="font-weight:600; color:var(--text); font-size:0.88rem;">Infosys Corporate Buyer</div>
+            <div class="signer-active-meta-col">
+              <div class="signer-meta-pair">
+                <span class="signer-meta-lbl">Signer Label</span>
+                <span id="signerActiveLabel" class="signer-meta-val">Infosys Corporate Buyer</span>
               </div>
-              <div>
-                <div style="font-size:0.72rem; color:var(--muted); text-transform:uppercase;">Registry Chain</div>
-                <div id="signerChainId" style="font-family:var(--mono); font-size:0.8rem; color:var(--purple);">6713110c...</div>
+              <div class="signer-meta-pair">
+                <span class="signer-meta-lbl">Registry Chain</span>
+                <span id="signerChainId" class="signer-meta-val mono-hash">6713110c...</span>
               </div>
+            </div>
+            <div class="signer-active-action-col">
+              <button class="btn btn-secondary btn-sm" onclick="openKeyManagerModal()" style="display:flex; align-items:center; gap:0.4rem; white-space:nowrap;">
+                <span>🔑</span> Manage Keys
+              </button>
             </div>
           </div>
         </div>
@@ -770,8 +772,8 @@
               </div>
             </div>
 
-            <div style="margin-top:1.5rem; display:flex; justify-content:flex-end;">
-              <button class="btn btn-primary" onclick="executeSignIntent()" id="btnSignIntent" style="display:flex; align-items:center; gap:0.5rem;">
+            <div style="margin-top:1.25rem;">
+              <button class="btn btn-primary" onclick="executeSignIntent()" id="btnSignIntent" style="width:100%; padding:0.75rem 1.25rem; font-size:0.92rem; font-weight:700; justify-content:center; gap:0.5rem; border-radius:8px;">
                 <span>✍️</span> Sign Intent & Simulate in WASM
               </button>
             </div>
@@ -847,20 +849,24 @@
         <!-- Current Key Card -->
         <div class="key-identity-card">
           <div class="key-field-row">
-            <div class="key-field-label"><span>Active Actor Identity</span> <span id="modalActiveActorLabel" style="color:var(--text); font-weight:600;">Infosys Corporate Buyer</span></div>
+            <div style="display:flex; justify-content:space-between; align-items:center;">
+              <span style="font-size:0.72rem; font-family:var(--mono); color:var(--muted); text-transform:uppercase; letter-spacing:0.05em;">Active Identity</span>
+              <span id="modalActiveActorRole" class="badge" style="font-size:0.72rem; background:rgba(88,166,255,0.15); color:var(--blue);">Corporate Buyer</span>
+            </div>
+            <div id="modalActiveActorLabel" style="color:#ffffff; font-size:1.05rem; font-weight:700; margin-top:0.2rem;">Infosys Corporate Buyer</div>
           </div>
           <div class="key-field-row">
             <div class="key-field-label"><span>Public Key (VerifyingKey)</span> <span style="color:var(--muted)">32 bytes</span></div>
             <div class="key-field-value">
               <code id="modalActivePubkey">...</code>
-              <button class="btn btn-ghost btn-sm" onclick="copyModalPubkey()" style="padding:0.2rem 0.5rem; font-size:0.72rem;">📋 Copy</button>
+              <button class="btn btn-ghost btn-xs" onclick="copyModalPubkey()">📋 Copy</button>
             </div>
           </div>
           <div class="key-field-row">
-            <div class="key-field-label"><span>Secret Key (SigningKey)</span> <button type="button" class="btn btn-ghost btn-sm" onclick="toggleSecretKeyReveal()" id="btnToggleSecret" style="padding:0; font-size:0.7rem; color:var(--blue);">👁️ Reveal</button></div>
+            <div class="key-field-label"><span>Secret Key (SigningKey)</span> <button type="button" class="btn btn-ghost btn-xs" onclick="toggleSecretKeyReveal()" id="btnToggleSecret" style="color:var(--blue);">👁️ Reveal</button></div>
             <div class="key-field-value">
               <code id="modalActiveSecret">••••••••••••••••••••••••••••••••••••••••••••••••••••••••••••••••</code>
-              <button class="btn btn-ghost btn-sm" onclick="copyModalSecret()" style="padding:0.2rem 0.5rem; font-size:0.72rem;">📋 Copy</button>
+              <button class="btn btn-ghost btn-xs" onclick="copyModalSecret()">📋 Copy</button>
             </div>
           </div>
         </div>
@@ -872,7 +878,7 @@
         </div>
 
         <!-- Custom Keypair Actions -->
-        <div style="border-top:1px solid var(--border); padding-top:1rem; display:flex; flex-direction:column; gap:0.75rem;">
+        <div style="border-top:1px solid var(--border); padding-top:1rem; padding-bottom:0.75rem; display:flex; flex-direction:column; gap:0.75rem;">
           <div style="font-size:0.75rem; font-family:var(--mono); text-transform:uppercase; color:var(--muted);">Generate or Import Custom Identity</div>
           <div style="display:flex; gap:0.6rem; flex-wrap:wrap;">
             <button class="btn btn-secondary btn-sm" onclick="generateFreshKeypair()" style="display:flex; align-items:center; gap:0.4rem;">
@@ -883,7 +889,7 @@
             </button>
           </div>
           <div style="display:flex; gap:0.5rem; margin-top:0.25rem;">
-            <input type="text" id="inputImportSecret" placeholder="Paste 64-character lowercase secret key hex..." class="input-modern" style="font-size:0.78rem; font-family:var(--mono);">
+            <input type="text" id="inputImportSecret" placeholder="Paste 64-character lowercase secret key hex..." class="input-modern" style="font-size:0.78rem; font-family:var(--mono); flex-grow:1;">
             <button class="btn btn-primary btn-sm" onclick="importCustomSecretKey()" style="white-space:nowrap;">📥 Import</button>
           </div>
         </div>
