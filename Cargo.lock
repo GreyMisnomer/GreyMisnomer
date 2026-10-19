@@ -261,6 +261,7 @@ version = "0.1.0"
 dependencies = [
  "getrandom",
  "grey-misnomer-core",
+ "hex",
  "js-sys",
  "serde",
  "serde_json",
