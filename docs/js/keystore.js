@@ -246,6 +246,101 @@ export async function decryptSecretKey(gmkeyObj, passphrase) {
   }
 }
 
+/**
+ * Validates whether an object strictly adheres to the canonical .gmkey schema.
+ * @param {Object} obj
+ * @returns {boolean}
+ */
+export function validateGmkeySchema(obj) {
+  if (!obj || typeof obj !== 'object') return false;
+  if (obj.version !== 1) return false;
+  if (typeof obj.id !== 'string' || !obj.id) return false;
+  if (typeof obj.pubkey !== 'string' || obj.pubkey.length !== 64) return false;
+  if (!obj.crypto || typeof obj.crypto !== 'object') return false;
+  if (obj.crypto.cipher !== 'aes-256-gcm') return false;
+  if (obj.crypto.kdf !== 'pbkdf2') return false;
+  if (typeof obj.crypto.ciphertext !== 'string' || !obj.crypto.ciphertext) return false;
+  if (typeof obj.crypto.mac !== 'string' || obj.crypto.mac.length !== 32) return false;
+  if (!obj.crypto.cipherparams || typeof obj.crypto.cipherparams.iv !== 'string' || obj.crypto.cipherparams.iv.length !== 24) return false;
+  if (!obj.crypto.kdfparams || typeof obj.crypto.kdfparams.salt !== 'string' || obj.crypto.kdfparams.salt.length !== 32) return false;
+  return true;
+}
+
+/**
+ * Triggers a browser download of the .gmkey keystore file.
+ *
+ * @param {Object} gmkeyObj - The validated .gmkey keystore object
+ * @returns {string} The filename downloaded
+ */
+export function exportGmkeyFile(gmkeyObj) {
+  if (!validateGmkeySchema(gmkeyObj)) {
+    throw new Error('Cannot export invalid keystore object');
+  }
+
+  const safeLabel = (gmkeyObj.label || 'sovereign_identity')
+    .toLowerCase()
+    .replace(/[^a-z0-9_-]/g, '_')
+    .replace(/_+/g, '_')
+    .slice(0, 24);
+  const pubkeyShort = gmkeyObj.pubkey.slice(0, 8);
+  const filename = `${safeLabel}_${pubkeyShort}.gmkey`;
+
+  const jsonStr = JSON.stringify(gmkeyObj, null, 2);
+  const blob = new Blob([jsonStr], { type: 'application/json' });
+  const url = URL.createObjectURL(blob);
+
+  const a = document.createElement('a');
+  a.href = url;
+  a.download = filename;
+  document.body.appendChild(a);
+  a.click();
+  document.body.removeChild(a);
+
+  setTimeout(() => URL.revokeObjectURL(url), 5000);
+  return filename;
+}
+
+/**
+ * Parses and validates a JSON string representing a .gmkey keystore.
+ *
+ * @param {string} jsonString
+ * @returns {Object} The validated .gmkey object
+ */
+export function parseGmkeyString(jsonString) {
+  let parsed;
+  try {
+    parsed = JSON.parse(jsonString);
+  } catch (err) {
+    throw new Error(`Invalid JSON syntax in keystore: ${err.message}`);
+  }
+  if (!validateGmkeySchema(parsed)) {
+    throw new Error('Keystore file does not match canonical .gmkey schema (version 1)');
+  }
+  return parsed;
+}
+
+/**
+ * Reads a .gmkey File or Blob and parses it into a validated keystore object.
+ *
+ * @param {Blob|File} file
+ * @returns {Promise<Object>}
+ */
+export async function readGmkeyFile(file) {
+  if (!file) throw new Error('No file provided');
+  let text;
+  if (typeof file.text === 'function') {
+    text = await file.text();
+  } else {
+    text = await new Promise((resolve, reject) => {
+      const reader = new FileReader();
+      reader.onload = () => resolve(reader.result);
+      reader.onerror = () => reject(reader.error);
+      reader.readAsText(file);
+    });
+  }
+  return parseGmkeyString(text);
+}
+
 // Attach to global window if available for script-tag access
 if (typeof window !== 'undefined') {
   window.GreyMisnomerKeystore = {
@@ -253,6 +348,10 @@ if (typeof window !== 'undefined') {
     hexToBytes,
     generateUuid,
     encryptSecretKey,
-    decryptSecretKey
+    decryptSecretKey,
+    validateGmkeySchema,
+    exportGmkeyFile,
+    parseGmkeyString,
+    readGmkeyFile
   };
 }
