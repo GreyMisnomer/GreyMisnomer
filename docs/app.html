@@ -283,6 +283,17 @@
           <button class="btn btn-primary" onclick="processMrv()">🔐 Compute Merkle Tree Commitment</button>
         </div>
 
+        <!-- Background Worker Merkle Progress Indicator -->
+        <div id="mrvWorkerProgressContainer" style="display:none; margin: 1.25rem 0;">
+          <div style="display:flex; justify-content:space-between; font-size:0.78rem; font-family:var(--mono); color:var(--muted); margin-bottom:0.35rem;">
+            <span id="mrvWorkerProgressLabel">⚡ Background Worker: Computing BLAKE3 Merkle Tree...</span>
+            <span id="mrvWorkerProgressPercent">0%</span>
+          </div>
+          <div class="progress-bar-track">
+            <div id="mrvWorkerProgressBar" class="progress-bar-fill" style="width:0%;"></div>
+          </div>
+        </div>
+
         <div id="mrvCommitmentDisplay" style="margin-top:2rem"></div>
 
         <div id="spotCheckSection" style="display:none;margin-top:2rem">
@@ -405,6 +416,17 @@
           </div>
 
           <div id="ledgerVerificationError" class="tamper-banner error" style="display:none; margin-bottom:1rem;"></div>
+
+          <!-- Background Worker Ledger Replay Progress Indicator -->
+          <div id="auditWorkerProgressContainer" style="display:none; margin: 0.85rem 0 1.25rem 0;">
+            <div style="display:flex; justify-content:space-between; font-size:0.78rem; font-family:var(--mono); color:var(--muted); margin-bottom:0.35rem;">
+              <span id="auditWorkerProgressLabel">⚡ Background Worker: Replaying event stream...</span>
+              <span id="auditWorkerProgressPercent">0%</span>
+            </div>
+            <div class="progress-bar-track">
+              <div id="auditWorkerProgressBar" class="progress-bar-fill" style="width:0%;"></div>
+            </div>
+          </div>
 
           <!-- OpenTimestamps Bitcoin Attestation Box -->
           <div class="ots-box">
