@@ -139,4 +139,69 @@ test.describe('RFC-006 Sovereign Key Manager & In-Browser Intent Signer', () => 
     await expect(banner).toContainText('operation index mismatch');
   });
 
+  test('Encrypted Client Vault: Save key with passphrase, reject wrong passphrase on unlock, unlock with correct passphrase, and persist across page reload', async ({ page }) => {
+    await page.goto('/app.html');
+    await page.waitForSelector('#roleSwitcher', { timeout: 15000 });
+
+    // Open Key Manager
+    await page.click('#btnKeyManager');
+    const kmModal = page.locator('#modalKeyManager');
+    await expect(kmModal).toHaveClass(/show/);
+
+    // Generate fresh keypair
+    await page.click('button:has-text("Generate Fresh Keypair")');
+    const freshPubkey = (await page.locator('#modalActivePubkey').textContent()).trim();
+    expect(freshPubkey.length).toBe(64);
+
+    // Save Active Key to Vault
+    await page.click('#vaultSection button:has-text("+ Save Active Key")');
+    const passModal = page.locator('#modalPassphrasePrompt');
+    await expect(passModal).toHaveClass(/show/);
+
+    // Fill label and secure passphrase
+    await page.fill('#passphraseInputLabel', 'Sahara Solar Developer');
+    await page.fill('#passphraseInputPass', 'SolarFarmVaultKey2026!');
+    await page.click('#btnPassphraseConfirm');
+
+    // Confirm modal closes and identity card appears in vault grid
+    await expect(passModal).not.toHaveClass(/show/);
+    const vaultGrid = page.locator('#vaultIdentitiesGrid');
+    await expect(vaultGrid).toBeVisible();
+    await expect(vaultGrid).toContainText('Sahara Solar Developer');
+
+    // Switch to preset key "Infosys Corporate Buyer"
+    await page.click('#presetActorGrid button:has-text("Infosys Corporate Buyer")');
+    await expect(page.locator('#modalActivePubkey')).not.toContainText(freshPubkey);
+
+    // Click Unlock on the saved Sahara Solar Developer card
+    const unlockBtn = page.locator('.vault-identity-card:has-text("Sahara Solar Developer") button:has-text("🔓 Unlock")');
+    await unlockBtn.click();
+    await expect(passModal).toHaveClass(/show/);
+
+    // 1. Test wrong passphrase rejection
+    await page.fill('#passphraseInputPass', 'WrongPassphrase123!');
+    await page.click('#btnPassphraseConfirm');
+    const errBanner = page.locator('#passphraseError');
+    await expect(errBanner).toBeVisible();
+    await expect(errBanner).toContainText(/failed|incorrect|corrupted/i);
+    await expect(passModal).toHaveClass(/show/); // Modal stays open
+
+    // 2. Test correct passphrase unlock
+    await page.fill('#passphraseInputPass', 'SolarFarmVaultKey2026!');
+    await page.click('#btnPassphraseConfirm');
+    await expect(passModal).not.toHaveClass(/show/);
+
+    // Verify active key is unlocked and restored to our fresh key
+    const activePubAfterUnlock = (await page.locator('#modalActivePubkey').textContent()).trim();
+    expect(activePubAfterUnlock).toBe(freshPubkey);
+
+    // 3. Test persistence across page reload
+    await page.reload();
+    await page.waitForSelector('#roleSwitcher', { timeout: 15000 });
+    await page.click('#btnKeyManager');
+    await expect(kmModal).toHaveClass(/show/);
+    await expect(page.locator('#vaultIdentitiesGrid')).toContainText('Sahara Solar Developer');
+  });
+
 });
+

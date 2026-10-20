@@ -13,6 +13,14 @@
       simulate_apply_wasm
     } from '../pkg/grey_misnomer_wasm.js';
 
+    import {
+      encryptSecretKey,
+      decryptSecretKey,
+      exportGmkeyFile,
+      readGmkeyFile,
+      vault
+    } from './keystore.js';
+
     // ══════════════════════════════════════════════════════════════════
     //  STATE
     // ══════════════════════════════════════════════════════════════════
@@ -2266,6 +2274,7 @@
     function initKeyManager() {
       updateKeyManagerUI();
       renderPresetActorsGrid();
+      renderVaultIdentities();
     }
 
     function updateKeyManagerUI() {
@@ -2337,6 +2346,7 @@
         activeKey = match;
         updateKeyManagerUI();
         renderPresetActorsGrid();
+        renderVaultIdentities();
         showSuccessToast(`✓ Identity switched to: ${match.label}`);
       }
     }
@@ -2347,6 +2357,7 @@
       if (modal) {
         updateKeyManagerUI();
         renderPresetActorsGrid();
+        renderVaultIdentities();
         modal.classList.add('show');
       }
     }
@@ -2409,6 +2420,7 @@
         PRESET_KEYS.push(customKey);
         updateKeyManagerUI();
         renderPresetActorsGrid();
+        renderVaultIdentities();
         showSuccessToast('✓ Generated fresh Ed25519 keypair!');
       } catch (err) {
         showToast('Key generation failed: ' + err);
@@ -2438,6 +2450,7 @@
         input.value = '';
         updateKeyManagerUI();
         renderPresetActorsGrid();
+        renderVaultIdentities();
         showSuccessToast('✓ Custom secret key successfully imported and activated!');
       } catch (err) {
         showToast('Import error: ' + err);
@@ -2467,6 +2480,369 @@
       showSuccessToast('✓ Key envelope exported');
     }
     window.exportKeypairJson = exportKeypairJson;
+
+    // ══════════════════════════════════════════════════════════════════
+    //  SOVEREIGN VAULT & .GMKEY ACTIONS
+    // ══════════════════════════════════════════════════════════════════
+    function escapeHtml(str) {
+      if (!str) return '';
+      return String(str)
+        .replace(/&/g, '&amp;')
+        .replace(/</g, '&lt;')
+        .replace(/>/g, '&gt;')
+        .replace(/"/g, '&quot;')
+        .replace(/'/g, '&#39;');
+    }
+
+    let passphraseModalAction = null; // 'save_vault' | 'export_gmkey' | 'unlock_vault' | 'import_gmkey'
+    let targetVaultEnvelope = null;
+    let pendingImportEnvelope = null;
+
+    function closePassphraseModal() {
+      const modal = document.getElementById('modalPassphrasePrompt');
+      if (modal) modal.classList.remove('show');
+      passphraseModalAction = null;
+      targetVaultEnvelope = null;
+      pendingImportEnvelope = null;
+      const err = document.getElementById('passphraseError');
+      if (err) {
+        err.style.display = 'none';
+        err.textContent = '';
+      }
+    }
+    window.closePassphraseModal = closePassphraseModal;
+
+    function openSaveVaultModal() {
+      passphraseModalAction = 'save_vault';
+      const modal = document.getElementById('modalPassphrasePrompt');
+      if (!modal) return;
+      document.getElementById('passphraseModalTitle').innerHTML = '<span>🔐</span> Save to Browser Vault';
+      document.getElementById('passphraseModalDesc').textContent = 'Enter a passphrase to encrypt your active key with PBKDF2 (100k rounds) + AES-256-GCM. The key is securely stored in your browser IndexedDB vault.';
+      const labelGroup = document.getElementById('passphraseLabelGroup');
+      const roleGroup = document.getElementById('passphraseRoleGroup');
+      if (labelGroup) {
+        labelGroup.style.display = 'block';
+        document.getElementById('passphraseInputLabel').value = activeKey.label;
+      }
+      if (roleGroup) {
+        roleGroup.style.display = 'block';
+        document.getElementById('passphraseInputRole').value = activeKey.role;
+      }
+      const passInput = document.getElementById('passphraseInputPass');
+      if (passInput) passInput.value = '';
+      const err = document.getElementById('passphraseError');
+      if (err) {
+        err.style.display = 'none';
+        err.textContent = '';
+      }
+      const btn = document.getElementById('btnPassphraseConfirm');
+      if (btn) btn.textContent = 'Save to Vault';
+      modal.classList.add('show');
+      if (passInput) passInput.focus();
+    }
+    window.openSaveVaultModal = openSaveVaultModal;
+
+    function promptExportGmkey() {
+      passphraseModalAction = 'export_gmkey';
+      const modal = document.getElementById('modalPassphrasePrompt');
+      if (!modal) return;
+      document.getElementById('passphraseModalTitle').innerHTML = '<span>📦</span> Export Encrypted .gmkey File';
+      document.getElementById('passphraseModalDesc').textContent = 'Enter a passphrase to protect your exported .gmkey backup file (PBKDF2 100k rounds + AES-256-GCM).';
+      const labelGroup = document.getElementById('passphraseLabelGroup');
+      const roleGroup = document.getElementById('passphraseRoleGroup');
+      if (labelGroup) {
+        labelGroup.style.display = 'block';
+        document.getElementById('passphraseInputLabel').value = activeKey.label;
+      }
+      if (roleGroup) {
+        roleGroup.style.display = 'block';
+        document.getElementById('passphraseInputRole').value = activeKey.role;
+      }
+      const passInput = document.getElementById('passphraseInputPass');
+      if (passInput) passInput.value = '';
+      const err = document.getElementById('passphraseError');
+      if (err) {
+        err.style.display = 'none';
+        err.textContent = '';
+      }
+      const btn = document.getElementById('btnPassphraseConfirm');
+      if (btn) btn.textContent = 'Export .gmkey';
+      modal.classList.add('show');
+      if (passInput) passInput.focus();
+    }
+    window.promptExportGmkey = promptExportGmkey;
+
+    async function unlockVaultIdentity(id) {
+      try {
+        const envelope = await vault.getIdentity(id);
+        if (!envelope) {
+          showToast('Identity not found in vault');
+          return;
+        }
+        targetVaultEnvelope = envelope;
+        passphraseModalAction = 'unlock_vault';
+        const modal = document.getElementById('modalPassphrasePrompt');
+        if (!modal) return;
+        document.getElementById('passphraseModalTitle').innerHTML = `<span>🔓</span> Unlock "${escapeHtml(envelope.label)}"`;
+        document.getElementById('passphraseModalDesc').textContent = `Enter your vault passphrase to decrypt and activate this identity (${envelope.pubkey.slice(0, 10)}...${envelope.pubkey.slice(-8)}).`;
+        const labelGroup = document.getElementById('passphraseLabelGroup');
+        const roleGroup = document.getElementById('passphraseRoleGroup');
+        if (labelGroup) labelGroup.style.display = 'none';
+        if (roleGroup) roleGroup.style.display = 'none';
+        const passInput = document.getElementById('passphraseInputPass');
+        if (passInput) passInput.value = '';
+        const err = document.getElementById('passphraseError');
+        if (err) {
+          err.style.display = 'none';
+          err.textContent = '';
+        }
+        const btn = document.getElementById('btnPassphraseConfirm');
+        if (btn) btn.textContent = 'Unlock & Activate';
+        modal.classList.add('show');
+        if (passInput) passInput.focus();
+      } catch (err) {
+        showToast('Failed to load vault identity: ' + err.message);
+      }
+    }
+    window.unlockVaultIdentity = unlockVaultIdentity;
+
+    async function handleImportGmkeyFile(event) {
+      const file = event.target.files && event.target.files[0];
+      if (!file) return;
+      event.target.value = '';
+      try {
+        const envelope = await readGmkeyFile(file);
+        pendingImportEnvelope = envelope;
+        passphraseModalAction = 'import_gmkey';
+        const modal = document.getElementById('modalPassphrasePrompt');
+        if (!modal) return;
+        document.getElementById('passphraseModalTitle').innerHTML = `<span>📂</span> Unlock Imported .gmkey`;
+        document.getElementById('passphraseModalDesc').textContent = `Enter the passphrase used when exporting "${escapeHtml(envelope.label || 'Identity')}" to decrypt and persist it in your vault.`;
+        const labelGroup = document.getElementById('passphraseLabelGroup');
+        const roleGroup = document.getElementById('passphraseRoleGroup');
+        if (labelGroup) labelGroup.style.display = 'none';
+        if (roleGroup) roleGroup.style.display = 'none';
+        const passInput = document.getElementById('passphraseInputPass');
+        if (passInput) passInput.value = '';
+        const err = document.getElementById('passphraseError');
+        if (err) {
+          err.style.display = 'none';
+          err.textContent = '';
+        }
+        const btn = document.getElementById('btnPassphraseConfirm');
+        if (btn) btn.textContent = 'Decrypt & Import';
+        modal.classList.add('show');
+        if (passInput) passInput.focus();
+      } catch (err) {
+        showToast('Failed to parse .gmkey file: ' + err.message);
+      }
+    }
+    window.handleImportGmkeyFile = handleImportGmkeyFile;
+
+    async function confirmPassphraseAction() {
+      const passInput = document.getElementById('passphraseInputPass');
+      const errDiv = document.getElementById('passphraseError');
+      const pass = passInput ? passInput.value : '';
+      const btn = document.getElementById('btnPassphraseConfirm');
+
+      if (!pass) {
+        if (errDiv) {
+          errDiv.style.display = 'block';
+          errDiv.textContent = 'Please enter a passphrase.';
+        }
+        return;
+      }
+
+      const origBtnText = btn ? btn.textContent : '';
+      if (btn) {
+        btn.disabled = true;
+        btn.textContent = 'Processing...';
+      }
+
+      try {
+        if (passphraseModalAction === 'save_vault') {
+          const label = document.getElementById('passphraseInputLabel').value.trim() || activeKey.label;
+          const role = document.getElementById('passphraseInputRole').value || activeKey.role;
+          const envelope = await encryptSecretKey(activeKey.secret_key, pass, {
+            label,
+            role,
+            pubkey: activeKey.pubkey
+          });
+          await vault.saveIdentity(envelope);
+          closePassphraseModal();
+          await renderVaultIdentities();
+          showSuccessToast(`✓ Identity "${label}" securely encrypted & saved to browser vault!`);
+        } else if (passphraseModalAction === 'export_gmkey') {
+          const label = document.getElementById('passphraseInputLabel').value.trim() || activeKey.label;
+          const role = document.getElementById('passphraseInputRole').value || activeKey.role;
+          const envelope = await encryptSecretKey(activeKey.secret_key, pass, {
+            label,
+            role,
+            pubkey: activeKey.pubkey
+          });
+          exportGmkeyFile(envelope);
+          closePassphraseModal();
+          showSuccessToast(`✓ Encrypted .gmkey file exported!`);
+        } else if (passphraseModalAction === 'unlock_vault') {
+          if (!targetVaultEnvelope) throw new Error('No vault identity selected');
+          const secretHex = await decryptSecretKey(targetVaultEnvelope, pass);
+          const customKey = {
+            id: targetVaultEnvelope.id,
+            label: targetVaultEnvelope.label,
+            role: targetVaultEnvelope.role,
+            secret_key: secretHex,
+            pubkey: targetVaultEnvelope.pubkey
+          };
+          activeKey = customKey;
+          const existingIdx = PRESET_KEYS.findIndex(k => k.id === customKey.id);
+          if (existingIdx >= 0) {
+            PRESET_KEYS[existingIdx] = customKey;
+          } else {
+            PRESET_KEYS.push(customKey);
+          }
+          closePassphraseModal();
+          updateKeyManagerUI();
+          renderPresetActorsGrid();
+          await renderVaultIdentities();
+          showSuccessToast(`✓ Identity unlocked: ${customKey.label}`);
+        } else if (passphraseModalAction === 'import_gmkey') {
+          if (!pendingImportEnvelope) throw new Error('No imported keystore envelope found');
+          const secretHex = await decryptSecretKey(pendingImportEnvelope, pass);
+          await vault.saveIdentity(pendingImportEnvelope);
+          const customKey = {
+            id: pendingImportEnvelope.id,
+            label: pendingImportEnvelope.label,
+            role: pendingImportEnvelope.role,
+            secret_key: secretHex,
+            pubkey: pendingImportEnvelope.pubkey
+          };
+          activeKey = customKey;
+          const existingIdx = PRESET_KEYS.findIndex(k => k.id === customKey.id);
+          if (existingIdx >= 0) {
+            PRESET_KEYS[existingIdx] = customKey;
+          } else {
+            PRESET_KEYS.push(customKey);
+          }
+          closePassphraseModal();
+          updateKeyManagerUI();
+          renderPresetActorsGrid();
+          await renderVaultIdentities();
+          showSuccessToast(`✓ Successfully imported & unlocked: ${customKey.label}`);
+        }
+      } catch (err) {
+        console.error('Passphrase error:', err);
+        if (errDiv) {
+          errDiv.style.display = 'block';
+          errDiv.textContent = err.message || 'Decryption failed: incorrect passphrase or corrupted data.';
+        }
+      } finally {
+        if (btn) {
+          btn.disabled = false;
+          btn.textContent = origBtnText;
+        }
+      }
+    }
+    window.confirmPassphraseAction = confirmPassphraseAction;
+
+    async function renderVaultIdentities() {
+      const grid = document.getElementById('vaultIdentitiesGrid');
+      const emptyMsg = document.getElementById('vaultEmptyMessage');
+      if (!grid || !emptyMsg) return;
+
+      try {
+        const identities = await vault.getAllIdentities();
+        if (!identities || identities.length === 0) {
+          emptyMsg.style.display = 'block';
+          grid.style.display = 'none';
+          grid.replaceChildren();
+          return;
+        }
+
+        emptyMsg.style.display = 'none';
+        grid.style.display = 'grid';
+        grid.replaceChildren();
+
+        identities.forEach(ident => {
+          const card = document.createElement('div');
+          const isActive = (activeKey && (activeKey.id === ident.id || activeKey.pubkey === ident.pubkey));
+          card.className = `vault-identity-card ${isActive ? 'active' : ''}`;
+
+          const header = document.createElement('div');
+          header.className = 'vault-card-header';
+
+          const titleSpan = document.createElement('span');
+          titleSpan.className = 'vault-card-label';
+          titleSpan.textContent = ident.label || 'Unnamed Identity';
+
+          const roleBadge = document.createElement('span');
+          roleBadge.className = 'badge badge-outline';
+          roleBadge.style.fontSize = '0.65rem';
+          roleBadge.style.padding = '0.1rem 0.4rem';
+          roleBadge.textContent = ident.role || 'Sovereign Signer';
+
+          header.appendChild(titleSpan);
+          header.appendChild(roleBadge);
+
+          const pubkeyDiv = document.createElement('div');
+          pubkeyDiv.className = 'vault-card-pubkey';
+          const pk = ident.pubkey || '';
+          pubkeyDiv.textContent = pk.length > 20 ? `${pk.slice(0, 10)}...${pk.slice(-8)}` : pk;
+
+          const actionsDiv = document.createElement('div');
+          actionsDiv.className = 'vault-card-actions';
+
+          const unlockBtn = document.createElement('button');
+          unlockBtn.type = 'button';
+          unlockBtn.className = 'btn btn-secondary btn-xs';
+          unlockBtn.style.padding = '0.2rem 0.5rem';
+          unlockBtn.style.fontSize = '0.72rem';
+          unlockBtn.textContent = isActive ? '✓ Active' : '🔓 Unlock';
+          unlockBtn.onclick = () => unlockVaultIdentity(ident.id);
+
+          const exportBtn = document.createElement('button');
+          exportBtn.type = 'button';
+          exportBtn.className = 'btn btn-ghost btn-xs';
+          exportBtn.style.padding = '0.2rem 0.4rem';
+          exportBtn.style.fontSize = '0.72rem';
+          exportBtn.title = 'Export .gmkey';
+          exportBtn.textContent = '📦 Export';
+          exportBtn.onclick = (e) => {
+            e.stopPropagation();
+            exportGmkeyFile(ident);
+            showSuccessToast(`✓ Downloaded ${ident.label}.gmkey`);
+          };
+
+          const deleteBtn = document.createElement('button');
+          deleteBtn.type = 'button';
+          deleteBtn.className = 'btn btn-ghost btn-xs';
+          deleteBtn.style.padding = '0.2rem 0.4rem';
+          deleteBtn.style.fontSize = '0.72rem';
+          deleteBtn.style.color = 'var(--red)';
+          deleteBtn.title = 'Delete from vault';
+          deleteBtn.textContent = '🗑️';
+          deleteBtn.onclick = async (e) => {
+            e.stopPropagation();
+            if (confirm(`Delete "${ident.label}" from browser vault? Make sure you have exported your .gmkey backup if you still need it.`)) {
+              await vault.deleteIdentity(ident.id);
+              await renderVaultIdentities();
+              showSuccessToast(`✓ Identity "${ident.label}" removed from vault`);
+            }
+          };
+
+          actionsDiv.appendChild(unlockBtn);
+          actionsDiv.appendChild(exportBtn);
+          actionsDiv.appendChild(deleteBtn);
+
+          card.appendChild(header);
+          card.appendChild(pubkeyDiv);
+          card.appendChild(actionsDiv);
+          grid.appendChild(card);
+        });
+      } catch (err) {
+        console.error('Error rendering vault identities:', err);
+      }
+    }
+    window.renderVaultIdentities = renderVaultIdentities;
 
     function switchSignerTab(tab) {
       activeSignerTab = tab;

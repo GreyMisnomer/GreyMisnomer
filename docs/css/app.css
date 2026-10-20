@@ -1262,3 +1262,60 @@ body {
   border-color: rgba(57, 211, 83, 0.35) !important;
   background: linear-gradient(135deg, rgba(57, 211, 83, 0.04) 0%, rgba(10, 13, 20, 0.4) 100%) !important;
 }
+
+/* ══════════════════════════════════════════════════════════════════
+   ENCRYPTED BROWSER VAULT & KEYSTORE (.GMKEY)
+   ══════════════════════════════════════════════════════════════════ */
+.vault-identity-card {
+  background: rgba(255, 255, 255, 0.025);
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  padding: 0.65rem 0.8rem;
+  display: flex;
+  flex-direction: column;
+  gap: 0.4rem;
+  transition: all 0.2s cubic-bezier(0.16, 1, 0.3, 1);
+  text-align: left;
+}
+
+.vault-identity-card:hover {
+  background: rgba(255, 255, 255, 0.05);
+  border-color: rgba(255, 255, 255, 0.2);
+  transform: translateY(-1px);
+}
+
+.vault-identity-card.active {
+  border-color: var(--green) !important;
+  background: rgba(57, 211, 83, 0.08) !important;
+  box-shadow: 0 0 12px rgba(57, 211, 83, 0.15) !important;
+}
+
+.vault-card-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 0.5rem;
+}
+
+.vault-card-label {
+  font-size: 0.82rem;
+  font-weight: 600;
+  color: var(--text);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.vault-card-pubkey {
+  font-family: var(--mono);
+  font-size: 0.7rem;
+  color: var(--muted);
+  letter-spacing: -0.01em;
+}
+
+.vault-card-actions {
+  display: flex;
+  gap: 0.35rem;
+  margin-top: 0.2rem;
+  align-items: center;
+}
