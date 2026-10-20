@@ -53,6 +53,180 @@
     }
 
     // ══════════════════════════════════════════════════════════════════
+    //  WEB WORKER CONCURRENCY BRIDGE & ZERO-DOWNTIME FALLBACK
+    // ══════════════════════════════════════════════════════════════════
+    let bgWorker = null;
+    let workerAvailable = false;
+    let workerInitPromise = null;
+    let workerReqCounter = 0;
+    const workerPendingRequests = new Map();
+
+    function initWorkerBridge() {
+      if (workerInitPromise) return workerInitPromise;
+
+      workerInitPromise = (async () => {
+        if (typeof Worker === 'undefined') {
+          console.warn('Web Workers unavailable; using synchronous main-thread fallback.');
+          workerAvailable = false;
+          return false;
+        }
+
+        try {
+          bgWorker = new Worker('js/worker.js', { type: 'module' });
+
+          bgWorker.onmessage = function(e) {
+            const { id, type, data, error, current, total, percent, statusText } = e.data || {};
+            if (!id) return;
+            const entry = workerPendingRequests.get(id);
+            if (!entry) return;
+
+            if (type === 'PROGRESS') {
+              if (entry.onProgress) {
+                entry.onProgress({ current, total, percent, statusText });
+              }
+            } else if (type === 'SUCCESS') {
+              workerPendingRequests.delete(id);
+              entry.resolve(data);
+            } else if (type === 'ERROR') {
+              workerPendingRequests.delete(id);
+              entry.reject(new Error(error || 'Worker execution error'));
+            }
+          };
+
+          bgWorker.onerror = function(err) {
+            console.warn('Background worker error event:', err);
+          };
+
+          const testId = 'init-' + Date.now();
+          await new Promise((resolve, reject) => {
+            const timeout = setTimeout(() => {
+              workerPendingRequests.delete(testId);
+              reject(new Error('Worker init timeout'));
+            }, 3000);
+
+            workerPendingRequests.set(testId, {
+              resolve: (d) => {
+                clearTimeout(timeout);
+                resolve(d);
+              },
+              reject: (err) => {
+                clearTimeout(timeout);
+                reject(err);
+              }
+            });
+
+            bgWorker.postMessage({ id: testId, action: 'INIT_WASM' });
+          });
+
+          workerAvailable = true;
+          return true;
+        } catch (err) {
+          console.warn('Worker initialization failed; falling back to main thread:', err);
+          workerAvailable = false;
+          if (bgWorker) {
+            try { bgWorker.terminate(); } catch (_) {}
+            bgWorker = null;
+          }
+          return false;
+        }
+      })();
+
+      return workerInitPromise;
+    }
+
+    async function runInWorker(action, payload, onProgress = null) {
+      await initWorkerBridge();
+
+      if (workerAvailable && bgWorker) {
+        const id = 'req-' + (++workerReqCounter) + '-' + Date.now();
+        return new Promise((resolve, reject) => {
+          workerPendingRequests.set(id, { resolve, reject, onProgress });
+          bgWorker.postMessage({ id, action, payload });
+        });
+      }
+
+      // Zero-Downtime Fallback: Execute on main thread
+      switch (action) {
+        case 'REPLAY_LOG': {
+          if (onProgress) {
+            onProgress({ current: 0, total: 100, percent: 50, statusText: 'Replaying on main thread...' });
+          }
+          const raw = replay_event_log(payload.eventsJsonl);
+          if (onProgress) {
+            onProgress({ current: 100, total: 100, percent: 100, statusText: 'Replay complete.' });
+          }
+          return JSON.parse(raw);
+        }
+        case 'COMPUTE_MERKLE': {
+          const ts = payload.timestamp ? BigInt(payload.timestamp) : BigInt(Date.now());
+          const raw = build_commitment(
+            typeof payload.recordsJson === 'string' ? payload.recordsJson : JSON.stringify(payload.recordsJson),
+            ts
+          );
+          return JSON.parse(raw);
+        }
+        case 'SIMULATE_INTENT': {
+          const evStr = typeof payload.eventJson === 'string' ? payload.eventJson : JSON.stringify(payload.eventJson);
+          const raw = simulate_apply_wasm(payload.eventsJsonl, evStr);
+          return JSON.parse(raw);
+        }
+        default:
+          throw new Error(`Unsupported fallback action: ${action}`);
+      }
+    }
+    window.runInWorker = runInWorker;
+
+    function showAuditWorkerProgress(show, initialPercent = 0, initialLabel = '') {
+      const container = document.getElementById('auditWorkerProgressContainer');
+      if (!container) return;
+      container.style.display = show ? 'block' : 'none';
+      if (show) {
+        const bar = document.getElementById('auditWorkerProgressBar');
+        const pct = document.getElementById('auditWorkerProgressPercent');
+        const lbl = document.getElementById('auditWorkerProgressLabel');
+        if (bar) bar.style.width = `${initialPercent}%`;
+        if (pct) pct.textContent = `${initialPercent}%`;
+        if (lbl && initialLabel) lbl.textContent = `⚡ Background Worker: ${initialLabel}`;
+      }
+    }
+
+    function updateAuditProgressBar(prog) {
+      const container = document.getElementById('auditWorkerProgressContainer');
+      if (container) container.style.display = 'block';
+      const bar = document.getElementById('auditWorkerProgressBar');
+      const pct = document.getElementById('auditWorkerProgressPercent');
+      const lbl = document.getElementById('auditWorkerProgressLabel');
+      if (bar) bar.style.width = `${prog.percent}%`;
+      if (pct) pct.textContent = `${prog.percent}%`;
+      if (lbl) lbl.textContent = `⚡ Background Worker: ${prog.statusText}`;
+    }
+
+    function showMrvWorkerProgress(show, initialPercent = 0, initialLabel = '') {
+      const container = document.getElementById('mrvWorkerProgressContainer');
+      if (!container) return;
+      container.style.display = show ? 'block' : 'none';
+      if (show) {
+        const bar = document.getElementById('mrvWorkerProgressBar');
+        const pct = document.getElementById('mrvWorkerProgressPercent');
+        const lbl = document.getElementById('mrvWorkerProgressLabel');
+        if (bar) bar.style.width = `${initialPercent}%`;
+        if (pct) pct.textContent = `${initialPercent}%`;
+        if (lbl && initialLabel) lbl.textContent = `⚡ Background Worker: ${initialLabel}`;
+      }
+    }
+
+    function updateMrvProgressBar(prog) {
+      const container = document.getElementById('mrvWorkerProgressContainer');
+      if (container) container.style.display = 'block';
+      const bar = document.getElementById('mrvWorkerProgressBar');
+      const pct = document.getElementById('mrvWorkerProgressPercent');
+      const lbl = document.getElementById('mrvWorkerProgressLabel');
+      if (bar) bar.style.width = `${prog.percent}%`;
+      if (pct) pct.textContent = `${prog.percent}%`;
+      if (lbl) lbl.textContent = `⚡ Background Worker: ${prog.statusText}`;
+    }
+
+    // ══════════════════════════════════════════════════════════════════
     //  BOOTSTRAP
     // ══════════════════════════════════════════════════════════════════
     window.addEventListener('DOMContentLoaded', async () => {
@@ -60,6 +234,7 @@
       try {
         await init();
         registry = new WasmRegistry();
+        initWorkerBridge().catch(() => {});
       } catch (err) {
         console.error("WASM boot error:", err);
         showToast("Fatal: Failed to load WebAssembly module.");
@@ -424,12 +599,18 @@
       if (!selProjectId) { showToast("Please select a project first."); return; }
 
       try {
-        const timestamp = BigInt(Math.floor(Date.now() / 1000));
+        const timestamp = Math.floor(Date.now() / 1000);
         const jsonStr = JSON.stringify(list);
-        const result = build_commitment(jsonStr, timestamp);
-        commitment = JSON.parse(result);
+
+        showMrvWorkerProgress(true, 40, 'Computing BLAKE3 Merkle tree in background worker...');
+
+        commitment = await runInWorker('COMPUTE_MERKLE', { recordsJson: jsonStr, timestamp }, (prog) => {
+          updateMrvProgressBar(prog);
+        });
+
+        showMrvWorkerProgress(false);
         mrvRecords = list;
-        await registry.store_commitment(jsonStr, timestamp, selProjectId);
+        await registry.store_commitment(jsonStr, BigInt(timestamp), selProjectId);
 
         // Update project state
         const prj = projects.find(p => p.id === selProjectId);
@@ -1449,20 +1630,29 @@
       const errBox = document.getElementById('ledgerVerificationError');
       if (badge) {
         badge.className = 'ledger-badge verifying';
-        badge.textContent = '⏳ Replaying in WASM...';
+        badge.textContent = '⏳ Replaying in Worker...';
       }
       if (errBox) errBox.style.display = 'none';
 
       try {
         publicLedgerRaw = await fetchResilientEventLog();
 
-        const summaryJson = replay_event_log(publicLedgerRaw);
-        publicLedgerSummary = JSON.parse(summaryJson);
+        showAuditWorkerProgress(true, 10, 'Offloading ledger event stream to background worker thread...');
+
+        publicLedgerSummary = await runInWorker('REPLAY_LOG', { eventsJsonl: publicLedgerRaw }, (prog) => {
+          if (badge) {
+            badge.textContent = `⏳ Replaying in Worker (${prog.percent}%)...`;
+          }
+          updateAuditProgressBar(prog);
+        });
+
+        showAuditWorkerProgress(false);
 
         renderLedgerSummary(publicLedgerSummary, publicLedgerRaw);
         await checkOtsProof();
         await fetchManifestAndVerifyMirrors(publicLedgerSummary);
       } catch (err) {
+        showAuditWorkerProgress(false);
         console.error("Public ledger verification error:", err);
         if (badge) {
           badge.className = 'ledger-badge failed';
@@ -1814,15 +2004,14 @@
     }
     window.toggleTamperSandbox = toggleTamperSandbox;
 
-    function replayCustomLog() {
+    async function replayCustomLog() {
       const input = document.getElementById('tamperLogInput');
       const banner = document.getElementById('tamperResultBanner');
       if (!input || !banner) return;
 
       const content = input.value.trim();
       try {
-        const summaryJson = replay_event_log(content);
-        const summary = JSON.parse(summaryJson);
+        const summary = await runInWorker('REPLAY_LOG', { eventsJsonl: content });
         banner.className = 'tamper-banner success';
         banner.textContent = `✓ REPLAY SUCCESS: ${summary.events_count} events replayed, cryptographic hash chain valid, all 7 invariants satisfied!`;
         banner.style.display = 'block';
@@ -2869,8 +3058,7 @@
           events = await res.text();
           cachedEventsJsonl = events;
         }
-        const summaryJson = replay_event_log(events);
-        const summary = JSON.parse(summaryJson);
+        const summary = await runInWorker('REPLAY_LOG', { eventsJsonl: events });
         const targetCreditId = (activeSignerTab === 'burn')
           ? document.getElementById('burn-credit-id').value.trim()
           : document.getElementById('tx-credit-id').value.trim();
@@ -2970,8 +3158,7 @@
         }
 
         const signedResult = JSON.parse(signedResultJson);
-        const simResultJson = simulate_apply_wasm(events, signedResult.event_json);
-        const sim = JSON.parse(simResultJson);
+        const sim = await runInWorker('SIMULATE_INTENT', { eventsJsonl: events, eventJson: signedResult.event_json });
 
         if (sim.valid) {
           latestCanonicalLine = sim.canonical_line;
