@@ -341,6 +341,166 @@ export async function readGmkeyFile(file) {
   return parseGmkeyString(text);
 }
 
+/**
+ * Encrypted Client Vault Manager using browser IndexedDB with localStorage fallback.
+ * Manages multiple encrypted .gmkey identities locally on client device.
+ */
+const DB_NAME = 'GreyMisnomerVaultDB';
+const DB_VERSION = 1;
+const STORE_NAME = 'vault_identities';
+
+export class GreyMisnomerVault {
+  constructor() {
+    this._db = null;
+    this._useLocalStorage = false;
+  }
+
+  async _getDb() {
+    if (this._db) return this._db;
+    if (typeof indexedDB === 'undefined') {
+      this._useLocalStorage = true;
+      return null;
+    }
+
+    return new Promise((resolve) => {
+      try {
+        const req = indexedDB.open(DB_NAME, DB_VERSION);
+        req.onupgradeneeded = (e) => {
+          const db = e.target.result;
+          if (!db.objectStoreNames.contains(STORE_NAME)) {
+            const store = db.createObjectStore(STORE_NAME, { keyPath: 'id' });
+            store.createIndex('pubkey', 'pubkey', { unique: false });
+            store.createIndex('created_at', 'created_at', { unique: false });
+          }
+        };
+        req.onsuccess = (e) => {
+          this._db = e.target.result;
+          resolve(this._db);
+        };
+        req.onerror = () => {
+          this._useLocalStorage = true;
+          resolve(null);
+        };
+      } catch (_) {
+        this._useLocalStorage = true;
+        resolve(null);
+      }
+    });
+  }
+
+  async saveIdentity(gmkeyObj) {
+    if (!validateGmkeySchema(gmkeyObj)) {
+      throw new Error('Invalid .gmkey schema: cannot save to vault');
+    }
+    const db = await this._getDb();
+    if (!db || this._useLocalStorage) {
+      const all = this._loadLocal();
+      all[gmkeyObj.id] = gmkeyObj;
+      this._saveLocal(all);
+      return gmkeyObj.id;
+    }
+
+    return new Promise((resolve, reject) => {
+      const tx = db.transaction(STORE_NAME, 'readwrite');
+      const store = tx.objectStore(STORE_NAME);
+      const req = store.put(gmkeyObj);
+      req.onsuccess = () => resolve(gmkeyObj.id);
+      req.onerror = () => reject(req.error);
+    });
+  }
+
+  async getAllIdentities() {
+    const db = await this._getDb();
+    if (!db || this._useLocalStorage) {
+      const all = this._loadLocal();
+      return Object.values(all).sort((a, b) => new Date(b.created_at) - new Date(a.created_at));
+    }
+
+    return new Promise((resolve, reject) => {
+      const tx = db.transaction(STORE_NAME, 'readonly');
+      const store = tx.objectStore(STORE_NAME);
+      const req = store.getAll();
+      req.onsuccess = () => {
+        const list = req.result || [];
+        list.sort((a, b) => new Date(b.created_at) - new Date(a.created_at));
+        resolve(list);
+      };
+      req.onerror = () => reject(req.error);
+    });
+  }
+
+  async getIdentity(id) {
+    const db = await this._getDb();
+    if (!db || this._useLocalStorage) {
+      const all = this._loadLocal();
+      return all[id] || null;
+    }
+
+    return new Promise((resolve, reject) => {
+      const tx = db.transaction(STORE_NAME, 'readonly');
+      const store = tx.objectStore(STORE_NAME);
+      const req = store.get(id);
+      req.onsuccess = () => resolve(req.result || null);
+      req.onerror = () => reject(req.error);
+    });
+  }
+
+  async deleteIdentity(id) {
+    const db = await this._getDb();
+    if (!db || this._useLocalStorage) {
+      const all = this._loadLocal();
+      delete all[id];
+      this._saveLocal(all);
+      return true;
+    }
+
+    return new Promise((resolve, reject) => {
+      const tx = db.transaction(STORE_NAME, 'readwrite');
+      const store = tx.objectStore(STORE_NAME);
+      const req = store.delete(id);
+      req.onsuccess = () => resolve(true);
+      req.onerror = () => reject(req.error);
+    });
+  }
+
+  async clearAll() {
+    const db = await this._getDb();
+    if (!db || this._useLocalStorage) {
+      if (typeof localStorage !== 'undefined') {
+        localStorage.removeItem('gm_vault_identities');
+      }
+      return true;
+    }
+
+    return new Promise((resolve, reject) => {
+      const tx = db.transaction(STORE_NAME, 'readwrite');
+      const store = tx.objectStore(STORE_NAME);
+      const req = store.clear();
+      req.onsuccess = () => resolve(true);
+      req.onerror = () => reject(req.error);
+    });
+  }
+
+  _loadLocal() {
+    if (typeof localStorage === 'undefined') return {};
+    try {
+      const raw = localStorage.getItem('gm_vault_identities');
+      return raw ? JSON.parse(raw) : {};
+    } catch (_) {
+      return {};
+    }
+  }
+
+  _saveLocal(all) {
+    if (typeof localStorage === 'undefined') return;
+    try {
+      localStorage.setItem('gm_vault_identities', JSON.stringify(all));
+    } catch (_) {}
+  }
+}
+
+export const vault = new GreyMisnomerVault();
+
 // Attach to global window if available for script-tag access
 if (typeof window !== 'undefined') {
   window.GreyMisnomerKeystore = {
@@ -352,6 +512,8 @@ if (typeof window !== 'undefined') {
     validateGmkeySchema,
     exportGmkeyFile,
     parseGmkeyString,
-    readGmkeyFile
+    readGmkeyFile,
+    GreyMisnomerVault,
+    vault
   };
 }
