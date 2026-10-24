@@ -1,0 +1,164 @@
+name: Autonomous Transaction Sequencer (Mempool)
+
+on:
+  issues:
+    types: [opened, edited]
+
+concurrency:
+  group: "ledger-sequencer"
+  cancel-in-progress: false
+
+permissions:
+  contents: write
+  issues: write
+
+jobs:
+  sequence-transaction:
+    # Only process issues labeled 'transaction', titled '[TX]...', or created via Sovereign Signer
+    if: >
+      contains(github.event.issue.labels.*.name, 'transaction') ||
+      startsWith(github.event.issue.title, '[TX]') ||
+      contains(github.event.issue.body, 'GreyMisnomer RFC-006 Signed Event Submission')
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout Repository
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+          token: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Install Rust Stable Toolchain
+        uses: dtolnay/rust-toolchain@stable
+
+      - name: Cache Cargo Dependencies & Build
+        uses: actions/cache@v4
+        with:
+          path: |
+            ~/.cargo/registry
+            ~/.cargo/git
+            target/
+          key: ${{ runner.os }}-cargo-sequencer-${{ hashFiles('**/Cargo.lock') }}
+          restore-keys: |
+            ${{ runner.os }}-cargo-sequencer-
+
+      - name: Extract Candidate Transaction from Issue Body
+        id: extract_tx
+        run: |
+          cat << 'EOF' > candidate_tx.gmline
+          ${{ github.event.issue.body }}
+          EOF
+          echo "Candidate transaction payload written to candidate_tx.gmline"
+
+      - name: Invariant Validation & Atomic Sequencing
+        id: sequence
+        env:
+          SEQUENCER_KEY: ${{ secrets.SEQUENCER_KEY }}
+          SEQUENCER_KEYSTORE: ${{ secrets.SEQUENCER_KEYSTORE }}
+          GM_PASSPHRASE: ${{ secrets.GM_PASSPHRASE }}
+        run: |
+          # Build arguments for sequencer CLI
+          CLI_ARGS="sequence-tx --input candidate_tx.gmline --json"
+
+          if [ -n "$SEQUENCER_KEYSTORE" ] && [ -n "$GM_PASSPHRASE" ]; then
+            echo "$SEQUENCER_KEYSTORE" > /tmp/sequencer.gmkey
+            CLI_ARGS="$CLI_ARGS --keystore /tmp/sequencer.gmkey --passphrase $GM_PASSPHRASE"
+          elif [ -n "$SEQUENCER_KEY" ]; then
+            CLI_ARGS="$CLI_ARGS --key $SEQUENCER_KEY"
+          fi
+
+          set +e
+          cargo run -p grey-misnomer-cli -- $CLI_ARGS > tx_result.json 2> tx_error.log
+          EXIT_CODE=$?
+          set -e
+
+          if [ $EXIT_CODE -eq 0 ]; then
+            echo "status=success" >> $GITHUB_OUTPUT
+            cat tx_result.json
+          else
+            echo "status=failed" >> $GITHUB_OUTPUT
+            echo "Sequencing rejected with error:"
+            cat tx_error.log
+          fi
+
+      - name: Commit & Publish Sequenced Event
+        if: steps.sequence.outputs.status == 'success'
+        id: commit_tx
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          ISSUE_NUMBER: ${{ github.event.issue.number }}
+        run: |
+          git config --global user.name "github-actions[bot]"
+          git config --global user.email "github-actions[bot]@users.noreply.github.com"
+
+          SEQ=$(python3 -c "import json; res=json.load(open('tx_result.json')); print(res.get('seq', ''))")
+          HASH=$(python3 -c "import json; res=json.load(open('tx_result.json')); print(res.get('hash', ''))")
+          EV_TYPE=$(python3 -c "import json; res=json.load(open('tx_result.json')); print(res.get('event_type', ''))")
+          ACTIVE=$(python3 -c "import json; res=json.load(open('tx_result.json')); print(res.get('active_credits', ''))")
+          RETIRED=$(python3 -c "import json; res=json.load(open('tx_result.json')); print(res.get('retired_credits', ''))")
+          CP_SIGNED=$(python3 -c "import json; res=json.load(open('tx_result.json')); print(res.get('checkpoint_signed', False))")
+
+          git pull --rebase origin main
+
+          git add events.jsonl docs/events.jsonl manifest.json docs/manifest.json
+          if [ -d "checkpoints" ]; then
+            git add checkpoints/ docs/checkpoints/
+          fi
+
+          git commit -m "chore(ledger): sequence tx #${ISSUE_NUMBER} [seq ${SEQ}, type ${EV_TYPE}]"
+          git push origin main
+
+          COMMIT_SHA=$(git rev-parse HEAD)
+
+          # Prepare receipt markdown
+          cat << EOF > receipt.md
+          ### ✅ Transaction Sequenced & Committed
+
+          Your candidate transaction intent has been validated under GreyMisnomer Protocol Invariants (1–7 & A1–A3) and committed to the append-only transparency ledger.
+
+          | Metric | Value |
+          | :--- | :--- |
+          | **Sequence Index** | \`${SEQ}\` |
+          | **Event Type** | \`${EV_TYPE}\` |
+          | **Chained BLAKE3 Hash** | \`${HASH}\` |
+          | **Active Supply** | \`${ACTIVE}\` credits |
+          | **Retired Supply** | \`${RETIRED}\` credits |
+          | **Ledger Commit** | [\`${COMMIT_SHA:0:7}\`](https://github.com/${{ github.repository }}/commit/${COMMIT_SHA}) |
+          | **Gas Cost** | **$0.00** (Zero-gas decentralized mempool) |
+
+          *This transaction is now permanently part of the immutable public record. Issue closed.*
+          EOF
+
+          gh issue comment "$ISSUE_NUMBER" --body-file receipt.md
+          gh issue edit "$ISSUE_NUMBER" --add-label "sequenced" || true
+          gh issue close "$ISSUE_NUMBER" --reason "completed"
+
+      - name: Post Rejection Notice on Invariant Failure
+        if: steps.sequence.outputs.status == 'failed'
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          ISSUE_NUMBER: ${{ github.event.issue.number }}
+        run: |
+          REASON=$(cat tx_error.log | tr '\n' ' ' | sed 's/"/\\"/g')
+
+          cat << EOF > rejection.md
+          ### ❌ Transaction Rejected
+
+          Your submitted candidate transaction intent could not be sequenced because it violated GreyMisnomer cryptographic invariants or state machine transition rules.
+
+          **Rejection Reason:**
+          \`\`\`
+          $(cat tx_error.log)
+          \`\`\`
+
+          #### Common Reasons for Rejection:
+          - **Invariant A1 (Signature):** The Ed25519 signature does not authenticate under the current credit slice owner or authorized VVB.
+          - **Invariant A2 (Replay Prevention):** The specified \`op_index\` does not match the active batch counter (duplicate or stale transaction).
+          - **Invariant 3 / 4 (Double-Burn / Supply):** The requested serial slice is already burned or outside active supply.
+
+          *Please check your keys in the Sovereign Key Manager, inspect the live ledger state, and construct a fresh transaction intent.*
+          EOF
+
+          gh issue comment "$ISSUE_NUMBER" --body-file rejection.md
+          gh issue edit "$ISSUE_NUMBER" --add-label "rejected" || true
+          gh issue close "$ISSUE_NUMBER" --reason "not planned"
