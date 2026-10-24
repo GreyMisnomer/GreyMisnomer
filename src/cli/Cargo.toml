@@ -5,9 +5,24 @@ edition = "2021"
 license = "MIT"
 default-run = "grey-misnomer-cli"
 
+[lib]
+name = "grey_misnomer_cli"
+path = "src/lib.rs"
+
+[[bin]]
+name = "grey-misnomer-cli"
+path = "src/main.rs"
+
+[[bin]]
+name = "generate_ledger"
+path = "src/bin/generate_ledger.rs"
+
 [dependencies]
 grey-misnomer-core = { path = "../core" }
 anyhow = "1.0"
 serde = { version = "1.0", features = ["derive"] }
 serde_json = "1.0"
 hex = "0.4"
+aes-gcm = "0.10"
+pbkdf2 = { version = "0.12", default-features = false, features = ["hmac"] }
+sha2 = { version = "0.10", default-features = false }
