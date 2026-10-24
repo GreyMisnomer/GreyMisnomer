@@ -1339,3 +1339,192 @@ body {
   transition: width 0.25s cubic-bezier(0.16, 1, 0.3, 1);
   box-shadow: 0 0 10px rgba(57, 211, 83, 0.4);
 }
+
+/* ══════════════════════════════════════════════════════════════════
+   STAGE 2.7: IN-BROWSER MEMPOOL & TRANSACTION TRACKER
+   ══════════════════════════════════════════════════════════════════ */
+.mempool-card {
+  background: rgba(22, 28, 43, 0.55);
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  padding: 1rem 1.15rem;
+  display: flex;
+  flex-direction: column;
+  gap: 0.65rem;
+  transition: all 0.2s cubic-bezier(0.16, 1, 0.3, 1);
+  position: relative;
+  overflow: hidden;
+}
+
+.mempool-card:hover {
+  border-color: rgba(255, 255, 255, 0.2);
+  transform: translateY(-1px);
+  box-shadow: 0 6px 20px rgba(0, 0, 0, 0.35);
+}
+
+.mempool-card.pending {
+  border-left: 3px solid var(--amber);
+}
+
+.mempool-card.sequenced {
+  border-left: 3px solid var(--green);
+}
+
+.mempool-card.rejected {
+  border-left: 3px solid var(--red);
+}
+
+.mempool-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.75rem;
+  flex-wrap: wrap;
+}
+
+.mempool-title {
+  font-weight: 600;
+  font-size: 0.92rem;
+  color: var(--text);
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+}
+
+.mempool-badge {
+  font-size: 0.7rem;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  padding: 0.2rem 0.55rem;
+  border-radius: 20px;
+  display: inline-flex;
+  align-items: center;
+  gap: 0.3rem;
+}
+
+.mempool-badge.pending {
+  background: rgba(236, 178, 46, 0.15);
+  color: var(--amber);
+  border: 1px solid rgba(236, 178, 46, 0.3);
+}
+
+.mempool-badge.pending .pulse-dot {
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  background: var(--amber);
+  box-shadow: 0 0 6px var(--amber);
+  animation: pulseAmber 1.6s infinite ease-in-out;
+}
+
+@keyframes pulseAmber {
+  0%, 100% { opacity: 1; transform: scale(1); }
+  50% { opacity: 0.35; transform: scale(0.85); }
+}
+
+.mempool-badge.sequenced {
+  background: rgba(57, 211, 83, 0.15);
+  color: var(--green);
+  border: 1px solid rgba(57, 211, 83, 0.3);
+}
+
+.mempool-badge.rejected {
+  background: rgba(248, 81, 73, 0.15);
+  color: var(--red);
+  border: 1px solid rgba(248, 81, 73, 0.3);
+}
+
+.mempool-meta-row {
+  display: flex;
+  align-items: center;
+  gap: 1rem;
+  font-size: 0.74rem;
+  color: var(--muted);
+  flex-wrap: wrap;
+}
+
+.mempool-meta-row a {
+  color: var(--blue);
+  text-decoration: none;
+}
+
+.mempool-meta-row a:hover {
+  text-decoration: underline;
+}
+
+.mempool-receipt-box {
+  background: rgba(0, 0, 0, 0.35);
+  border: 1px solid rgba(57, 211, 83, 0.25);
+  border-radius: 8px;
+  padding: 0.75rem 0.9rem;
+  font-size: 0.78rem;
+  display: flex;
+  flex-direction: column;
+  gap: 0.4rem;
+}
+
+.mempool-receipt-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(130px, 1fr));
+  gap: 0.5rem;
+}
+
+.mempool-receipt-item {
+  display: flex;
+  flex-direction: column;
+}
+
+.mempool-receipt-item .label {
+  font-size: 0.68rem;
+  color: var(--muted);
+  text-transform: uppercase;
+}
+
+.mempool-receipt-item .val {
+  font-family: var(--mono);
+  font-weight: 600;
+  font-size: 0.8rem;
+  color: var(--text);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.mempool-payload-preview {
+  font-family: var(--mono);
+  font-size: 0.72rem;
+  background: rgba(0, 0, 0, 0.45);
+  border: 1px solid rgba(255, 255, 255, 0.06);
+  border-radius: 6px;
+  padding: 0.5rem 0.75rem;
+  color: #a5d6ff;
+  white-space: pre-wrap;
+  word-break: break-all;
+  max-height: 100px;
+  overflow-y: auto;
+}
+
+.mempool-error-box {
+  background: rgba(248, 81, 73, 0.08);
+  border: 1px solid rgba(248, 81, 73, 0.3);
+  border-radius: 8px;
+  padding: 0.65rem 0.85rem;
+  font-size: 0.75rem;
+  color: #ff7b72;
+  font-family: var(--mono);
+  white-space: pre-wrap;
+  word-break: break-all;
+}
+
+.mempool-empty {
+  text-align: center;
+  padding: 3rem 1.5rem;
+  color: var(--muted);
+  font-size: 0.88rem;
+}
+
+.mempool-empty-icon {
+  font-size: 2.2rem;
+  margin-bottom: 0.5rem;
+}

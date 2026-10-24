@@ -245,6 +245,7 @@
       initKeyManager();
       refreshDashboard();
       verifyPublicLedger();
+      initMempoolTracker();
     });
 
     // ══════════════════════════════════════════════════════════════════
@@ -3226,17 +3227,19 @@
 
     function openGitHubIssueSubmission() {
       if (!latestCanonicalLine) return;
-      const title = encodeURIComponent(`RFC-006 Signed Event Submission: ${activeSignerTab.toUpperCase()} (${activeKey.label})`);
+      const title = encodeURIComponent(`[TX] ${activeSignerTab.toUpperCase()} (${activeKey.label})`);
       const body = encodeURIComponent(
         `### GreyMisnomer RFC-006 Signed Event Submission\n\n` +
         `**Action Type:** \`${activeSignerTab}\`\n` +
         `**Signer Public Key:** \`${activeKey.pubkey}\`\n` +
         `**Signer Label:** ${activeKey.label}\n\n` +
-        `#### Canonical Event Line\n` +
+        `#### Candidate Transaction Envelope\n` +
         `\`\`\`json\n${latestCanonicalLine}\n\`\`\`\n\n` +
         `*Generated via In-Browser Sovereign Signer ($0 Infrastructure).*`
       );
-      window.open(`https://github.com/GreyMisnomer/GreyMisnomer/issues/new?title=${title}&body=${body}`, '_blank');
+      recordLocalPendingSubmission(activeSignerTab, activeKey, latestCanonicalLine);
+      window.open(`https://github.com/GreyMisnomer/GreyMisnomer/issues/new?title=${title}&body=${body}&labels=transaction`, '_blank');
+      showSuccessToast('✓ Transaction opened on GitHub! Tracking in Mempool.');
     }
     window.openGitHubIssueSubmission = openGitHubIssueSubmission;
 
@@ -3254,3 +3257,448 @@
       showSuccessToast('✓ .gmline bundle saved for air-gapped submission');
     }
     window.downloadGmlineFile = downloadGmlineFile;
+
+    /* ══════════════════════════════════════════════════════════════════
+       STAGE 2.7: IN-BROWSER MEMPOOL & TRANSACTION TRACKER ENGINE
+       ══════════════════════════════════════════════════════════════════ */
+    let mempoolTransactions = [];
+    let localPendingSubmissions = [];
+    let currentMempoolFilter = 'all';
+    let isMockMempoolMode = false;
+    let mempoolLastFetchedAt = 0;
+    const MEMPOOL_CACHE_TTL = 30000; // 30 seconds
+
+    const DEMO_MEMPOOL_TRANSACTIONS = [
+      {
+        id: 101,
+        number: 42,
+        title: "[TX] TRANSFER (Infosys Corporate Buyer)",
+        state: "closed",
+        status: "sequenced",
+        author: "infosys-buyer",
+        created_at: new Date(Date.now() - 3600000).toISOString(),
+        closed_at: new Date(Date.now() - 3540000).toISOString(),
+        html_url: "https://github.com/GreyMisnomer/GreyMisnomer/issues/42",
+        action_type: "transfer",
+        payload_preview: '{"op_index":2,"event":{"Transfer":{"credit_id":"CC-IN-SOLAR-2026-001","new_owner":"dcc59196196d6c686652e43f1303665c79edaba5e07834a910ddd1c057576a8a"}},"signature":"4529f796b3a010..."}',
+        receipt: {
+          seq: 2,
+          event_type: "Transfer",
+          hash: "a4c281df904352bce856b3b271d441f3e79...",
+          active_credits: 5000,
+          retired_credits: 0,
+          commit_sha: "8851e07",
+          gas_cost: "$0.00"
+        }
+      },
+      {
+        id: 102,
+        number: 43,
+        title: "[TX] RETIRE / BURN (Acme Clean Logistics)",
+        state: "open",
+        status: "pending",
+        author: "acme-logistics",
+        created_at: new Date(Date.now() - 900000).toISOString(),
+        closed_at: null,
+        html_url: "https://github.com/GreyMisnomer/GreyMisnomer/issues/43",
+        action_type: "burn",
+        payload_preview: '{"op_index":3,"event":{"Burn":{"credit_id":"CC-IN-SOLAR-2026-001","range":{"start":1000400,"end":1000599},"beneficiary":"Acme Clean Logistics Net Zero 2026","claim_type":"CorporateNetZero"}},"signature":"9e83ca12fb84..."}',
+        receipt: null
+      },
+      {
+        id: 103,
+        number: 44,
+        title: "[TX] FORGED TRANSFER (Adversary Replay Attempt)",
+        state: "closed",
+        status: "rejected",
+        author: "attacker-key-99",
+        created_at: new Date(Date.now() - 600000).toISOString(),
+        closed_at: new Date(Date.now() - 580000).toISOString(),
+        html_url: "https://github.com/GreyMisnomer/GreyMisnomer/issues/44",
+        action_type: "transfer",
+        payload_preview: '{"op_index":2,"event":{"Transfer":{"credit_id":"CC-IN-SOLAR-2026-001","new_owner":"1111111111111111111111111111111111111111111111111111111111111111"}},"signature":"bad_signature..."}',
+        error_reason: "Transaction rejected: Invariant A2 violation (stale/duplicate op_index: 2). Active op_index for batch CC-IN-SOLAR-2026-001 is 3."
+      }
+    ];
+
+    function initMempoolTracker() {
+      updateMempoolCounters(DEMO_MEMPOOL_TRANSACTIONS);
+    }
+
+    function recordLocalPendingSubmission(actionType, actorKey, canonicalJson) {
+      const localItem = {
+        id: Date.now(),
+        number: "Pending",
+        title: `[TX] ${actionType.toUpperCase()} (${actorKey.label})`,
+        state: "open",
+        status: "pending",
+        author: actorKey.label,
+        created_at: new Date().toISOString(),
+        closed_at: null,
+        html_url: `https://github.com/GreyMisnomer/GreyMisnomer/issues`,
+        action_type: actionType,
+        payload_preview: canonicalJson,
+        receipt: null
+      };
+      localPendingSubmissions.unshift(localItem);
+      mempoolTransactions.unshift(localItem);
+      updateMempoolCounters(mempoolTransactions);
+      if (document.getElementById('modalMempool')?.classList.contains('show')) {
+        renderMempoolList();
+      }
+    }
+
+    async function fetchMempoolTransactions(forceRefresh = false) {
+      const now = Date.now();
+      if (!forceRefresh && mempoolTransactions.length > 0 && (now - mempoolLastFetchedAt) < MEMPOOL_CACHE_TTL) {
+        return mempoolTransactions;
+      }
+
+      if (isMockMempoolMode) {
+        mempoolTransactions = [...localPendingSubmissions, ...DEMO_MEMPOOL_TRANSACTIONS];
+        mempoolLastFetchedAt = now;
+        updateMempoolCounters(mempoolTransactions);
+        return mempoolTransactions;
+      }
+
+      const repoInput = document.getElementById('mempoolRepoInput');
+      const repo = (repoInput && repoInput.value.trim()) || 'GreyMisnomer/GreyMisnomer';
+      const notice = document.getElementById('mempoolStatusNotice');
+      const rateLimitLbl = document.getElementById('mempoolRateLimit');
+
+      try {
+        const resp = await fetch(`https://api.github.com/repos/${repo}/issues?state=all&labels=transaction&per_page=30`, {
+          headers: { 'Accept': 'application/vnd.github.v3+json' }
+        });
+
+        // Update rate limit indicator
+        const remaining = resp.headers.get('x-ratelimit-remaining');
+        const limit = resp.headers.get('x-ratelimit-limit');
+        if (remaining && limit && rateLimitLbl) {
+          rateLimitLbl.textContent = `API: ${remaining}/${limit} rem`;
+        }
+
+        if (resp.status === 403 || resp.status === 404) {
+          // Fall back gracefully on rate-limit or repo 404
+          if (notice) {
+            notice.style.display = 'block';
+            notice.style.background = 'rgba(236,178,46,0.12)';
+            notice.style.border = '1px solid rgba(236,178,46,0.3)';
+            notice.style.color = 'var(--amber)';
+            notice.textContent = `⚠️ GitHub public rate-limit reached or repository unauthenticated. Displaying verified demo mempool receipts.`;
+          }
+          mempoolTransactions = [...localPendingSubmissions, ...DEMO_MEMPOOL_TRANSACTIONS];
+          mempoolLastFetchedAt = now;
+          updateMempoolCounters(mempoolTransactions);
+          return mempoolTransactions;
+        }
+
+        if (!resp.ok) {
+          throw new Error(`HTTP ${resp.status}`);
+        }
+
+        const issues = await resp.json();
+        if (Array.isArray(issues)) {
+          if (issues.length === 0) {
+            if (notice) {
+              notice.style.display = 'block';
+              notice.style.background = 'rgba(88,166,255,0.1)';
+              notice.style.border = '1px solid rgba(88,166,255,0.3)';
+              notice.style.color = 'var(--blue)';
+              notice.textContent = `ℹ️ No transactions found with label 'transaction' in ${repo}. Showing verified demo entries.`;
+            }
+            mempoolTransactions = [...localPendingSubmissions, ...DEMO_MEMPOOL_TRANSACTIONS];
+          } else {
+            if (notice) notice.style.display = 'none';
+            mempoolTransactions = [...localPendingSubmissions, ...issues.map(parseGitHubIssueToMempoolTx)];
+          }
+        }
+        mempoolLastFetchedAt = now;
+      } catch (err) {
+        if (notice) {
+          notice.style.display = 'block';
+          notice.style.background = 'rgba(236,178,46,0.12)';
+          notice.style.border = '1px solid rgba(236,178,46,0.3)';
+          notice.style.color = 'var(--amber)';
+          notice.textContent = `⚠️ Network offline or GitHub API unreachable. Active in local demo mode.`;
+        }
+        mempoolTransactions = [...localPendingSubmissions, ...DEMO_MEMPOOL_TRANSACTIONS];
+        mempoolLastFetchedAt = now;
+      }
+
+      updateMempoolCounters(mempoolTransactions);
+      return mempoolTransactions;
+    }
+
+    function parseGitHubIssueToMempoolTx(issue) {
+      const labels = (issue.labels || []).map(l => (typeof l === 'string' ? l : l.name).toLowerCase());
+      const isSequenced = labels.includes('sequenced') || (issue.state === 'closed' && issue.state_reason === 'completed');
+      const isRejected = labels.includes('rejected') || (issue.state === 'closed' && issue.state_reason === 'not_planned');
+
+      let status = 'pending';
+      if (isSequenced) status = 'sequenced';
+      else if (isRejected) status = 'rejected';
+      else if (issue.state === 'open') status = 'pending';
+
+      // Parse payload from body
+      let payloadPreview = '(No payload preview available)';
+      const body = issue.body || '';
+      const jsonMatch = body.match(/```json\s*([\s\S]*?)\s*```/) || body.match(/```\s*([\s\S]*?)\s*```/);
+      if (jsonMatch) {
+        payloadPreview = jsonMatch[1].trim();
+      } else if (body.trim().startsWith('{')) {
+        payloadPreview = body.trim();
+      }
+
+      // Detect action type
+      let actionType = 'intent';
+      if (issue.title.toLowerCase().includes('transfer') || body.toLowerCase().includes('transfer')) actionType = 'transfer';
+      else if (issue.title.toLowerCase().includes('burn') || issue.title.toLowerCase().includes('retire') || body.toLowerCase().includes('burn')) actionType = 'burn';
+      else if (issue.title.toLowerCase().includes('mint') || body.toLowerCase().includes('mint')) actionType = 'mint';
+
+      return {
+        id: issue.id,
+        number: issue.number,
+        title: issue.title,
+        state: issue.state,
+        status: status,
+        author: issue.user ? issue.user.login : 'anonymous',
+        created_at: issue.created_at,
+        closed_at: issue.closed_at,
+        html_url: issue.html_url,
+        action_type: actionType,
+        payload_preview: payloadPreview,
+        receipt: isSequenced ? {
+          seq: issue.number,
+          event_type: actionType.toUpperCase(),
+          hash: 'Sequenced via GitHub Actions',
+          active_credits: '-',
+          retired_credits: '-',
+          commit_sha: 'main',
+          gas_cost: '$0.00'
+        } : null,
+        error_reason: isRejected ? 'Rejected by autonomous sequencer: invariant violation' : null
+      };
+    }
+
+    function updateMempoolCounters(list = mempoolTransactions) {
+      const total = list.length;
+      const pending = list.filter(t => t.status === 'pending').length;
+      const sequenced = list.filter(t => t.status === 'sequenced').length;
+      const rejected = list.filter(t => t.status === 'rejected').length;
+
+      const setVal = (id, val) => {
+        const el = document.getElementById(id);
+        if (el) el.textContent = String(val);
+      };
+
+      setVal('countMempoolAll', total);
+      setVal('countMempoolPending', pending);
+      setVal('countMempoolSequenced', sequenced);
+      setVal('countMempoolRejected', rejected);
+
+      // Topbar and sidebar badges
+      setVal('topbarMempoolCount', pending);
+      setVal('badge-mempool', pending);
+    }
+
+    async function openMempoolModal() {
+      const modal = document.getElementById('modalMempool');
+      if (!modal) return;
+      modal.classList.add('show');
+      switchMempoolFilter('all');
+      await reloadMempoolTransactions();
+    }
+    window.openMempoolModal = openMempoolModal;
+
+    function closeMempoolModal() {
+      const modal = document.getElementById('modalMempool');
+      if (modal) modal.classList.remove('show');
+    }
+    window.closeMempoolModal = closeMempoolModal;
+
+    function switchMempoolFilter(filter) {
+      currentMempoolFilter = filter;
+      ['all', 'pending', 'sequenced', 'rejected'].forEach(f => {
+        const tab = document.getElementById(`tabMempool${f.charAt(0).toUpperCase() + f.slice(1)}`);
+        if (tab) {
+          if (f === filter) tab.classList.add('active');
+          else tab.classList.remove('active');
+        }
+      });
+      renderMempoolList();
+    }
+    window.switchMempoolFilter = switchMempoolFilter;
+
+    async function reloadMempoolTransactions() {
+      const container = document.getElementById('mempoolListContainer');
+      if (container) {
+        container.textContent = '';
+        const loadingDiv = document.createElement('div');
+        loadingDiv.className = 'mempool-empty';
+        const spinner = document.createElement('div');
+        spinner.className = 'spinner';
+        spinner.style.margin = '0 auto 0.5rem auto';
+        const spinnerText = document.createElement('div');
+        spinnerText.textContent = 'Querying Mempool & Verification Receipts...';
+        loadingDiv.appendChild(spinner);
+        loadingDiv.appendChild(spinnerText);
+        container.appendChild(loadingDiv);
+      }
+      await fetchMempoolTransactions(true);
+      renderMempoolList();
+    }
+    window.reloadMempoolTransactions = reloadMempoolTransactions;
+
+    function toggleMempoolMockMode() {
+      isMockMempoolMode = !isMockMempoolMode;
+      const btn = document.getElementById('btnToggleMockMempool');
+      if (btn) {
+        btn.textContent = isMockMempoolMode ? 'Live API' : 'Demo Data';
+        btn.style.color = isMockMempoolMode ? 'var(--green)' : 'var(--muted)';
+      }
+      showToast(isMockMempoolMode ? 'Switched to Demo Mempool Data' : 'Switched to Live GitHub REST API');
+      reloadMempoolTransactions();
+    }
+    window.toggleMempoolMockMode = toggleMempoolMockMode;
+
+    function renderMempoolList() {
+      const container = document.getElementById('mempoolListContainer');
+      if (!container) return;
+      container.textContent = '';
+
+      let filtered = mempoolTransactions;
+      if (currentMempoolFilter !== 'all') {
+        filtered = mempoolTransactions.filter(t => t.status === currentMempoolFilter);
+      }
+
+      if (filtered.length === 0) {
+        const emptyDiv = document.createElement('div');
+        emptyDiv.className = 'mempool-empty';
+        const iconDiv = document.createElement('div');
+        iconDiv.className = 'mempool-empty-icon';
+        iconDiv.textContent = currentMempoolFilter === 'pending' ? '⚡' : '📂';
+        const msgDiv = document.createElement('div');
+        msgDiv.textContent = `No ${currentMempoolFilter === 'all' ? '' : currentMempoolFilter} transactions in mempool.`;
+        emptyDiv.appendChild(iconDiv);
+        emptyDiv.appendChild(msgDiv);
+        container.appendChild(emptyDiv);
+        return;
+      }
+
+      filtered.forEach(tx => {
+        const card = document.createElement('div');
+        card.className = `mempool-card ${tx.status}`;
+
+        // Header: Title + Status Badge
+        const header = document.createElement('div');
+        header.className = 'mempool-header';
+
+        const titleDiv = document.createElement('div');
+        titleDiv.className = 'mempool-title';
+        const numSpan = document.createElement('span');
+        numSpan.style.fontFamily = 'var(--mono)';
+        numSpan.style.color = 'var(--purple)';
+        numSpan.textContent = typeof tx.number === 'number' ? `#${tx.number}` : tx.number;
+        const textSpan = document.createElement('span');
+        textSpan.textContent = ` ${tx.title}`;
+        titleDiv.appendChild(numSpan);
+        titleDiv.appendChild(textSpan);
+
+        const badgeDiv = document.createElement('div');
+        badgeDiv.className = `mempool-badge ${tx.status}`;
+        if (tx.status === 'pending') {
+          const dot = document.createElement('span');
+          dot.className = 'pulse-dot';
+          badgeDiv.appendChild(dot);
+          badgeDiv.appendChild(document.createTextNode('Mempool Pending'));
+        } else if (tx.status === 'sequenced') {
+          badgeDiv.textContent = '✓ Sequenced';
+        } else {
+          badgeDiv.textContent = '✗ Rejected';
+        }
+
+        header.appendChild(titleDiv);
+        header.appendChild(badgeDiv);
+        card.appendChild(header);
+
+        // Meta row: Submitter, Created time, Link
+        const metaRow = document.createElement('div');
+        metaRow.className = 'mempool-meta-row';
+
+        const authorSpan = document.createElement('span');
+        authorSpan.textContent = `Submitter: ${tx.author}`;
+
+        const timeSpan = document.createElement('span');
+        const dt = new Date(tx.created_at);
+        timeSpan.textContent = `Submitted: ${isNaN(dt.getTime()) ? tx.created_at : dt.toLocaleTimeString([], {hour: '2-digit', minute:'2-digit'})}`;
+
+        const ghLink = document.createElement('a');
+        ghLink.href = tx.html_url;
+        ghLink.target = '_blank';
+        ghLink.rel = 'noopener noreferrer';
+        ghLink.textContent = 'View on GitHub ↗';
+
+        metaRow.appendChild(authorSpan);
+        metaRow.appendChild(timeSpan);
+        metaRow.appendChild(ghLink);
+        card.appendChild(metaRow);
+
+        // Receipt Box (if sequenced)
+        if (tx.receipt) {
+          const receiptBox = document.createElement('div');
+          receiptBox.className = 'mempool-receipt-box';
+
+          const rTitle = document.createElement('div');
+          rTitle.style.fontWeight = '600';
+          rTitle.style.color = 'var(--green)';
+          rTitle.style.fontSize = '0.74rem';
+          rTitle.textContent = '📜 Cryptographic Sequencing Receipt';
+          receiptBox.appendChild(rTitle);
+
+          const rGrid = document.createElement('div');
+          rGrid.className = 'mempool-receipt-grid';
+
+          const addItem = (label, val, monoColor = 'var(--text)') => {
+            const item = document.createElement('div');
+            item.className = 'mempool-receipt-item';
+            const l = document.createElement('span');
+            l.className = 'label';
+            l.textContent = label;
+            const v = document.createElement('span');
+            v.className = 'val';
+            v.style.color = monoColor;
+            v.textContent = String(val);
+            item.appendChild(l);
+            item.appendChild(v);
+            rGrid.appendChild(item);
+          };
+
+          addItem('Seq #', tx.receipt.seq, 'var(--purple)');
+          addItem('Event', tx.receipt.event_type, 'var(--blue)');
+          addItem('Chained Hash', (tx.receipt.hash || '').slice(0, 16) + '...', 'var(--green)');
+          addItem('Gas Cost', tx.receipt.gas_cost || '$0.00', 'var(--amber)');
+
+          receiptBox.appendChild(rGrid);
+          card.appendChild(receiptBox);
+        }
+
+        // Error Notice (if rejected)
+        if (tx.error_reason) {
+          const errBox = document.createElement('div');
+          errBox.className = 'mempool-error-box';
+          errBox.textContent = `❌ ${tx.error_reason}`;
+          card.appendChild(errBox);
+        }
+
+        // Payload preview
+        if (tx.payload_preview) {
+          const preview = document.createElement('div');
+          preview.className = 'mempool-payload-preview';
+          preview.textContent = tx.payload_preview;
+          card.appendChild(preview);
+        }
+
+        container.appendChild(card);
+      });
+    }
