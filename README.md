@@ -19,6 +19,47 @@ Like Bitcoin Core, but for carbon credits. GreyMisnomer solves the opacity and d
 
 ---
 
+## 🖥 Run Your Own Node
+
+GreyMisnomer is deployed the same way Bitcoin is deployed: **there is no central backend server, no hosted database, and zero hosting costs**. Every visitor's browser or terminal acts as an independent full verification node.
+
+### Option 1: Zero-Install In-Browser Full Node
+Simply visit **[https://greymisnomer.github.io/GreyMisnomer/](https://greymisnomer.github.io/GreyMisnomer/)**.  
+Your browser downloads `events.jsonl`, runs the WebAssembly state machine, and verifies all cryptographic signatures, Merkle inclusion proofs, and protocol invariants locally in milliseconds.
+
+### Option 2: Pre-Built Binary One-Liner (No Rust or Compiler Needed)
+Download the standalone native binary and verify the ledger:
+
+```bash
+# Linux (x86_64)
+curl -sL https://github.com/GreyMisnomer/GreyMisnomer/releases/latest/download/grey-misnomer-cli-x86_64-unknown-linux-gnu.tar.gz | tar xz
+./grey-misnomer-cli replay events.jsonl
+
+# macOS (Apple Silicon M1/M2/M3/M4)
+curl -sL https://github.com/GreyMisnomer/GreyMisnomer/releases/latest/download/grey-misnomer-cli-aarch64-apple-darwin.tar.gz | tar xz
+./grey-misnomer-cli replay events.jsonl
+
+# macOS (Intel)
+curl -sL https://github.com/GreyMisnomer/GreyMisnomer/releases/latest/download/grey-misnomer-cli-x86_64-apple-darwin.tar.gz | tar xz
+./grey-misnomer-cli replay events.jsonl
+```
+> See **[docs/VERIFY.md](docs/VERIFY.md)** to verify release SHA-256 checksums and GPG signatures.
+
+### Option 3: Build & Verify from Source (Terminal)
+```bash
+git clone https://github.com/GreyMisnomer/GreyMisnomer.git
+cd GreyMisnomer
+cargo run -p grey-misnomer-cli -- replay events.jsonl
+```
+
+### Option 4: Run via Docker (Zero Toolchain)
+```bash
+docker run -p 8080:8080 ghcr.io/greymisnomer/node:latest
+# Open http://localhost:8080/app.html
+```
+
+---
+
 ## 🚀 Try it Live
 
 > **[Open the Interactive Platform →](https://greymisnomer.github.io/GreyMisnomer/)**
@@ -29,6 +70,7 @@ The entire 7-step protocol (MRV data upload → Merkle Commitment → Verificati
 
 ## 📑 Table of Contents
 
+- [Run Your Own Node](#-run-your-own-node)
 - [Vision](#-vision)
 - [Architecture](#-architecture)
 - [Invariants Enforced](#-invariants-enforced)

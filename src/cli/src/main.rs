@@ -1,10 +1,16 @@
 use anyhow::{bail, Context, Result};
 use grey_misnomer_cli::keystore::resolve_keypair;
 use grey_misnomer_core::{
-    auth::{Keypair, PubKey},
+    auth::{
+        build_authority_event_preimage, build_genesis_preimage, build_vvb_register_payload,
+        Keypair, PubKey,
+    },
     checkpoint::{detect_equivocation, verify_checkpoints, Checkpoint, CheckpointReport},
-    event_log::{render_canonical_line, render_canonical_payload, replay_log_with_anchor, EventEntry, ReplaySummary},
-    manifest::Manifest,
+    event_log::{
+        render_canonical_line, render_canonical_payload, replay_log_with_anchor, EventEntry,
+        ReplaySummary,
+    },
+    manifest::{Manifest, ManifestArchiveOrg, ManifestCheckpoint, ManifestIpfs, ManifestMirrors},
     registry::{apply, RegistryEvent},
 };
 use serde::Serialize;
@@ -94,6 +100,37 @@ struct DryRunOutput {
     retired_credits: u64,
 }
 
+#[derive(Serialize)]
+struct InitOutput {
+    chain_name: String,
+    chain_id: String,
+    authority: String,
+    sequencer: String,
+    genesis_hash: String,
+    events_log: String,
+    manifest: String,
+    regtest_keys_file: Option<String>,
+}
+
+#[derive(Serialize)]
+struct StatusOutput {
+    chain_name: String,
+    chain_id: String,
+    log_path: String,
+    log_size: u64,
+    head_hash: String,
+    chain_valid: bool,
+    root_authority: String,
+    active_sequencer: String,
+    accredited_vvbs: usize,
+    total_issued_credits: u64,
+    active_credits: u64,
+    retired_credits: u64,
+    total_batches: usize,
+    latest_checkpoint: Option<u64>,
+    invariants_passed: bool,
+}
+
 fn print_usage() {
     println!("GreyMisnomer Protocol — Transparency Log & Key Management CLI (RFC-005/RFC-006)");
     println!();
@@ -101,11 +138,15 @@ fn print_usage() {
     println!("    grey-misnomer-cli [SUBCOMMAND] [FLAGS] [ARGS]");
     println!();
     println!("SUBCOMMANDS:");
+    println!("    status [FILE]               Display at-a-glance ledger health, head hash, and credit metrics (like getblockchaininfo)");
+    println!("    init [FLAGS]                Bootstrap a fresh ledger (use --regtest for instant local testnet)");
     println!("    replay [FILE]               Replay events.jsonl and verify all protocol & authorization invariants (default)");
     println!("    sequence-tx [FILE]          Validate candidate transaction intent, check invariants, and append to log");
     println!("    keygen                      Generate a new Ed25519 identity keypair");
     println!("    sign-checkpoint             Sign an explicit (size, head_hash) checkpoint");
-    println!("    checkpoint [FILE]           Replay log, create and sign checkpoint for current head");
+    println!(
+        "    checkpoint [FILE]           Replay log, create and sign checkpoint for current head"
+    );
     println!("    verify-checkpoint <FILE>    Verify an individual signed checkpoint file");
     println!();
     println!("FLAGS:");
@@ -113,7 +154,9 @@ fn print_usage() {
     println!("    --checkpoints <DIR>         Directory of checkpoints/<size>.json files to audit");
     println!("    --key <SEED/HEX>            Private key seed or 64-hex secret");
     println!("    --keystore <FILE.gmkey>     Passphrase-protected keystore file (RFC-006)");
-    println!("    --passphrase <PASS>         Passphrase to decrypt keystore (or GM_PASSPHRASE env)");
+    println!(
+        "    --passphrase <PASS>         Passphrase to decrypt keystore (or GM_PASSPHRASE env)"
+    );
     println!("    --sequencer <HEX>           Sequencer public key (64 hex characters)");
     println!("    --size <N>                  Log size for checkpoint");
     println!("    --head-hash <HEX>           Log head hash (32 bytes hex) for checkpoint");
@@ -121,6 +164,38 @@ fn print_usage() {
     println!("    --out <PATH>                Destination output path or directory");
     println!("    --checkpoint                Force checkpoint signature upon sequencing");
     println!("    --dry-run                   Validate candidate transaction without disk writes");
+    println!("    --json                      Machine-readable JSON output");
+    println!("    -h, --help                  Print help information");
+}
+
+fn print_init_usage() {
+    println!("GreyMisnomer Init — Bootstrap Sovereign Ledger or Isolated Regtest Mode");
+    println!();
+    println!("USAGE:");
+    println!("    grey-misnomer-cli init [FLAGS]");
+    println!();
+    println!("FLAGS:");
+    println!("    --chain-name <NAME>         Human-readable name for the new registry chain");
+    println!("    --authority-key <HEX/SEED>  Seed or private key hex for root authority (generated if omitted)");
+    println!("    --sequencer-key <HEX/SEED>  Seed or private key hex for sequencer (generated if omitted)");
+    println!("    --out <DIR>                 Target directory for events.jsonl and manifest.json (default: . or ./regtest)");
+    println!("    --regtest                   Bootstrap an isolated regtest chain with test participants and keys");
+    println!("    --json                      Machine-readable JSON output");
+    println!("    -h, --help                  Print help information");
+}
+
+fn print_status_usage() {
+    println!("GreyMisnomer Status — At-a-glance Ledger & Node Health Monitor");
+    println!();
+    println!("USAGE:");
+    println!("    grey-misnomer-cli status [LOG_FILE] [FLAGS]");
+    println!();
+    println!("ARGS:");
+    println!(
+        "    [LOG_FILE]                  Path to events.jsonl (defaults to finding events.jsonl)"
+    );
+    println!();
+    println!("FLAGS:");
     println!("    --json                      Machine-readable JSON output");
     println!("    -h, --help                  Print help information");
 }
@@ -140,7 +215,9 @@ fn print_sequence_tx_usage() {
     println!("    --chain-id <HEX>            Expected registry domain chain_id (32 bytes hex)");
     println!("    --key <SEED/HEX>            Sequencer private key for signing checkpoints");
     println!("    --keystore <FILE.gmkey>     Passphrase-protected sequencer keystore");
-    println!("    --passphrase <PASS>         Passphrase to decrypt keystore (or GM_PASSPHRASE env)");
+    println!(
+        "    --passphrase <PASS>         Passphrase to decrypt keystore (or GM_PASSPHRASE env)"
+    );
     println!("    --checkpoint                Force sign a checkpoint for current block");
     println!("    --dry-run                   Simulate and validate without writing to disk");
     println!("    --json                      Output machine-readable JSON");
@@ -279,9 +356,14 @@ fn update_manifests_and_checkpoints(
                             "timestamp": cp.timestamp,
                             "sequencer": sequencer_hex,
                         });
-                        if !arr.iter().any(|existing| existing.get("size").and_then(|s| s.as_u64()) == Some(cp.size)) {
+                        if !arr.iter().any(|existing| {
+                            existing.get("size").and_then(|s| s.as_u64()) == Some(cp.size)
+                        }) {
                             arr.push(new_cp_entry);
-                            let _ = fs::write(cp_manifest_path, format!("{}\n", serde_json::to_string_pretty(&val).unwrap()));
+                            let _ = fs::write(
+                                cp_manifest_path,
+                                format!("{}\n", serde_json::to_string_pretty(&val).unwrap()),
+                            );
                         }
                     }
                 }
@@ -304,6 +386,8 @@ fn main() -> Result<()> {
             Ok(())
         }
         "keygen" => handle_keygen(&args[2..]),
+        "init" => handle_init(&args[2..]),
+        "status" => handle_status(&args[2..]),
         "sequence-tx" => handle_sequence_tx(&args[2..]),
         "sign-checkpoint" => handle_sign_checkpoint(&args[2..]),
         "checkpoint" => handle_checkpoint(&args[2..]),
@@ -358,6 +442,402 @@ fn handle_keygen(args: &[String]) -> Result<()> {
         println!("  Secret Seed:           {}", seed_str);
         println!("══════════════════════════════════════════════════════════════════════");
     }
+    Ok(())
+}
+
+fn handle_init(args: &[String]) -> Result<()> {
+    let mut chain_name: Option<String> = None;
+    let mut authority_key: Option<String> = None;
+    let mut sequencer_key: Option<String> = None;
+    let mut out_dir: Option<PathBuf> = None;
+    let mut regtest = false;
+    let mut json = false;
+
+    let mut i = 0;
+    while i < args.len() {
+        match args[i].as_str() {
+            "--chain-name" => {
+                i += 1;
+                if i < args.len() {
+                    chain_name = Some(args[i].clone());
+                }
+            }
+            "--authority-key" => {
+                i += 1;
+                if i < args.len() {
+                    authority_key = Some(args[i].clone());
+                }
+            }
+            "--sequencer-key" => {
+                i += 1;
+                if i < args.len() {
+                    sequencer_key = Some(args[i].clone());
+                }
+            }
+            "--out" | "--out-dir" | "--dir" => {
+                i += 1;
+                if i < args.len() {
+                    out_dir = Some(PathBuf::from(&args[i]));
+                }
+            }
+            "--regtest" => regtest = true,
+            "--json" => json = true,
+            "-h" | "--help" => {
+                print_init_usage();
+                return Ok(());
+            }
+            unknown => bail!("Unknown option for init: {unknown}"),
+        }
+        i += 1;
+    }
+
+    let default_out = if regtest {
+        PathBuf::from("regtest")
+    } else {
+        PathBuf::from(".")
+    };
+    let dest_dir = out_dir.unwrap_or(default_out);
+    fs::create_dir_all(&dest_dir)?;
+
+    let name = chain_name.unwrap_or_else(|| {
+        if regtest {
+            "GreyMisnomer-Regtest".to_string()
+        } else {
+            "GreyMisnomer-Local".to_string()
+        }
+    });
+
+    let authority = match authority_key {
+        Some(k) => resolve_keypair(Some(&k), None, None)?,
+        None => Keypair::generate(),
+    };
+
+    let sequencer = match sequencer_key {
+        Some(k) => resolve_keypair(Some(&k), None, None)?,
+        None => Keypair::generate(),
+    };
+
+    let mut nonce = [0u8; 32];
+    let time_nanos = SystemTime::now()
+        .duration_since(UNIX_EPOCH)
+        .unwrap_or_default()
+        .as_nanos();
+    use sha2::{Digest, Sha256};
+    let mut hasher = Sha256::new();
+    hasher.update(time_nanos.to_be_bytes());
+    let hash_result = hasher.finalize();
+    nonce.copy_from_slice(&hash_result);
+
+    let created_at = SystemTime::now()
+        .duration_since(UNIX_EPOCH)
+        .unwrap_or_default()
+        .as_secs();
+
+    let genesis_msg = build_genesis_preimage(
+        &name,
+        &authority.pubkey(),
+        &sequencer.pubkey(),
+        &nonce,
+        created_at,
+    );
+
+    let genesis_event = RegistryEvent::Genesis {
+        chain_name: name.clone(),
+        authority: authority.pubkey(),
+        sequencer: sequencer.pubkey(),
+        nonce,
+        created_at,
+        authority_sig: authority.sign(&genesis_msg),
+    };
+
+    let entry_0 = EventEntry::new(
+        0,
+        "0000000000000000000000000000000000000000000000000000000000000000".to_string(),
+        genesis_event.clone(),
+    )?;
+
+    let init_state = apply(
+        &grey_misnomer_core::registry::RegistryState::new(),
+        &genesis_event,
+    )
+    .map_err(|e| anyhow::anyhow!("Genesis application failed: {e}"))?;
+    let chain_id_bytes = init_state.chain_id;
+    let chain_id_hex = hex::encode(chain_id_bytes);
+
+    let mut canonical_lines = vec![render_canonical_line(&entry_0)];
+    let mut head_hash = entry_0.hash.clone();
+
+    let mut regtest_keys_path: Option<PathBuf> = None;
+
+    if regtest {
+        let vvb = Keypair::generate();
+        let developer = Keypair::generate();
+        let buyer = Keypair::generate();
+
+        let vvb_payload = build_vvb_register_payload(&vvb.pubkey(), "Regtest Verification Bureau");
+        let vvb_msg =
+            build_authority_event_preimage("vvb-register", &chain_id_bytes, 0, &vvb_payload);
+        let vvb_event = RegistryEvent::VvbRegister {
+            authority_index: 0,
+            vvb: vvb.pubkey(),
+            label: "Regtest Verification Bureau".to_string(),
+            authority_sig: authority.sign(&vvb_msg),
+        };
+        let entry_1 = EventEntry::new(1, entry_0.hash.clone(), vvb_event)?;
+        head_hash = entry_1.hash.clone();
+        canonical_lines.push(render_canonical_line(&entry_1));
+
+        let keys_file = dest_dir.join("regtest_keys.json");
+        let regtest_keys = serde_json::json!({
+            "chain_name": name,
+            "chain_id": chain_id_hex,
+            "authority": {
+                "pubkey": authority.pubkey().to_hex(),
+                "seed": authority.secret_hex(),
+            },
+            "sequencer": {
+                "pubkey": sequencer.pubkey().to_hex(),
+                "seed": sequencer.secret_hex(),
+            },
+            "vvb": {
+                "pubkey": vvb.pubkey().to_hex(),
+                "seed": vvb.secret_hex(),
+            },
+            "developer": {
+                "pubkey": developer.pubkey().to_hex(),
+                "seed": developer.secret_hex(),
+            },
+            "buyer": {
+                "pubkey": buyer.pubkey().to_hex(),
+                "seed": buyer.secret_hex(),
+            }
+        });
+        fs::write(
+            &keys_file,
+            format!("{}\n", serde_json::to_string_pretty(&regtest_keys)?),
+        )?;
+        regtest_keys_path = Some(keys_file);
+    }
+
+    let log_file = dest_dir.join("events.jsonl");
+    fs::write(&log_file, format!("{}\n", canonical_lines.join("\n")))?;
+
+    let manifest_file = dest_dir.join("manifest.json");
+    let manifest = Manifest {
+        manifest_version: 1,
+        chain_id: chain_id_hex.clone(),
+        log_size: canonical_lines.len() as u64,
+        head_hash: head_hash.clone(),
+        updated_at: current_iso_timestamp(),
+        latest_checkpoint: ManifestCheckpoint {
+            size: 0,
+            path: "".to_string(),
+            signature: "".to_string(),
+        },
+        mirrors: ManifestMirrors {
+            git: format!("file://{}", dest_dir.display()),
+            github_pages: "".to_string(),
+            ipfs: ManifestIpfs {
+                events_cid: None,
+                checkpoints_cid: None,
+                gateways: Manifest::default_gateways(),
+            },
+            archive_org: ManifestArchiveOrg { snapshot_url: None },
+        },
+    };
+    fs::write(&manifest_file, format!("{}\n", manifest.to_json_pretty()?))?;
+
+    if json {
+        let out = InitOutput {
+            chain_name: name,
+            chain_id: chain_id_hex,
+            authority: authority.pubkey().to_hex(),
+            sequencer: sequencer.pubkey().to_hex(),
+            genesis_hash: entry_0.hash,
+            events_log: log_file.display().to_string(),
+            manifest: manifest_file.display().to_string(),
+            regtest_keys_file: regtest_keys_path.map(|p| p.display().to_string()),
+        };
+        println!("{}", serde_json::to_string_pretty(&out)?);
+    } else {
+        println!("══════════════════════════════════════════════════════════════════════");
+        if regtest {
+            println!("  GreyMisnomer Isolated Regtest Chain Bootstrapped (RFC-005/006)       ");
+        } else {
+            println!("  GreyMisnomer Sovereign Ledger Initialized (RFC-005 §3.1)             ");
+        }
+        println!("══════════════════════════════════════════════════════════════════════");
+        println!("  Chain Name:     {}", name);
+        println!("  Chain ID:       {}", chain_id_hex);
+        println!("  Genesis Hash:   {}", entry_0.hash);
+        println!("  Authority:      {}", authority.pubkey().to_hex());
+        println!("  Sequencer:      {}", sequencer.pubkey().to_hex());
+        println!("  Events Log:     {}", log_file.display());
+        println!("  Manifest:       {}", manifest_file.display());
+        if let Some(ref kf) = regtest_keys_path {
+            println!(
+                "  Regtest Keys:   {} (Authority, VVB, Dev, Buyer)",
+                kf.display()
+            );
+        }
+        println!("══════════════════════════════════════════════════════════════════════");
+        if regtest {
+            println!("  Next: Ready for instant local transactions with zero network needed!");
+            println!(
+                "        cargo run -p grey-misnomer-cli -- replay {}",
+                log_file.display()
+            );
+        }
+    }
+
+    Ok(())
+}
+
+fn handle_status(args: &[String]) -> Result<()> {
+    let mut log_path: Option<PathBuf> = None;
+    let mut json = false;
+
+    let mut i = 0;
+    while i < args.len() {
+        match args[i].as_str() {
+            "--json" => json = true,
+            "--log-path" | "--log" => {
+                i += 1;
+                if i < args.len() {
+                    log_path = Some(PathBuf::from(&args[i]));
+                }
+            }
+            "-h" | "--help" => {
+                print_status_usage();
+                return Ok(());
+            }
+            arg if !arg.starts_with('-') && log_path.is_none() => {
+                log_path = Some(PathBuf::from(arg));
+            }
+            unknown => bail!("Unknown option for status: {unknown}"),
+        }
+        i += 1;
+    }
+
+    let resolved_path = match log_path {
+        Some(p) => p,
+        None => find_default_log_path().unwrap_or_else(|| PathBuf::from("events.jsonl")),
+    };
+
+    if !resolved_path.exists() {
+        bail!("Event log file '{}' not found.", resolved_path.display());
+    }
+
+    let content = fs::read_to_string(&resolved_path)?;
+    let summary = replay_log_with_anchor(content.lines(), None)
+        .map_err(|e| anyhow::anyhow!("Ledger verification error: {e}"))?;
+
+    let (active_credits, retired_credits) = compute_state_credits(&summary.state);
+
+    let mut latest_checkpoint: Option<u64> = None;
+    let cp_dirs = [
+        resolved_path.parent().map(|p| p.join("checkpoints")),
+        Some(PathBuf::from("checkpoints")),
+        Some(PathBuf::from("docs/checkpoints")),
+    ];
+    for maybe_dir in cp_dirs.into_iter().flatten() {
+        if maybe_dir.exists() {
+            if let Ok(entries) = fs::read_dir(maybe_dir) {
+                for e in entries.flatten() {
+                    if let Some(stem) = e.path().file_stem().and_then(|s| s.to_str()) {
+                        if let Ok(sz) = stem.parse::<u64>() {
+                            if sz <= summary.events_count
+                                && latest_checkpoint.is_none_or(|c| sz > c)
+                            {
+                                latest_checkpoint = Some(sz);
+                            }
+                        }
+                    }
+                }
+            }
+        }
+    }
+
+    let chain_name = if let Some(first_line) = content.lines().next() {
+        if let Ok(val) = serde_json::from_str::<serde_json::Value>(first_line) {
+            val.get("payload")
+                .and_then(|p| p.get("chain_name"))
+                .and_then(|n| n.as_str())
+                .unwrap_or("Unknown")
+                .to_string()
+        } else {
+            "Unknown".to_string()
+        }
+    } else {
+        "Empty".to_string()
+    };
+
+    if json {
+        let out = StatusOutput {
+            chain_name,
+            chain_id: hex::encode(summary.state.chain_id),
+            log_path: resolved_path.display().to_string(),
+            log_size: summary.events_count,
+            head_hash: summary.final_hash,
+            chain_valid: summary.chain_valid,
+            root_authority: summary.state.authority.to_string(),
+            active_sequencer: summary.state.sequencer.to_string(),
+            accredited_vvbs: summary.state.vvbs.len(),
+            total_issued_credits: summary.total_credits,
+            active_credits,
+            retired_credits,
+            total_batches: summary.batches_count,
+            latest_checkpoint,
+            invariants_passed: summary.invariant_report.all_passed,
+        };
+        println!("{}", serde_json::to_string_pretty(&out)?);
+    } else {
+        println!("══════════════════════════════════════════════════════════════════════");
+        println!("  GreyMisnomer Node & Ledger Status (getblockchaininfo equivalent)    ");
+        println!("══════════════════════════════════════════════════════════════════════");
+        println!("  Chain Name:       {}", chain_name);
+        println!(
+            "  Chain ID:         {}",
+            hex::encode(summary.state.chain_id)
+        );
+        println!("  Log Path:         {}", resolved_path.display());
+        println!("  Log Size:         {} events", summary.events_count);
+        println!("  Head Hash (Tip):  {}", summary.final_hash);
+        println!(
+            "  Hash Chain Valid: {}",
+            if summary.chain_valid {
+                "✅ VALID"
+            } else {
+                "❌ INVALID"
+            }
+        );
+        println!("  Root Authority:   {}", summary.state.authority);
+        println!("  Active Sequencer: {}", summary.state.sequencer);
+        println!("  Accredited VVBs:  {}", summary.state.vvbs.len());
+        println!("──────────────────────────────────────────────────────────────────────");
+        println!("  Total Issued:     {} credits", summary.total_credits);
+        println!("  Active Supply:    {} credits", active_credits);
+        println!("  Retired (PoO):    {} credits", retired_credits);
+        println!("  Batches Count:    {}", summary.batches_count);
+        if let Some(cp_size) = latest_checkpoint {
+            println!(
+                "  Checkpoint Head:  size {} (checkpoints/{}.json)",
+                cp_size, cp_size
+            );
+        } else {
+            println!("  Checkpoint Head:  [None yet]");
+        }
+        println!(
+            "  Invariants:       {}",
+            if summary.invariant_report.all_passed {
+                "✅ ALL PASS (1–7 & A1–A3)"
+            } else {
+                "❌ INVARIANTS FAILED"
+            }
+        );
+        println!("══════════════════════════════════════════════════════════════════════");
+    }
+
     Ok(())
 }
 
@@ -850,7 +1330,8 @@ fn handle_sequence_tx(args: &[String]) -> Result<()> {
 
     // 8. Checkpoint generation (every 5 events or on demand)
     let should_checkpoint = force_checkpoint || (new_log_size % 5 == 0);
-    let maybe_sequencer = resolve_keypair(key.as_deref(), keystore.as_deref(), passphrase.as_deref()).ok();
+    let maybe_sequencer =
+        resolve_keypair(key.as_deref(), keystore.as_deref(), passphrase.as_deref()).ok();
 
     if should_checkpoint {
         if let Some(ref seq_kp) = maybe_sequencer {
@@ -878,7 +1359,9 @@ fn handle_sequence_tx(args: &[String]) -> Result<()> {
     }
 
     // 9. Update distribution manifests
-    let cp_ref = checkpoint_created.as_ref().map(|(cp, pk)| (cp, pk.as_str()));
+    let cp_ref = checkpoint_created
+        .as_ref()
+        .map(|(cp, pk)| (cp, pk.as_str()));
     let _ = update_manifests_and_checkpoints(new_log_size, &new_entry.hash, cp_ref);
 
     // 10. Output success report
@@ -910,7 +1393,10 @@ fn handle_sequence_tx(args: &[String]) -> Result<()> {
         if let Some((ref cp, _)) = checkpoint_created {
             println!("  Checkpoint:     ✅ SIGNED (checkpoints/{}.json)", cp.size);
         } else {
-            println!("  Checkpoint:     [None / next due at size {}]", ((new_log_size / 5) + 1) * 5);
+            println!(
+                "  Checkpoint:     [None / next due at size {}]",
+                ((new_log_size / 5) + 1) * 5
+            );
         }
         println!("══════════════════════════════════════════════════════════════════════");
     }

@@ -21,7 +21,10 @@ fn get_events_jsonl_path() -> PathBuf {
             return c.clone();
         }
     }
-    panic!("Could not find events.jsonl from {}", manifest_dir.display());
+    panic!(
+        "Could not find events.jsonl from {}",
+        manifest_dir.display()
+    );
 }
 
 fn get_cli_bin() -> PathBuf {
@@ -50,18 +53,10 @@ fn test_cli_keystore_encryption_and_resolution() {
     let temp_dir = std::env::temp_dir().join(format!("gm_test_ks_{}", std::process::id()));
     fs::create_dir_all(&temp_dir).expect("create temp dir");
     let ks_path = temp_dir.join("sequencer.gmkey");
-    fs::write(
-        &ks_path,
-        serde_json::to_string_pretty(&envelope).unwrap(),
-    )
-    .expect("write keystore");
+    fs::write(&ks_path, serde_json::to_string_pretty(&envelope).unwrap()).expect("write keystore");
 
-    let resolved = resolve_keypair(
-        None,
-        Some(ks_path.to_str().unwrap()),
-        Some(pass),
-    )
-    .expect("resolve_keypair with keystore");
+    let resolved = resolve_keypair(None, Some(ks_path.to_str().unwrap()), Some(pass))
+        .expect("resolve_keypair with keystore");
     assert_eq!(resolved.pubkey(), kp.pubkey());
 
     // Wrong password resolution must fail
@@ -111,12 +106,8 @@ fn test_cli_sequence_tx_lifecycle_and_invariants() {
     let recipient = Keypair::generate();
 
     // 1. Construct valid candidate transfer event (op_index 2)
-    let transfer_msg = build_transfer_preimage(
-        &chain_id,
-        "CC-IN-SOLAR-2026-001",
-        2,
-        &recipient.pubkey(),
-    );
+    let transfer_msg =
+        build_transfer_preimage(&chain_id, "CC-IN-SOLAR-2026-001", 2, &recipient.pubkey());
     let valid_event = RegistryEvent::Transfer {
         credit_id: "CC-IN-SOLAR-2026-001".to_string(),
         op_index: 2,
@@ -140,7 +131,11 @@ fn test_cli_sequence_tx_lifecycle_and_invariants() {
         .output()
         .expect("execute dry-run");
 
-    assert!(dry_run_output.status.success(), "Dry run failed: {:?}", String::from_utf8_lossy(&dry_run_output.stderr));
+    assert!(
+        dry_run_output.status.success(),
+        "Dry run failed: {:?}",
+        String::from_utf8_lossy(&dry_run_output.stderr)
+    );
     let dry_stdout = String::from_utf8_lossy(&dry_run_output.stdout);
     assert!(dry_stdout.contains("\"valid\": true"));
     assert!(dry_stdout.contains("\"projected_seq\": 5"));
@@ -160,7 +155,11 @@ fn test_cli_sequence_tx_lifecycle_and_invariants() {
         .output()
         .expect("execute sequence-tx");
 
-    assert!(seq_output.status.success(), "Sequence failed: {:?}", String::from_utf8_lossy(&seq_output.stderr));
+    assert!(
+        seq_output.status.success(),
+        "Sequence failed: {:?}",
+        String::from_utf8_lossy(&seq_output.stderr)
+    );
     let seq_stdout = String::from_utf8_lossy(&seq_output.stdout);
     assert!(seq_stdout.contains("\"status\": \"sequenced\""));
     assert!(seq_stdout.contains("\"seq\": 5"));
@@ -204,12 +203,8 @@ fn test_cli_sequence_tx_lifecycle_and_invariants() {
     // 5. Test Forged Signature Rejection (Invariant A1):
     let impostor = Keypair::generate();
     let recipient_2 = Keypair::generate();
-    let forged_msg = build_transfer_preimage(
-        &chain_id,
-        "CC-IN-SOLAR-2026-001",
-        3,
-        &recipient_2.pubkey(),
-    );
+    let forged_msg =
+        build_transfer_preimage(&chain_id, "CC-IN-SOLAR-2026-001", 3, &recipient_2.pubkey());
     let forged_event = RegistryEvent::Transfer {
         credit_id: "CC-IN-SOLAR-2026-001".to_string(),
         op_index: 3,
@@ -258,7 +253,11 @@ fn test_cli_sequence_tx_lifecycle_and_invariants() {
         .output()
         .expect("execute sequence-tx with markdown");
 
-    assert!(md_seq_output.status.success(), "Markdown issue parsing failed: {:?}", String::from_utf8_lossy(&md_seq_output.stderr));
+    assert!(
+        md_seq_output.status.success(),
+        "Markdown issue parsing failed: {:?}",
+        String::from_utf8_lossy(&md_seq_output.stderr)
+    );
     let md_stdout = String::from_utf8_lossy(&md_seq_output.stdout);
     assert!(md_stdout.contains("\"status\": \"sequenced\""));
     assert!(md_stdout.contains("\"seq\": 5"));
@@ -287,17 +286,17 @@ fn test_cli_sequence_tx_with_keystore_checkpoint() {
     let pass = "AutonomousSequencer2026!";
     let envelope = encrypt_gmkey(&sequencer, pass, "Sequencer Node Alpha", "Sequencer").unwrap();
     let keystore_file = temp_dir.join("sequencer.gmkey");
-    fs::write(&keystore_file, serde_json::to_string_pretty(&envelope).unwrap()).unwrap();
+    fs::write(
+        &keystore_file,
+        serde_json::to_string_pretty(&envelope).unwrap(),
+    )
+    .unwrap();
 
     // Prepare valid candidate transaction signed by Infosys (op_index 2)
     let infosys = Keypair::from_seed_str("infosys-corporate-buyer-2026");
     let recipient = Keypair::generate();
-    let transfer_msg = build_transfer_preimage(
-        &chain_id,
-        "CC-IN-SOLAR-2026-001",
-        2,
-        &recipient.pubkey(),
-    );
+    let transfer_msg =
+        build_transfer_preimage(&chain_id, "CC-IN-SOLAR-2026-001", 2, &recipient.pubkey());
     let valid_event = RegistryEvent::Transfer {
         credit_id: "CC-IN-SOLAR-2026-001".to_string(),
         op_index: 2,
@@ -325,14 +324,21 @@ fn test_cli_sequence_tx_with_keystore_checkpoint() {
         .output()
         .expect("execute sequence-tx with checkpoint");
 
-    assert!(seq_output.status.success(), "Sequencing failed: {:?}", String::from_utf8_lossy(&seq_output.stderr));
+    assert!(
+        seq_output.status.success(),
+        "Sequencing failed: {:?}",
+        String::from_utf8_lossy(&seq_output.stderr)
+    );
     let stdout = String::from_utf8_lossy(&seq_output.stdout);
     assert!(stdout.contains("\"checkpoint_signed\": true"));
     assert!(stdout.contains("\"checkpoint_size\": 6"));
 
     // Verify checkpoint file was generated
     let cp_file = temp_dir.join("checkpoints/6.json");
-    assert!(cp_file.exists(), "Checkpoint file checkpoints/6.json was not created");
+    assert!(
+        cp_file.exists(),
+        "Checkpoint file checkpoints/6.json was not created"
+    );
 
     // Verify checkpoint using verify-checkpoint subcommand
     let verify_output = Command::new(&cli_bin)
@@ -343,10 +349,82 @@ fn test_cli_sequence_tx_with_keystore_checkpoint() {
         .output()
         .expect("execute verify-checkpoint");
 
-    assert!(verify_output.status.success(), "Checkpoint verification failed: {:?}", String::from_utf8_lossy(&verify_output.stderr));
+    assert!(
+        verify_output.status.success(),
+        "Checkpoint verification failed: {:?}",
+        String::from_utf8_lossy(&verify_output.stderr)
+    );
     let verify_stdout = String::from_utf8_lossy(&verify_output.stdout);
     assert!(verify_stdout.contains("cryptographically VALID"));
 
     let _ = fs::remove_dir_all(&temp_dir);
 }
 
+#[test]
+fn test_cli_init_and_status() {
+    let cli_bin = get_cli_bin();
+    let temp_dir = std::env::temp_dir().join(format!("gm_test_init_{}", std::process::id()));
+    fs::create_dir_all(&temp_dir).expect("create temp dir");
+
+    // 1. Run init --regtest --json
+    let init_output = Command::new(&cli_bin)
+        .arg("init")
+        .arg("--regtest")
+        .arg("--out")
+        .arg(&temp_dir)
+        .arg("--json")
+        .output()
+        .expect("execute init --regtest");
+
+    assert!(
+        init_output.status.success(),
+        "init --regtest failed: {:?}",
+        String::from_utf8_lossy(&init_output.stderr)
+    );
+    let stdout = String::from_utf8_lossy(&init_output.stdout);
+    assert!(stdout.contains("\"chain_name\": \"GreyMisnomer-Regtest\""));
+    assert!(stdout.contains("\"events_log\":"));
+
+    let log_file = temp_dir.join("events.jsonl");
+    assert!(log_file.exists());
+    let manifest_file = temp_dir.join("manifest.json");
+    assert!(manifest_file.exists());
+    let keys_file = temp_dir.join("regtest_keys.json");
+    assert!(keys_file.exists());
+
+    // 2. Replay initialized regtest log
+    let replay_output = Command::new(&cli_bin)
+        .arg("replay")
+        .arg(&log_file)
+        .output()
+        .expect("replay regtest log");
+
+    assert!(
+        replay_output.status.success(),
+        "replay failed: {:?}",
+        String::from_utf8_lossy(&replay_output.stderr)
+    );
+    let replay_stdout = String::from_utf8_lossy(&replay_output.stdout);
+    assert!(replay_stdout.contains("ALL PROTOCOL & AUTHORIZATION INVARIANTS SATISFIED"));
+
+    // 3. Test status subcommand on regtest log
+    let status_output = Command::new(&cli_bin)
+        .arg("status")
+        .arg(&log_file)
+        .arg("--json")
+        .output()
+        .expect("status check");
+
+    assert!(
+        status_output.status.success(),
+        "status failed: {:?}",
+        String::from_utf8_lossy(&status_output.stderr)
+    );
+    let status_stdout = String::from_utf8_lossy(&status_output.stdout);
+    assert!(status_stdout.contains("\"chain_name\": \"GreyMisnomer-Regtest\""));
+    assert!(status_stdout.contains("\"chain_valid\": true"));
+    assert!(status_stdout.contains("\"log_size\": 2"));
+    assert!(status_stdout.contains("\"invariants_passed\": true"));
+
+    let _ = fs::remove_dir_all(&temp_dir);
+}

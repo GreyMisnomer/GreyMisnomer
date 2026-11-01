@@ -5,7 +5,7 @@
 //! W3C WebCrypto implementation.
 
 use aes_gcm::{
-    aead::{Aead, KeyInit, OsRng, rand_core::RngCore},
+    aead::{rand_core::RngCore, Aead, KeyInit, OsRng},
     Aes256Gcm, Nonce,
 };
 use anyhow::{bail, Context, Result};
@@ -159,12 +159,7 @@ pub fn encrypt_gmkey(
 
     let iterations = 100_000u32;
     let mut derived_key = [0u8; 32];
-    pbkdf2_hmac::<Sha256>(
-        passphrase.as_bytes(),
-        &salt,
-        iterations,
-        &mut derived_key,
-    );
+    pbkdf2_hmac::<Sha256>(passphrase.as_bytes(), &salt, iterations, &mut derived_key);
 
     let cipher = Aes256Gcm::new_from_slice(&derived_key)
         .map_err(|e| anyhow::anyhow!("Failed to initialize AES-GCM cipher: {e}"))?;
@@ -287,7 +282,9 @@ mod tests {
         let wrong_res = decrypt_gmkey(&envelope, "WrongPassword");
         match wrong_res {
             Err(err) => {
-                assert!(err.to_string().contains("invalid passphrase or corrupted MAC tag"));
+                assert!(err
+                    .to_string()
+                    .contains("invalid passphrase or corrupted MAC tag"));
             }
             Ok(_) => panic!("Expected decryption error for wrong password"),
         }
