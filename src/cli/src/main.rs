@@ -312,6 +312,36 @@ fn current_iso_timestamp() -> String {
     format!("{year:04}-{month:02}-{day:02}T{hours:02}:{minutes:02}:{seconds:02}Z")
 }
 
+fn update_single_manifest(
+    p: &Path,
+    log_size: u64,
+    head_hash: &str,
+    new_checkpoint: Option<(&Checkpoint, &str)>,
+) -> Result<()> {
+    if !p.exists() {
+        return Ok(());
+    }
+    let content = fs::read_to_string(p)?;
+    if let Ok(mut manifest) = Manifest::from_json(&content) {
+        manifest.log_size = log_size;
+        manifest.head_hash = head_hash.to_string();
+        manifest.updated_at = current_iso_timestamp();
+
+        if let Some((cp, _)) = new_checkpoint {
+            manifest.latest_checkpoint = grey_misnomer_core::manifest::ManifestCheckpoint {
+                size: cp.size,
+                path: format!("checkpoints/{}.json", cp.size),
+                signature: cp.sig.to_hex(),
+            };
+        }
+
+        if let Ok(pretty) = manifest.to_json_pretty() {
+            let _ = fs::write(p, format!("{pretty}\n"));
+        }
+    }
+    Ok(())
+}
+
 fn update_manifests_and_checkpoints(
     log_size: u64,
     head_hash: &str,
@@ -319,28 +349,7 @@ fn update_manifests_and_checkpoints(
 ) -> Result<()> {
     let manifest_paths = ["manifest.json", "docs/manifest.json"];
     for mpath in &manifest_paths {
-        let p = Path::new(mpath);
-        if !p.exists() {
-            continue;
-        }
-        let content = fs::read_to_string(p)?;
-        if let Ok(mut manifest) = Manifest::from_json(&content) {
-            manifest.log_size = log_size;
-            manifest.head_hash = head_hash.to_string();
-            manifest.updated_at = current_iso_timestamp();
-
-            if let Some((cp, _)) = new_checkpoint {
-                manifest.latest_checkpoint = grey_misnomer_core::manifest::ManifestCheckpoint {
-                    size: cp.size,
-                    path: format!("checkpoints/{}.json", cp.size),
-                    signature: cp.sig.to_hex(),
-                };
-            }
-
-            if let Ok(pretty) = manifest.to_json_pretty() {
-                let _ = fs::write(p, format!("{pretty}\n"));
-            }
-        }
+        let _ = update_single_manifest(Path::new(mpath), log_size, head_hash, new_checkpoint);
     }
 
     if let Some((cp, sequencer_hex)) = new_checkpoint {
@@ -1063,7 +1072,7 @@ fn handle_verify_checkpoint(args: &[String]) -> Result<()> {
     let mut i = 0;
     while i < args.len() {
         match args[i].as_str() {
-            "--sequencer" => {
+            "--sequencer" | "--pubkey" => {
                 i += 1;
                 if i < args.len() {
                     sequencer = Some(args[i].clone());
@@ -1076,6 +1085,10 @@ fn handle_verify_checkpoint(args: &[String]) -> Result<()> {
                 }
             }
             "--json" => json = true,
+            "-h" | "--help" => {
+                println!("GreyMisnomer Checkpoint Verifier\n\nUSAGE:\n    grey-misnomer-cli verify-checkpoint <CHECKPOINT_FILE> [--sequencer <PUBKEY>] [--chain-id <HEX>] [--json]");
+                return Ok(());
+            }
             arg if !arg.starts_with('-') => {
                 file_path = Some(PathBuf::from(arg));
             }
@@ -1317,9 +1330,11 @@ fn handle_sequence_tx(args: &[String]) -> Result<()> {
         .with_context(|| format!("Failed to open '{}' for append", resolved_log.display()))?;
     writeln!(file, "{}", canonical_line)?;
 
-    // Mirror to docs/events.jsonl if exists
+    // Mirror to docs/events.jsonl only if modifying root repository ledger
+    let is_root_ledger =
+        resolved_log == Path::new("events.jsonl") || resolved_log == Path::new("./events.jsonl");
     let docs_log = Path::new("docs/events.jsonl");
-    if docs_log.exists() && docs_log != resolved_log.as_path() {
+    if is_root_ledger && docs_log.exists() && docs_log != resolved_log.as_path() {
         if let Ok(mut docs_file) = fs::OpenOptions::new().append(true).open(docs_log) {
             let _ = writeln!(docs_file, "{}", canonical_line);
         }
@@ -1333,6 +1348,16 @@ fn handle_sequence_tx(args: &[String]) -> Result<()> {
     let maybe_sequencer =
         resolve_keypair(key.as_deref(), keystore.as_deref(), passphrase.as_deref()).ok();
 
+    let cp_base_dir = if let Some(parent) = resolved_log.parent() {
+        if parent.as_os_str().is_empty() {
+            PathBuf::from(".")
+        } else {
+            parent.to_path_buf()
+        }
+    } else {
+        PathBuf::from(".")
+    };
+
     if should_checkpoint {
         if let Some(ref seq_kp) = maybe_sequencer {
             let head_bytes = parse_hex_bytes32(&new_entry.hash)?;
@@ -1344,10 +1369,11 @@ fn handle_sequence_tx(args: &[String]) -> Result<()> {
             let cp = Checkpoint::new(new_state.chain_id, new_log_size, head_bytes, ts, seq_kp);
             let cp_json = format!("{}\n", cp.to_canonical_json());
 
-            fs::create_dir_all("checkpoints")?;
-            fs::write(format!("checkpoints/{}.json", new_log_size), &cp_json)?;
+            let cp_dir = cp_base_dir.join("checkpoints");
+            fs::create_dir_all(&cp_dir)?;
+            fs::write(cp_dir.join(format!("{}.json", new_log_size)), &cp_json)?;
 
-            if Path::new("docs").exists() {
+            if is_root_ledger && Path::new("docs").exists() {
                 let _ = fs::create_dir_all("docs/checkpoints");
                 let _ = fs::write(format!("docs/checkpoints/{}.json", new_log_size), &cp_json);
             }
@@ -1362,7 +1388,14 @@ fn handle_sequence_tx(args: &[String]) -> Result<()> {
     let cp_ref = checkpoint_created
         .as_ref()
         .map(|(cp, pk)| (cp, pk.as_str()));
-    let _ = update_manifests_and_checkpoints(new_log_size, &new_entry.hash, cp_ref);
+    if is_root_ledger {
+        let _ = update_manifests_and_checkpoints(new_log_size, &new_entry.hash, cp_ref);
+    } else {
+        let local_manifest = cp_base_dir.join("manifest.json");
+        if local_manifest.exists() {
+            let _ = update_single_manifest(&local_manifest, new_log_size, &new_entry.hash, cp_ref);
+        }
+    }
 
     // 10. Output success report
     if json {
