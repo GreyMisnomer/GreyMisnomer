@@ -1,132 +1,197 @@
-# Sovereign Protocol Evolution: Bitcoin Trust Model, Climate Currency Analysis & The Sovereign P2P Daemon/SDK Architecture
+# GreyMisnomer v2.0 Architectural Specification: Evolution from Static Cryptographic Transparency Log to Sovereign Peer-to-Peer Ecological Protocol
 
-> Canonical Master Specification: [09_SOVEREIGN_PROTOCOL_EVOLUTION.md](../../GreyMisnomer_r1/09_SOVEREIGN_PROTOCOL_EVOLUTION.md)  
-> Scope: Architectural Roadmap from v1.3.0 Static File Prototype to v2.0 Autonomous P2P Daemon (`greymisnomerd`), Carbon UTXO State Machine, and Cross-Platform SDK.
+**Document Identifier:** RFC-GM-002  
+**Author:** Prabhat Vilas Karlekar  
+**Current Baseline Version:** GreyMisnomer 1.3.0  
+**Target Architecture:** GreyMisnomer 2.0 (Stages 4–6)  
+**Status:** Architectural Blueprint & Protocol Specification  
+**Canonical Master Copy:** `GreyMisnomer_r1/09_SOVEREIGN_PROTOCOL_EVOLUTION.md`
 
 ---
 
-## 1. Executive Summary: The MVP Hack vs. Sovereign Architecture
+## Master Architectural Index (What, Why, Where, How, When)
 
-Hosting `events.jsonl`, `checkpoints/*.json`, and the WebAssembly verifier (`docs/app.html`, `docs/pkg/`) on GitHub Pages was a clever zero-cost way to prove the mathematical and cryptographic primitives in Stages 1–3.
+| Question | Architectural Answer | Primary Document Section |
+| :--- | :--- | :--- |
+| **WHAT is being built?** | A sovereign, peer-to-peer decentralized ecological ledger featuring a standalone Rust daemon (`greymisnomerd`), an Unretired Credit Output (UCO) state machine, an institutional BFT witness quorum, and cross-platform desktop, mobile, and browser light clients. | [Section 4: The 4-Layer Architecture](#4-greymisnomer-20-architecture-the-4-layer-bitcoin-style-stack) |
+| **WHY is it necessary?** | GreyMisnomer 1.3.0 proved the cryptography at \$0 cost, but relies on GitHub Pages as a centralized file host. A single git committer, flat-file memory exhaustion, unpinned IPFS storage, and centralized sequencer censorship prevent it from operating as a sovereign national or global compliance registry. | [Section 2: Trust Model Audit](#2-trust-model-audit-bitcoin-vs-greymisnomer-130) |
+| **WHERE does state live and run?** | In native headless daemons listening on dedicated P2P Gossip Port `9333` and Local RPC Port `9332`, storing indexed UTXO state in an embedded pure-Rust ACID database (`redb`), with raw MRV blobs replicated across peer nodes—completely off GitHub. | [Section 4.2: Layer 2 Daemon](#42-layer-2-peer-to-peer-full-node-daemon-greymisnomerd) |
+| **HOW does it function?** | Via pure deterministic Rust accounting (`grey-misnomer-core`), gossip propagation over `libp2p`, FROST Ed25519 threshold multi-signatures across institutional validators (BEE, Grid-India, VVBs), and thermodynamic finality anchored to Bitcoin via OpenTimestamps (`.ots`). | [Section 4.1 & 4.3](#41-layer-1-pure-verification-engine--utxo-state-machine-grey-misnomer-core) |
+| **WHEN will it be delivered?** | Across four disciplined engineering stages: Stage 3 (Baseline Complete), Stage 4 (Daemon & UCO State), Stage 5 (BFT Consensus & Replication), and Stage 6 (zkVM Light Clients & Statutory Currency Bridge). | [Section 6: Phased Engineering Roadmap](#6-staged-engineering-roadmap-stages-3-through-6) |
 
-**However, a GitHub repository is a static file host with a single gatekeeper, not a decentralized protocol.**
+---
 
-To evolve GreyMisnomer into authentic, institutional-grade, censorship-resistant infrastructure, we separate **what our cryptography already solves** from **what our network, consensus, and storage layers currently lack**:
+## 1. Executive Abstract & Architectural Thesis
+
+GreyMisnomer 1.3.0 established a zero-cost, mathematically deterministic prototype for voluntary and compliance carbon markets by combining an append-only event log (`events.jsonl`), numbered Merkle checkpoints (`checkpoints/*.json`), and Bitcoin-anchored OpenTimestamps proofs (`events.jsonl.ots`) with a pure Rust verification core (`src/core`), a command-line interface (`src/cli`), and a client-side WebAssembly verifier (`src/wasm` and `docs/app.html`). 
+
+While hosting these static artifacts on GitHub Pages successfully proved that double-counting, greenwashing, and serial forging can be detected client-side without cloud servers or gas fees, **a static repository controlled by a single operator is an auditable transparency log rather than a sovereign, censorship-resistant peer-to-peer protocol.**
 
 ```
 ┌────────────────────────────────────────────────────────────────────────────────────────┐
-│                                ARCHITECTURAL PARADIGM SHIFT                            │
+│                               ARCHITECTURAL PARADIGM SHIFT                             │
 ├───────────────────────────────────────────┬────────────────────────────────────────────┤
-│   GreyMisnomer v1.3.0 (Current Prototype) │     GreyMisnomer v2.0 (Sovereign Target)   │
+│   GreyMisnomer 1.3.0 (Current Prototype)  │     GreyMisnomer 2.0 (Sovereign Target)    │
 ├───────────────────────────────────────────┼────────────────────────────────────────────┤
-│ • Static file hosted on GitHub Pages CDN │ • Autonomous P2P Daemon (greymisnomerd)    │
-│ • Single sequencer pushes git commits     │ • Federated BFT / Threshold Consensus      │
-│ • Flat events.jsonl parsed into memory    │ • Embedded High-Speed Key-Value State DB   │
-│ • Passive client-side audit on HTTP poll  │ • Active P2P protocol enforcement on port  │
-│ • Passive third-party IPFS/Archive fallbacks│ • Mandated content-addressed peer storage│
-│ • Web browser is the only runtime         │ • Multi-platform SDK (Desktop/Mobile/Server)│
+│ • Static file hosted on GitHub Pages CDN  │ • Autonomous P2P Daemon (greymisnomerd)    │
+│ • Single sequencer pushes git commits      │ • Federated BFT / FROST Threshold Quorum   │
+│ • Flat events.jsonl parsed into RAM       │ • Embedded High-Speed Key-Value DB (redb)  │
+│ • Passive client-side audit on HTTP poll  │ • Active P2P wire rejection on port 9333   │
+│ • Passive third-party IPFS/Archive backups│ • Mandated content-addressed peer storage  │
+│ • Web browser is the primary runtime      │ • Multi-platform SDK (Desktop/Mobile/Server)│
 └───────────────────────────────────────────┴────────────────────────────────────────────┘
 ```
 
----
+A rigorous comparison against Bitcoin's security model reveals that GreyMisnomer 1.3.0 implements Bitcoin's data structures (hash-chained logs, Merkle trees, and digital signatures) and its verification ethos ("don't trust, verify"), yet lacks its network-layer and consensus-layer guarantees. Specifically, the current implementation relies on a single authority key, a centralized GitHub sequencer, passive browser-side auditing rather than active peer-to-peer state rejection, unincentivized flat-file storage, and single-auditor physical-to-digital data ingestion.
 
-## 2. Bitcoin's Trust Model vs. GreyMisnomer v1.3.0: What Is Lacking?
-
-1. **Decentralized Ordering & Censorship Resistance (The "GitHub Sequencer" Bottleneck):**
-   * *Bitcoin:* Unpermissioned P2P mempool with miners competing on PoW. No single entity decides transaction inclusion.
-   * *GreyMisnomer v1.3.0:* GitHub repository owner/Actions runner acts as a centralized sequencer. It cannot forge signatures or rewrite history, but it **can** refuse, delay, or censor transactions. We have decentralized verification, but centralized liveness and write-access.
-
-2. **Incentivized Data Availability (The .ots / IPFS / Internet Archive Tombstone Trap):**
-   * *Bitcoin:* Full nodes store UTXO and block history because they need it to participate and validate transactions.
-   * *GreyMisnomer v1.3.0:* An OpenTimestamps (`.ots`) proof only proves a 32-byte hash existed. If GitHub Pages, unpinned IPFS gateways, or Archive.org drop `events.jsonl` or raw MRV sensor data, the `.ots` proof becomes a "cryptographic tombstone"—a hash exists, but nobody can reconstruct the state to verify if a credit was already burned.
-
-3. **Independent State-Transition Enforcement (Active Consensus vs. Passive Auditing):**
-   * *Bitcoin:* Invalid blocks are proactively dropped at the P2P wire protocol level by every node listening on port 8333.
-   * *GreyMisnomer v1.3.0:* Passive client auditing. If an invalid event is committed, a client browser or CLI throws an error, but there is no autonomous network of nodes rejecting invalid state and maintaining the honest canonical chain.
-
-4. **Scalability of Flat-File State (events.jsonl vs. UTXO Set Index):**
-   * *Bitcoin:* Separates historical block files (`blk*.dat`) from the active indexed UTXO set in LevelDB for $O(1)$ lookups.
-   * *GreyMisnomer v1.3.0:* Scanning a flat text file in browser WASM memory works for hundreds of events, but at millions of events, browser memory will crash.
-
-5. **The Physical-to-Digital Oracle Problem (Closed-Loop vs. Extrinsic Assets):**
-   * *Bitcoin:* Native closed-loop digital asset. Bitcoin nodes never look outside the protocol to verify coin validity.
-   * *GreyMisnomer v1.3.0:* A carbon credit represents a physical ecological event ($1\text{ tCO}_2\text{e}$). Cryptography guarantees that Auditor X signed Report Y at Time Z—it does *not* guarantee Auditor X didn't lie about trees being planted. We require multi-party witness quorums and hardware/satellite oracle co-signing at the PoI ingestion layer.
+To graduate from a Certificate Transparency model (analogous to Google Trillian or Sigsum) into a sovereign national and global compliance infrastructure, GreyMisnomer 2.0 transitions to a four-layer peer-to-peer architecture. This architecture introduces:
+1. A standalone Rust daemon (`greymisnomerd`) communicating over dedicated peer-to-peer gossip (Port 9333) and local RPC (Port 9332),
+2. An Unretired Credit Output (UCO) state machine,
+3. An institutional Byzantine Fault Tolerant (BFT) witness quorum anchored to Bitcoin via OpenTimestamps, and
+4. Cross-platform desktop, mobile, and browser light clients powered by succinct zero-knowledge virtual machine (zkVM) proofs.
 
 ---
 
-## 3. Macroeconomic Analysis: Can a Carbon Credit Be a "Climate Currency"?
+## 2. Trust Model Audit: Bitcoin vs. GreyMisnomer 1.3.0
 
-**Short answer: No.** Pegging a carbon credit to fiat (USD/INR) or turning it into a circulating currency breaks monetary economics and carbon accounting integrity:
+| Protocol Dimension | Bitcoin Network Model | GreyMisnomer 1.3.0 Baseline | Core Vulnerability in Baseline | GreyMisnomer 2.0 Target Architecture |
+| :--- | :--- | :--- | :--- | :--- |
+| **1. Sybil Resistance** | Proof of Work (PoW) with difficulty adjustment | Single Ed25519 Authority Key | Single master key compromise halts or captures registry | Federated BFT Threshold Quorum (FROST Ed25519) |
+| **2. Transaction Ordering** | Decentralized mempool & miner competition | Centralized GitHub Actions Sequencer | Sequencer censorship, transaction delays, front-running | Multi-node round-robin BFT consensus ordering |
+| **3. Network Transport** | Dedicated TCP P2P mesh (Port 8333) | HTTP GET polling on centralized CDNs | DNS blocking, CDN censorship, web server outages | Native TCP/QUIC wire gossip mesh (Port 9333) |
+| **4. State Enforcement** | Active P2P wire-level block rejection | Passive client-side audit on load | Invalid commits merged into git without network drop | Autonomous P2P node rejection & peer banning |
+| **5. Data Availability** | Economically incentivized full node storage | GitHub Pages, unpinned IPFS, Archive.org | Cryptographic Tombstone: .ots remains, raw data lost | Replicated content-addressed blob store ($\ge K$ nodes) |
+| **6. State Scalability** | Indexed UTXO chainstate database (LevelDB) | Full flat-file sequential parse (`events.jsonl`)| Browser WASM RAM exhaustion at high event counts | Embedded pure-Rust copy-on-write DB (`redb`) |
+| **7. Asset Origin Truth** | Native closed-loop mathematical currency | Single auditor signature at issuance | Fraudulent physical claims immortalized on-chain | Multi-oracle quorum, satellite telemetry & slashing |
 
-1. **Physical Unit vs. Monetary Unit (Two Moving Targets):**
-   * A carbon credit is a physical unit ($1\text{ tCO}_2\text{e}$), like a barrel of oil or MWh of electricity. Its price must float based on marginal abatement costs. A fixed peg requires an infinite fiat reserve to defend, or it collapses.
-2. **Gresham's Law of Carbon ("Bad Carbon Drives Out Good"):**
-   * Money is 100% fungible ($₹100 = ₹100$). Carbon credits are heterogeneous: Direct Air Capture ($1,000\text{-year}$ permanence, $\approx \$600\text{/ton}$) is not economically equal to cheap cookstove avoidance ($\approx \$5\text{/ton}$). A flat currency peg forces everyone to spend the cheapest, lowest-quality credits, driving high-integrity removal out of business.
-3. **The Consumable UTXO Paradox:**
-   * Money must circulate indefinitely ($A \to B \to C \to D$). A carbon credit must be **permanently burned/retired (PoO)** when an entity claims the offset. Once claimed, it must be destroyed, or double-counting occurs.
-4. **Registry-Market Separation:**
-   * GreyMisnomer is the cryptographic engine of physical truth (tracking serial ranges from PoI to PoO). Marketplaces, settlement layers, and liquidity pools sit *on top*, pricing credits in floating INR, USD, or stablecoins.
-5. **The Feasible Alternative (Two-Tier Model):**
-   * *Layer 1 (GreyMisnomer):* Non-fungible, serial-locked carbon UTXOs ($[start, end]$).
-   * *Layer 2 (Statutory Currency):* Standardized compliance tokens minted against escrowed Layer 1 credits, backed by a statutory floor price set by regulators (e.g., BEE penalty under Indian Energy Conservation Act).
+*(See [09_SOVEREIGN_PROTOCOL_EVOLUTION.md](../../GreyMisnomer_r1/09_SOVEREIGN_PROTOCOL_EVOLUTION.md) for full subsection analyses).*
 
 ---
 
-## 4. The 4-Layer Bitcoin-Style Architecture Blueprint
+## 3. Monetary & Ecological Economics: Can Carbon Credits Function as a Pegged Climate Currency?
+
+From a strict monetary economics and protocol engineering standpoint, **raw carbon credits cannot function as a circulating fiat-pegged currency**, for four foundational reasons:
+
+1. **The Dual Moving-Target Paradox:** A carbon credit is a physical unit ($1\text{ metric ton of CO}_2\text{e}$), while fiat is a monetary unit. The monetary price of carbon abatement must float dynamically based on technological marginal abatement costs. A fixed peg without an infinite fiat reserve will immediately collapse.
+2. **Gresham's Law in Ecological Markets ("Bad Carbon Drives Out Good Carbon"):** Carbon credits are heterogeneous across permanence profiles (e.g., Direct Air Capture at $\$600\text{/ton}$ vs. avoided deforestation at $\$5\text{/ton}$). A flat currency peg forces everyone to spend the cheapest credits, destroying permanent carbon removal projects.
+3. **The Consumption Paradox (Consumable UTXO vs. Circulating Currency):** Money must circulate indefinitely ($A \to B \to C \to D$). A carbon credit must be **permanently burned and retired (PoO)** when an entity claims an offset. If hoarded as money, zero net emissions are neutralized; if circulating after retirement, double-counting occurs.
+4. **Registry-Market Separation:** GreyMisnomer is the cryptographic engine of physical truth. Marketplaces and liquidity pools sit *on top*, pricing credits in floating INR, USD, or regulated stablecoins.
+5. **The Two-Tier Ecological Monetary Architecture:**
+   * *Tier 1 (GreyMisnomer):* Non-fungible, serial-locked carbon UTXOs ($[start, end]$).
+   * *Tier 2 (Statutory Currency):* Standardized compliance tokens minted against escrowed Layer 1 credits, backed by statutory regulatory floors (e.g., BEE penalty under Indian Energy Conservation Act).
+
+---
+
+## 4. GreyMisnomer 2.0 Architecture: The 4-Layer Bitcoin-Style Stack
 
 ```
-┌─────────────────────────────────────────────────────────────────────────┐
-│              LAYER 4: MULTI-PLATFORM APPLICATIONS & SPV                 │
-│  Desktop App (Tauri v2) · Mobile SPV Wallet · WebAssembly Explorer      │
-└────────────────────────────────────▲────────────────────────────────────┘
-                                     │ Local JSON-RPC / WebSocket (Port 9405)
-┌────────────────────────────────────┴────────────────────────────────────┐
-│              LAYER 3: CONSENSUS & BITCOIN FINALITY ANCHOR               │
-│  Federated BFT Witness Quorum · OpenTimestamps Cumulative PoW Lock     │
-└────────────────────────────────────▲────────────────────────────────────┘
-                                     │ P2P Block & Event Gossip (Port 9406)
-┌────────────────────────────────────┴────────────────────────────────────┐
-│              LAYER 2: greymisnomerd (P2P FULL NODE DAEMON)              │
-│  libp2p GossipSub · redb Embedded Key-Value Storage · Blob Replication  │
-└────────────────────────────────────▲────────────────────────────────────┘
-                                     │ Pure Deterministic Calls
-┌────────────────────────────────────┴────────────────────────────────────┐
-│              LAYER 1: greymisnomer-core (VERIFICATION SDK)              │
-│  Carbon UTXO Engine · Invariant Evaluator · BLAKE3 Merkle State Machine │
-└─────────────────────────────────────────────────────────────────────────┘
+                    ┌─────────────────────────────────────────┐
+                    │         greymisnomerd (Daemon)          │
+                    │    Pure Rust · Autonomous Local Node    │
+                    └────────────────────┬────────────────────┘
+                                         │
+         ┌───────────────────────────────┼───────────────────────────────┐
+         ▼                               ▼                               ▼
+ [P2P Wire Network]              [Core State Engine]             [Local RPC & Bus]
+ TCP/QUIC Port 9333              Deterministic UCO Model         HTTP/WS Port 9332
+ libp2p GossipSub + Kademlia     BLAKE3 / SHA-256 Merkle         Rust Axum JSON-RPC
+ Embedded Iroh Blob Store        redb Key-Value Chainstate       Zero CORS / Localhost
+         │                               │                               │
+         ▼                               ▼                               ▼
+ Peer Nodes & BFT Quorum         OpenTimestamps (.ots)           Tauri Desktop, Mobile
+ (BEE, Grid-India, VVBs)         Bitcoin PoW Finality            SPV, & WASM Clients
 ```
 
-### Layer 1: `greymisnomer-core` (The Pure Verification SDK)
-* Pure, zero-I/O Rust crate compiling to native, WASM, and mobile C-FFI.
+### 4.1 Layer 1: Pure Verification Engine & UTXO State Machine (`grey-misnomer-core`)
+* Pure, deterministic, zero-I/O Rust library compiling to native, WebAssembly, C-FFI, and UniFFI mobile targets. Quantities are strictly 64-bit unsigned integer kilograms ($\text{kgCO}_2\text{e}$).
 * **Carbon UTXO Model:**
-  * `Mint (PoI)` $\to$ Creates Unretired Credit Outputs (UCOs) bound to serialized ranges $[start, end]$ and project metadata.
+  * `Mint (PoI)` $\to$ Produces Unretired Credit Outputs (UCOs) bound to serialized ranges $[start, end]$ and MRV roots.
   * `Split/Transfer` $\to$ Consumes input UCOs and creates new disjoint UCOs ($\sum In == \sum Out$).
-  * `Burn (PoO)` $\to$ Consumes UCO into a provably unspendable burn accumulator with beneficiary identity and claim period.
+  * `Burn (PoO)` $\to$ Consumes UCO into a provably unspendable burn commitment with beneficiary identity and claim scope.
 
-### Layer 2: `greymisnomerd` (The P2P Full Node Daemon)
-* **Dedicated Ports:**
-  * **Port 9406 (TCP/QUIC):** P2P wire protocol via `libp2p` (Kademlia DHT discovery + GossipSub event propagation).
-  * **Port 9405 (TCP):** Local JSON-RPC & WebSocket server via `axum` (`/v1/tx/submit`, `/v1/chain/status`, `/v1/proof/poi/:id`).
-* **Embedded Database:** Replaces flat-file scans with embedded pure-Rust `redb` (or RocksDB) for $O(1)$ UCO queries and interval-tree double-spend checks.
-* **Blob Store:** Content-addressed blob replication engine (`iroh` / Bitswap). Nodes refuse to confirm Mint transactions unless raw sensor proofs are replicated across $\ge K$ archival peers.
+### 4.2 Layer 2: Peer-to-Peer Full Node Daemon (`greymisnomerd`)
+* **Dedicated Network Ports:**
+  * **Port 9333 (TCP/QUIC):** P2P wire protocol via `libp2p` (Kademlia DHT discovery + GossipSub event propagation).
+  * **Port 9332 (TCP):** Local JSON-RPC & WebSocket server via `axum` (`/v1/tx/submit`, `/v1/chain/status`, `/v1/proof/poi/:id`).
+* **Embedded Database:** Replaces flat files with embedded pure-Rust **`redb`** for instant $O(1)$ UCO queries and interval-tree double-spend checks.
+* **Blob Replication:** Content-addressed blob store (`iroh` / Bitswap). Consensus mandates raw evidence blobs be replicated across $\ge K$ archival peers before mint confirmation.
 
-### Layer 3: Consensus & Thermodynamic Finality
-* **Federated BFT Witness Quorum:** Statutory authorities (BEE), grid operators (Grid-India), accredited VVBs (TÜV NORD), and NGOs run validator nodes. Checkpoints are signed using **FROST Ed25519 threshold signatures**.
-* **OpenTimestamps Bitcoin Anchor:** Checkpoint Merkle roots are committed to Bitcoin via `.ots`, locking historical data under cumulative Proof-of-Work.
+### 4.3 Layer 3: Hybrid Consensus (BFT Witness Quorum + Bitcoin OpenTimestamps Finality)
+* **Federated BFT Witness Quorum:** Statutory authorities (BEE), grid operators (Grid-India), accredited VVBs, and environmental NGOs run validator nodes. Checkpoints are signed using **FROST Ed25519 threshold signatures**.
+* **Bitcoin OpenTimestamps Anchor:** Checkpoint Merkle roots are committed to Bitcoin via `.ots`, locking historical data under cumulative Proof-of-Work.
 
-### Layer 4: Multi-Platform Applications & SPV Light Clients
+### 4.4 Layer 4: Multi-Platform Client Ecosystem & Succinct Light Verification
 * **Desktop Node (Mac/Windows/Linux):** Packaged via **Tauri v2** + Rust. Bundles `greymisnomerd` locally or connects to remote institutional nodes.
-* **Mobile SPV Light Client (Android/iOS):** Downloads only compact Checkpoint Headers ($<300\text{ bytes}$ each) and verifies Merkle inclusion proofs for QR-coded certificates in $<10\text{ ms}$ offline.
-* **Web Explorer:** Static browser app connecting to public P2P nodes over WebSockets.
+* **Mobile SPV Light Client (Android/iOS via UniFFI):** Downloads only compact Checkpoint Headers ($<300\text{ bytes}$ each) and verifies Merkle inclusion proofs for QR certificates in $<10\text{ ms}$ offline.
+* **Zero-Trust Web Explorer:** Static browser app connecting to public P2P nodes over WebSockets.
 
 ---
 
-## 5. Phased Engineering Roadmap
+## 5. Threat Model & Failure Mode Analysis
 
-* **Stage 4:** Local Daemon (`greymisnomerd`) with embedded `redb` state storage and Axum RPC on Port 9405.
-* **Stage 4.5:** P2P Wire Protocol with `libp2p` GossipSub on Port 9406 and content-addressed blob replication.
-* **Stage 5:** Federated BFT Consensus with FROST threshold multi-signatures and automated Bitcoin anchoring.
-* **Stage 6:** Tauri v2 Desktop Workbench and Mobile SPV Light Clients (iOS/Android).
+| Threat / Failure Scenario | GreyMisnomer 1.3.0 Vulnerability | GreyMisnomer 2.0 Defense Mechanism |
+| :--- | :--- | :--- |
+| **GitHub Account Banned or Repository Deleted** | Registry disappears; primary origin lost; clients cannot fetch new blocks. | **P2P Wire Mesh:** Nodes gossip directly on Port 9333. GitHub is not in the transaction path. |
+| **Sequencer Censors Transaction Intent** | GitHub Actions runner ignores Issue submission; transaction permanently blocked. | **P2P Mempool & Multi-Sequencer Quorum:** Transaction broadcasts to all nodes; any BFT validator can propose it. |
+| **Validator Private Key Compromised** | Single authority signature forged; rogue credits minted or revoked. | **FROST Threshold Signatures ($M$-of-$N$):** Compromise of up to $F < N/3$ keys cannot forge blocks or checkpoints. |
+| **Historical Data Tampering / History Rewrite** | Checkpoint modified; clients notice mismatch only if they previously cached tip. | **OpenTimestamps Proof-of-Work Lock:** Rewriting historical checkpoints requires overcoming cumulative Bitcoin hashrate. |
+| **Unpinned IPFS Evidence Deleted** | PoI documents vanish; only 32-byte hash remains (Cryptographic Tombstone). | **Mandatory Blob Replication ($\ge K$ Nodes):** Consensus refuses to seal checkpoints until raw blobs are verified replicated. |
+| **Corrupt Auditor Mints Fraudulent Credits** | Cryptography faithfully immortalizes false claims signed by registered VVB. | **Multi-Oracle Witnessing & Slashing:** Satellite remote sensing feeds and collateralized staking bonds slashed on fraud detection. |
+| **Browser RAM Exhaustion on Large Ledger** | Client crashes attempting to parse $>100\text{ MB}$ flat JSONL file in WebAssembly. | **SPV Light Verification & zkVM Proofs:** Mobile and web verify compact Merkle branches and $<300\text{-byte}$ headers. |
 
 ---
-*For the complete detailed architectural specification, see [09_SOVEREIGN_PROTOCOL_EVOLUTION.md in GreyMisnomer_r1](../../GreyMisnomer_r1/09_SOVEREIGN_PROTOCOL_EVOLUTION.md).*
+
+## 6. Staged Engineering Roadmap (Stages 3 through 6)
+
+```
+┌────────────────────────────────────────────────────────────────────────┐
+│ STAGE 3 (Completed Baseline): Static Transparency Log & WASM Enclave   │
+│ • Append-only events.jsonl log, numbered Merkle checkpoints            │
+│ • OpenTimestamps proofs (events.jsonl.ots) anchored to Bitcoin         │
+│ • In-browser WASM verifier (docs/app.html) & CLI replayer at $0 cost   │
+└───────────────────────────────────┬────────────────────────────────────┘
+                                    │
+                                    ▼
+┌────────────────────────────────────────────────────────────────────────┐
+│ STAGE 4: Standalone P2P Daemon (greymisnomerd), UCO Model & Desktop App │
+│ • State Machine Upgrade: Refactor src/core into Unretired Credit Output│
+│   (UCO) model with redb key-value persistence for $O(1)$ state lookups │
+│ • Local Node & RPC: Compile src/daemon binary listening on Port 9332   │
+│ • Desktop GUI: Wrap workbench via Tauri v2 for macOS, Windows, Linux   │
+│ • Deliverable: Standalone local daemon running without GitHub dependencies│
+└───────────────────────────────────┬────────────────────────────────────┘
+                                    │
+                                    ▼
+┌────────────────────────────────────────────────────────────────────────┐
+│ STAGE 4.5: P2P Wire Mesh (libp2p GossipSub Port 9333) & Blob Storage   │
+│ • Network Protocol: Implement libp2p Kademlia DHT & GossipSub on 9333 │
+│ • P2P Transaction Relay: Direct peer-to-peer mempool propagation       │
+│ • Blob Replication: Embedded content-addressed evidence store (Iroh)   │
+│ • Deliverable: Multi-node local P2P testnet exchanging blocks over wire│
+└───────────────────────────────────┬────────────────────────────────────┘
+                                    │
+                                    ▼
+┌────────────────────────────────────────────────────────────────────────┐
+│ STAGE 5: Multi-Sequencer BFT Consensus & Institutional Governance      │
+│ • Threshold Signing: Implement FROST Ed25519 threshold multi-sig       │
+│ • Validator Quorum: Federated round-robin BFT consensus (BEE, Grid, VVB)│
+│ • Automated Bitcoin Anchor: Daemon-level OpenTimestamps pipeline       │
+│ • Data Availability Enforcement: Checkpoints require K-node blob proof │
+│ • Deliverable: Censorship-resistant institutional testnet              │
+└───────────────────────────────────┬────────────────────────────────────┘
+                                    │
+                                    ▼
+┌────────────────────────────────────────────────────────────────────────┐
+│ STAGE 6: Succinct zkVM Light Clients & Two-Tier Currency Interface     │
+│ • Succinct Mobile Verification: SP1 / RISC Zero zkVM guest proving     │
+│   100,000+ transitions into 256-byte ZK proof verified in <10ms       │
+│ • Mobile Apps: Tauri Mobile / UniFFI client for iOS and Android        │
+│ • Statutory Currency Bridge: Lock-and-mint interface collateralizing   │
+│   audited Tier 1 UCOs for Tier 2 compliance floor tokens               │
+│ • Deliverable: Production-ready national compliance infrastructure     │
+└────────────────────────────────────────────────────────────────────────┘
+```
+
+---
+
+*For full line-by-line analyses, mathematical proofs, and comprehensive structural details, refer to the master specification: [GreyMisnomer_r1/09_SOVEREIGN_PROTOCOL_EVOLUTION.md](../../GreyMisnomer_r1/09_SOVEREIGN_PROTOCOL_EVOLUTION.md).*
