@@ -242,7 +242,7 @@ cargo run -p grey-misnomer-cli -- docs/events.jsonl --json
 ots verify docs/events.jsonl.ots
 ```
 
-Or open [http://localhost:8080/app.html](http://localhost:8080/app.html) (or the [Live Platform](https://greymisnomer.github.io/GreyMisnomer/)), navigate to the **Audit** tab, and your browser will independently replay `events.jsonl` in client-side WebAssembly, validate the SHA-256 hash chain, check all 7 protocol invariants, and inspect the Bitcoin attestation proof.
+Or open [http://localhost:8080/app.html](http://localhost:8080/app.html) (or the [Live Platform](https://greymisnomer.github.io/GreyMisnomer/)), navigate to the **Audit** tab, and your browser will independently replay `events.jsonl` in client-side WebAssembly, validate the BLAKE3 hash chain, check all 10 protocol and authorization invariants (1–7 & A1–A3), and inspect the Bitcoin attestation proof.
 
 ---
 
