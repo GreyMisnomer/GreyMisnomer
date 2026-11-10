@@ -10,7 +10,7 @@
 //! - Genesis: seq == 0, prev_hash == 64 zeroes. Its entry_hash establishes the registry's `chain_id`.
 
 use crate::error::RegistryError;
-use crate::registry::{apply, InvariantReport, RegistryEvent, RegistryState};
+use crate::registry::{apply_in_place, InvariantReport, RegistryEvent, RegistryState};
 use serde::{Deserialize, Serialize};
 
 /// Genesis entry's `prev_hash`: 64 zeroes representing null 32-byte hash.
@@ -523,8 +523,8 @@ where
             });
         }
 
-        // 4. Apply pure state transition
-        state = apply(&state, &entry.event).map_err(|e| ReplayError::StateTransitionError {
+        // 4. Apply state transition in place (zero whole-state clone)
+        apply_in_place(&mut state, &entry.event).map_err(|e| ReplayError::StateTransitionError {
             line: line_num,
             seq: entry.seq,
             error: e,
@@ -542,23 +542,21 @@ where
             }
         }
 
-        // 6. Invariants re-evaluated after every state transition (RFC-005 §3.8)
-        let invariant_report = state.check_invariants();
-        if !invariant_report.all_passed {
-            return Err(ReplayError::InvariantFailed {
-                line: line_num,
-                seq: entry.seq,
-                report: invariant_report,
-            });
-        }
-
         entry_hashes.push(entry.hash.clone());
         expected_prev_hash = entry.hash;
         expected_seq += 1;
         events_count += 1;
     }
 
+    // 6. Sweep-line full invariant verification once after replay
     let invariant_report = state.check_invariants();
+    if !invariant_report.all_passed {
+        return Err(ReplayError::InvariantFailed {
+            line: events_count,
+            seq: expected_seq.saturating_sub(1),
+            report: invariant_report,
+        });
+    }
     let mut active_credits: u64 = 0;
     let mut retired_credits: u64 = 0;
     for batch in &state.credits {

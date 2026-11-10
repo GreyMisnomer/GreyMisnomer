@@ -19,9 +19,34 @@ pub struct VvbInfo {
     pub active: bool,
 }
 
-/// The canonical, immutable state of the protocol registry.
-/// Purely functional: state transitions produce a new `RegistryState`.
-#[derive(Default, Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[derive(Default, Debug, Clone)]
+struct StateIndices {
+    credit_positions: BTreeMap<String, usize>,
+    active_ranges: BTreeMap<u64, u64>,
+    burned_ranges: BTreeMap<u64, u64>,
+    used_poi_hashes: BTreeSet<[u8; 32]>,
+    synced_credits_len: usize,
+    synced_burned_len: usize,
+    initialized: bool,
+}
+
+fn interval_map_overlaps(map: &BTreeMap<u64, u64>, range: SerialRange) -> bool {
+    if let Some((&_s, &prev_end)) = map.range(..=range.start).next_back() {
+        if prev_end >= range.start {
+            return true;
+        }
+    }
+    if let Some((&next_start, &_e)) = map.range(range.start..).next() {
+        if next_start <= range.end {
+            return true;
+        }
+    }
+    false
+}
+
+/// The canonical state of the protocol registry.
+/// Transitions are evaluated deterministically via `apply()` or `apply_in_place()`.
+#[derive(Default, Debug, Clone, Serialize, Deserialize)]
 pub struct RegistryState {
     /// Domain-separated unique 32-byte identifier for this registry instance
     #[serde(with = "crate::auth::hex_bytes32")]
@@ -40,7 +65,25 @@ pub struct RegistryState {
     pub burned_ranges: Vec<SerialRange>,
     /// Set of all MRV data roots (merkle roots) that have been minted, preventing double-counting (Bug 9)
     pub used_data_roots: BTreeSet<[u8; 32]>,
+    /// Internal non-serialized acceleration indices for O(log n) membership and overlap checks
+    #[serde(skip)]
+    indices: StateIndices,
 }
+
+impl PartialEq for RegistryState {
+    fn eq(&self, other: &Self) -> bool {
+        self.chain_id == other.chain_id
+            && self.authority == other.authority
+            && self.sequencer == other.sequencer
+            && self.authority_index == other.authority_index
+            && self.vvbs == other.vvbs
+            && self.credits == other.credits
+            && self.burned_ranges == other.burned_ranges
+            && self.used_data_roots == other.used_data_roots
+    }
+}
+
+impl Eq for RegistryState {}
 
 /// The discrete events that cause state transitions in the GreyMisnomer protocol (RFC-005).
 /// Serializable to and from JSON/JSONL for event logging and deterministic replayability.
@@ -255,6 +298,25 @@ impl RegistryEvent {
     }
 }
 
+/// Applies an event directly to `state` in place without cloning the entire registry state.
+///
+/// Validation completes strictly before any mutation occurs, preserving atomic error safety.
+pub fn apply_in_place(
+    state: &mut RegistryState,
+    event: &RegistryEvent,
+) -> Result<(), RegistryError> {
+    match event {
+        RegistryEvent::Genesis { .. } => apply_genesis_in_place(state, event),
+        RegistryEvent::VvbRegister { .. } => apply_vvb_register_in_place(state, event),
+        RegistryEvent::VvbRevoke { .. } => apply_vvb_revoke_in_place(state, event),
+        RegistryEvent::Mint { .. } => apply_mint_in_place(state, event),
+        RegistryEvent::Transfer { .. } => apply_transfer_in_place(state, event),
+        RegistryEvent::Burn { .. } => apply_burn_in_place(state, event),
+        RegistryEvent::AuthorityRotate { .. } => apply_authority_rotate_in_place(state, event),
+        RegistryEvent::SequencerRotate { .. } => apply_sequencer_rotate_in_place(state, event),
+    }
+}
+
 /// Pure state transition function: apply(state, event) -> Result<RegistryState, RegistryError>
 ///
 /// Guaranteed properties:
@@ -262,22 +324,17 @@ impl RegistryEvent {
 /// 2. Deterministic: Given the identical state and event, it always produces the identical new state or error.
 /// 3. Invariant-preserving: Valid state + valid event => valid new state satisfying all protocol and authorization invariants.
 pub fn apply(state: &RegistryState, event: &RegistryEvent) -> Result<RegistryState, RegistryError> {
-    match event {
-        RegistryEvent::Genesis { .. } => apply_genesis(state, event),
-        RegistryEvent::VvbRegister { .. } => apply_vvb_register(state, event),
-        RegistryEvent::VvbRevoke { .. } => apply_vvb_revoke(state, event),
-        RegistryEvent::Mint { .. } => apply_mint(state, event),
-        RegistryEvent::Transfer { .. } => apply_transfer(state, event),
-        RegistryEvent::Burn { .. } => apply_burn(state, event),
-        RegistryEvent::AuthorityRotate { .. } => apply_authority_rotate(state, event),
-        RegistryEvent::SequencerRotate { .. } => apply_sequencer_rotate(state, event),
-    }
+    let mut new_state = state.clone();
+    apply_in_place(&mut new_state, event)?;
+    Ok(new_state)
 }
 
-fn apply_mint(
-    state: &RegistryState,
+fn apply_mint_in_place(
+    state: &mut RegistryState,
     event: &RegistryEvent,
-) -> Result<RegistryState, RegistryError> {
+) -> Result<(), RegistryError> {
+    state.ensure_indices();
+
     let RegistryEvent::Mint {
         project_id,
         credit_id,
@@ -339,24 +396,18 @@ fn apply_mint(
     let mint_msg = build_mint_preimage(&mint_params);
     vvb.verify_strict(&mint_msg, vvb_sig)?;
 
-    // 4. Invariant 4: Global burned range check
-    for burned in &state.burned_ranges {
-        if burned.overlaps(&range) {
-            return Err(RegistryError::BurnIrreversible);
-        }
+    // 4. Invariant 4: Global burned range check in O(log n)
+    if interval_map_overlaps(&state.indices.burned_ranges, range) {
+        return Err(RegistryError::BurnIrreversible);
     }
 
-    // 5. Invariant 3: Global active slice overlap check
-    for existing in &state.credits {
-        for slice in &existing.slices {
-            if slice.status == CreditStatus::Active && slice.range.overlaps(&range) {
-                return Err(RegistryError::RangeOverlap);
-            }
-        }
+    // 5. Invariant 3: Global active slice overlap check in O(log n)
+    if interval_map_overlaps(&state.indices.active_ranges, range) {
+        return Err(RegistryError::RangeOverlap);
     }
 
-    // 6. Check unique credit_id
-    if state.credits.iter().any(|c| c.credit_id == *credit_id) {
+    // 6. Check unique credit_id in O(log n)
+    if state.indices.credit_positions.contains_key(credit_id) {
         return Err(RegistryError::DuplicateCreditId);
     }
 
@@ -365,9 +416,9 @@ fn apply_mint(
         return Err(RegistryError::DuplicateDataRoot);
     }
 
-    // 8. Compute poi_hash and check Invariant 7 (poi_hash uniqueness)
+    // 8. Compute poi_hash and check Invariant 7 (poi_hash uniqueness) in O(log n)
     let poi_hash = compute_poi_hash(&mint_msg, vvb_sig);
-    if state.credits.iter().any(|c| c.poi_hash == poi_hash) {
+    if state.indices.used_poi_hashes.contains(&poi_hash) {
         return Err(RegistryError::PoIAlreadyUsed);
     }
 
@@ -385,16 +436,25 @@ fn apply_mint(
         poi_hash,
     };
 
-    let mut new_state = state.clone();
-    new_state.used_data_roots.insert(*merkle_root);
-    new_state.credits.push(batch);
-    Ok(new_state)
+    let idx = state.credits.len();
+    state.used_data_roots.insert(*merkle_root);
+    state.credits.push(batch);
+    state
+        .indices
+        .credit_positions
+        .insert(credit_id.clone(), idx);
+    state.indices.active_ranges.insert(range.start, range.end);
+    state.indices.used_poi_hashes.insert(poi_hash);
+    state.indices.synced_credits_len = state.credits.len();
+    Ok(())
 }
 
-fn apply_transfer(
-    state: &RegistryState,
+fn apply_transfer_in_place(
+    state: &mut RegistryState,
     event: &RegistryEvent,
-) -> Result<RegistryState, RegistryError> {
+) -> Result<(), RegistryError> {
+    state.ensure_indices();
+
     let RegistryEvent::Transfer {
         credit_id,
         op_index,
@@ -405,13 +465,14 @@ fn apply_transfer(
         return Err(RegistryError::CorruptedState);
     };
 
-    let credit = state
-        .credits
-        .iter()
-        .find(|c| c.credit_id == *credit_id)
+    let &idx = state
+        .indices
+        .credit_positions
+        .get(credit_id)
         .ok_or_else(|| RegistryError::NotFound {
             id: credit_id.clone(),
         })?;
+    let credit = &state.credits[idx];
 
     if !credit.is_active() {
         return Err(RegistryError::InvalidStateTransition {
@@ -440,21 +501,16 @@ fn apply_transfer(
     let transfer_msg = build_transfer_preimage(&state.chain_id, credit_id, *op_index, new_owner);
     credit.owner.verify_strict(&transfer_msg, owner_sig)?;
 
-    let mut new_state = state.clone();
-    let target = new_state
-        .credits
-        .iter_mut()
-        .find(|c| c.credit_id == *credit_id)
-        .unwrap();
+    let target = &mut state.credits[idx];
     target.owner = *new_owner;
     target.op_index += 1;
-    Ok(new_state)
+    Ok(())
 }
 
-fn apply_genesis(
-    state: &RegistryState,
+fn apply_genesis_in_place(
+    state: &mut RegistryState,
     event: &RegistryEvent,
-) -> Result<RegistryState, RegistryError> {
+) -> Result<(), RegistryError> {
     let RegistryEvent::Genesis {
         chain_name,
         authority,
@@ -479,18 +535,18 @@ fn apply_genesis(
 
     let chain_id = compute_chain_id(&event.to_body_bytes());
 
-    let mut new_state = state.clone();
-    new_state.chain_id = chain_id;
-    new_state.authority = *authority;
-    new_state.sequencer = *sequencer;
-    new_state.authority_index = 0;
-    Ok(new_state)
+    state.chain_id = chain_id;
+    state.authority = *authority;
+    state.sequencer = *sequencer;
+    state.authority_index = 0;
+    state.ensure_indices();
+    Ok(())
 }
 
-fn apply_vvb_register(
-    state: &RegistryState,
+fn apply_vvb_register_in_place(
+    state: &mut RegistryState,
     event: &RegistryEvent,
-) -> Result<RegistryState, RegistryError> {
+) -> Result<(), RegistryError> {
     let RegistryEvent::VvbRegister {
         authority_index,
         vvb,
@@ -513,22 +569,21 @@ fn apply_vvb_register(
         build_authority_event_preimage("vvb-register", &state.chain_id, *authority_index, &payload);
     state.authority.verify_strict(&msg, authority_sig)?;
 
-    let mut new_state = state.clone();
-    new_state.authority_index += 1;
-    new_state.vvbs.insert(
+    state.authority_index += 1;
+    state.vvbs.insert(
         *vvb,
         VvbInfo {
             label: label.clone(),
             active: true,
         },
     );
-    Ok(new_state)
+    Ok(())
 }
 
-fn apply_vvb_revoke(
-    state: &RegistryState,
+fn apply_vvb_revoke_in_place(
+    state: &mut RegistryState,
     event: &RegistryEvent,
-) -> Result<RegistryState, RegistryError> {
+) -> Result<(), RegistryError> {
     let RegistryEvent::VvbRevoke {
         authority_index,
         vvb,
@@ -554,18 +609,17 @@ fn apply_vvb_revoke(
         return Err(RegistryError::UnknownVvb { vvb: vvb.to_hex() });
     }
 
-    let mut new_state = state.clone();
-    new_state.authority_index += 1;
-    if let Some(info) = new_state.vvbs.get_mut(vvb) {
+    state.authority_index += 1;
+    if let Some(info) = state.vvbs.get_mut(vvb) {
         info.active = false;
     }
-    Ok(new_state)
+    Ok(())
 }
 
-fn apply_authority_rotate(
-    state: &RegistryState,
+fn apply_authority_rotate_in_place(
+    state: &mut RegistryState,
     event: &RegistryEvent,
-) -> Result<RegistryState, RegistryError> {
+) -> Result<(), RegistryError> {
     let RegistryEvent::AuthorityRotate {
         authority_index,
         new_authority,
@@ -591,16 +645,15 @@ fn apply_authority_rotate(
     );
     state.authority.verify_strict(&msg, authority_sig)?;
 
-    let mut new_state = state.clone();
-    new_state.authority_index += 1;
-    new_state.authority = *new_authority;
-    Ok(new_state)
+    state.authority_index += 1;
+    state.authority = *new_authority;
+    Ok(())
 }
 
-fn apply_sequencer_rotate(
-    state: &RegistryState,
+fn apply_sequencer_rotate_in_place(
+    state: &mut RegistryState,
     event: &RegistryEvent,
-) -> Result<RegistryState, RegistryError> {
+) -> Result<(), RegistryError> {
     let RegistryEvent::SequencerRotate {
         authority_index,
         new_sequencer,
@@ -626,16 +679,17 @@ fn apply_sequencer_rotate(
     );
     state.authority.verify_strict(&msg, authority_sig)?;
 
-    let mut new_state = state.clone();
-    new_state.authority_index += 1;
-    new_state.sequencer = *new_sequencer;
-    Ok(new_state)
+    state.authority_index += 1;
+    state.sequencer = *new_sequencer;
+    Ok(())
 }
 
-fn apply_burn(
-    state: &RegistryState,
+fn apply_burn_in_place(
+    state: &mut RegistryState,
     event: &RegistryEvent,
-) -> Result<RegistryState, RegistryError> {
+) -> Result<(), RegistryError> {
+    state.ensure_indices();
+
     let RegistryEvent::Burn {
         credit_id,
         op_index,
@@ -649,13 +703,14 @@ fn apply_burn(
         return Err(RegistryError::CorruptedState);
     };
 
-    let batch = state
-        .credits
-        .iter()
-        .find(|b| b.credit_id == *credit_id)
+    let &idx = state
+        .indices
+        .credit_positions
+        .get(credit_id)
         .ok_or_else(|| RegistryError::NotFound {
             id: credit_id.clone(),
         })?;
+    let batch = &state.credits[idx];
 
     if !batch.is_active() {
         return Err(RegistryError::InvalidStateTransition {
@@ -674,11 +729,9 @@ fn apply_burn(
 
     let burn_range = SerialRange::new(*range_start, *range_end)?;
 
-    // Invariant 5: Prevent double burning through historic overlap tracking
-    for burned in &state.burned_ranges {
-        if burned.overlaps(&burn_range) {
-            return Err(RegistryError::PoOAlreadyIssued);
-        }
+    // Invariant 5: Prevent double burning through O(log n) interval lookup
+    if interval_map_overlaps(&state.indices.burned_ranges, burn_range) {
+        return Err(RegistryError::PoOAlreadyIssued);
     }
 
     // Find the active slice that strictly contains the burn envelope
@@ -703,48 +756,46 @@ fn apply_burn(
     );
     batch.owner.verify_strict(&burn_msg, owner_sig)?;
 
-    let mut new_state = state.clone();
-    let target_batch = new_state
-        .credits
-        .iter_mut()
-        .find(|b| b.credit_id == *credit_id)
-        .unwrap();
-
-    // Excise target slice
-    let target_slice = target_batch.slices.remove(slice_idx);
-
-    // Run algorithmic slice split tracking active remainders
+    // Stage mutated slices locally to guarantee atomic error safety before touching state
+    let mut staged_batch = batch.clone();
+    let target_slice = staged_batch.slices.remove(slice_idx);
     let remainders = target_slice.range.slice(&burn_range)?;
 
-    // Persist remainders to the batch's active state
-    for r in remainders {
-        target_batch.slices.push(SerialSlice {
+    for &r in &remainders {
+        staged_batch.slices.push(SerialSlice {
             range: r,
             status: CreditStatus::Active,
         });
     }
 
-    // Push the executed burn footprint onto the batch tracking object
-    target_batch.slices.push(SerialSlice {
+    staged_batch.slices.push(SerialSlice {
         range: burn_range,
         status: CreditStatus::Retired,
     });
 
-    // Normalize slices to merge adjacent fragments and prevent infinite fragmentation
-    normalize_slices(&mut target_batch.slices);
+    normalize_slices(&mut staged_batch.slices);
 
     // Fail-fast internal validation guard to prevent silent state corruption (Bug 15)
-    if !target_batch.validate_internal() {
+    if !staged_batch.validate_internal() {
         return Err(RegistryError::CorruptedState);
     }
 
-    // Increment per-credit op_index (RFC-005)
-    target_batch.op_index += 1;
+    staged_batch.op_index += 1;
 
-    // Lock globally
-    new_state.burned_ranges.push(burn_range);
+    // Commit validated mutation in-place
+    state.credits[idx] = staged_batch;
+    state.indices.active_ranges.remove(&target_slice.range.start);
+    for r in remainders {
+        state.indices.active_ranges.insert(r.start, r.end);
+    }
+    state
+        .indices
+        .burned_ranges
+        .insert(burn_range.start, burn_range.end);
+    state.burned_ranges.push(burn_range);
+    state.indices.synced_burned_len = state.burned_ranges.len();
 
-    Ok(new_state)
+    Ok(())
 }
 
 impl RegistryState {
@@ -752,9 +803,46 @@ impl RegistryState {
         Self::default()
     }
 
+    fn ensure_indices(&mut self) {
+        if self.indices.initialized
+            && self.indices.synced_credits_len == self.credits.len()
+            && self.indices.synced_burned_len == self.burned_ranges.len()
+        {
+            return;
+        }
+        self.indices.credit_positions.clear();
+        self.indices.active_ranges.clear();
+        self.indices.burned_ranges.clear();
+        self.indices.used_poi_hashes.clear();
+        for (idx, batch) in self.credits.iter().enumerate() {
+            self.indices
+                .credit_positions
+                .insert(batch.credit_id.clone(), idx);
+            self.indices.used_poi_hashes.insert(batch.poi_hash);
+            for slice in &batch.slices {
+                if slice.status == CreditStatus::Active {
+                    self.indices
+                        .active_ranges
+                        .insert(slice.range.start, slice.range.end);
+                }
+            }
+        }
+        for burned in &self.burned_ranges {
+            self.indices.burned_ranges.insert(burned.start, burned.end);
+        }
+        self.indices.synced_credits_len = self.credits.len();
+        self.indices.synced_burned_len = self.burned_ranges.len();
+        self.indices.initialized = true;
+    }
+
     /// Evaluates the pure transition function for an event against this state.
     pub fn apply(&self, event: &RegistryEvent) -> Result<Self, RegistryError> {
         apply(self, event)
+    }
+
+    /// Evaluates the state transition directly in place without cloning the full state.
+    pub fn apply_in_place(&mut self, event: &RegistryEvent) -> Result<(), RegistryError> {
+        apply_in_place(self, event)
     }
 
     /// Checks if a VVB is registered and currently active.
@@ -785,12 +873,24 @@ impl RegistryState {
 
     /// Finds a credit batch by credit_id.
     pub fn get_credit(&self, credit_id: &str) -> Option<&CreditBatch> {
-        self.credits.iter().find(|c| c.credit_id == credit_id)
+        if self.indices.initialized && self.indices.synced_credits_len == self.credits.len() {
+            self.indices
+                .credit_positions
+                .get(credit_id)
+                .and_then(|&idx| self.credits.get(idx))
+        } else {
+            self.credits.iter().find(|c| c.credit_id == credit_id)
+        }
     }
 
     /// Finds a mutable credit batch by credit_id.
     pub fn get_credit_mut(&mut self, credit_id: &str) -> Option<&mut CreditBatch> {
-        self.credits.iter_mut().find(|c| c.credit_id == credit_id)
+        self.ensure_indices();
+        if let Some(&idx) = self.indices.credit_positions.get(credit_id) {
+            self.credits.get_mut(idx)
+        } else {
+            None
+        }
     }
 
     // Validates a Proof-of-Integrity (PoI) before minting. Ensures the PoI hasn't been used and is semantically valid.
@@ -902,7 +1002,7 @@ impl RegistryState {
         true
     }
 
-    /// Invariant 3: Global Serialization Locking Uniqueness.
+    /// Invariant 3: Global Serialization Locking Uniqueness (O(n log n) sweep-line).
     /// Verifies that no two active serial ranges overlap anywhere in the registry.
     pub fn check_invariant_3(&self) -> bool {
         let mut active_ranges: Vec<SerialRange> = Vec::new();
@@ -913,39 +1013,57 @@ impl RegistryState {
                 }
             }
         }
-        for (i, r1) in active_ranges.iter().enumerate() {
-            for r2 in active_ranges.iter().skip(i + 1) {
-                if r1.overlaps(r2) {
-                    return false;
-                }
+        active_ranges.sort_unstable_by_key(|r| (r.start, r.end));
+        for pair in active_ranges.windows(2) {
+            if pair[0].overlaps(&pair[1]) {
+                return false;
             }
         }
         true
     }
 
-    /// Invariant 4: Burn Irreversibility.
+    /// Invariant 4: Burn Irreversibility (O(n log n) sorted two-pointer sweep).
     /// Verifies that no range recorded in burned_ranges overlaps with any Active slice.
     pub fn check_invariant_4(&self) -> bool {
-        for burned in &self.burned_ranges {
-            for batch in &self.credits {
-                for slice in &batch.slices {
-                    if slice.status == CreditStatus::Active && slice.range.overlaps(burned) {
-                        return false;
-                    }
+        if self.burned_ranges.is_empty() {
+            return true;
+        }
+        let mut active_ranges: Vec<SerialRange> = Vec::new();
+        for batch in &self.credits {
+            for slice in &batch.slices {
+                if slice.status == CreditStatus::Active {
+                    active_ranges.push(slice.range);
                 }
+            }
+        }
+        if active_ranges.is_empty() {
+            return true;
+        }
+        active_ranges.sort_unstable_by_key(|r| (r.start, r.end));
+        let mut burned_sorted = self.burned_ranges.clone();
+        burned_sorted.sort_unstable_by_key(|r| (r.start, r.end));
+
+        let (mut i, mut j) = (0usize, 0usize);
+        while i < active_ranges.len() && j < burned_sorted.len() {
+            if active_ranges[i].end < burned_sorted[j].start {
+                i += 1;
+            } else if burned_sorted[j].end < active_ranges[i].start {
+                j += 1;
+            } else {
+                return false;
             }
         }
         true
     }
 
-    /// Invariant 5: PoO Uniqueness (Double-spending prevented).
+    /// Invariant 5: PoO Uniqueness (Double-spending prevented, O(n log n) sweep-line).
     /// Verifies that all burned ranges on record are pairwise disjoint.
     pub fn check_invariant_5(&self) -> bool {
-        for (i, b1) in self.burned_ranges.iter().enumerate() {
-            for b2 in self.burned_ranges.iter().skip(i + 1) {
-                if b1.overlaps(b2) {
-                    return false;
-                }
+        let mut burned_sorted = self.burned_ranges.clone();
+        burned_sorted.sort_unstable_by_key(|r| (r.start, r.end));
+        for pair in burned_sorted.windows(2) {
+            if pair[0].overlaps(&pair[1]) {
+                return false;
             }
         }
         true
@@ -1130,10 +1248,9 @@ impl Registry {
         Self { state }
     }
 
-    /// Applies a discrete protocol event to transition the registry's state
+    /// Applies a discrete protocol event to transition the registry's state in place
     pub fn apply_event(&mut self, event: &RegistryEvent) -> Result<(), RegistryError> {
-        self.state = apply(&self.state, event)?;
-        Ok(())
+        apply_in_place(&mut self.state, event)
     }
 
     /// Applies a Mint event and returns the newly minted CreditBatch
@@ -1162,20 +1279,18 @@ impl Registry {
             return Err(RegistryError::CorruptedState);
         };
         let burn_range = SerialRange::new(*range_start, *range_end)?;
-        let old_batch = self
-            .credits
-            .iter()
-            .find(|b| b.credit_id == *credit_id)
-            .ok_or_else(|| RegistryError::NotFound {
+        let (old_project_id, old_owner) = {
+            let old_batch = self.get_credit(credit_id).ok_or_else(|| RegistryError::NotFound {
                 id: credit_id.clone(),
-            })?
-            .clone();
+            })?;
+            (old_batch.project_id.clone(), old_batch.owner)
+        };
 
         self.apply_event(event)?;
 
         let burn_size = burn_range.size()?;
         let poo = PoO {
-            project_id: old_batch.project_id,
+            project_id: old_project_id,
             credit_id: credit_id.clone(),
             serialization_range: burn_range,
             market_scope: crate::project::MarketScope::Vcm,
@@ -1183,7 +1298,7 @@ impl Registry {
             burn_tx_hash: format!("burn_{}_{}", credit_id, burn_range.start),
             timestamp: 0,
             beneficiary: beneficiary.clone(),
-            owner: old_batch.owner.to_hex(),
+            owner: old_owner.to_hex(),
             claim_type: *claim_type,
             amount_tco2e: burn_size,
             status: PoOStatus::Finalized,
