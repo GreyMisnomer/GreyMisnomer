@@ -13,6 +13,7 @@ export const sign_transfer_intent_wasm: (a: number, b: number, c: number, d: num
 export const simulate_apply_wasm: (a: number, b: number, c: number, d: number) => [number, number, number, number];
 export const verify_checkpoint: (a: number, b: number, c: number, d: number) => [number, number, number];
 export const verify_inclusion: (a: number, b: number, c: number, d: number, e: number) => [number, number, number, number];
+export const verify_ots_wasm: (a: number, b: number, c: number, d: number) => [number, number, number, number];
 export const wasmregistry_authority: (a: number) => [number, number];
 export const wasmregistry_batch_state: (a: number, b: number, c: number) => [number, number, number, number];
 export const wasmregistry_burn: (a: number, b: number, c: number) => [number, number, number, number];

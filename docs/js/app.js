@@ -10,7 +10,8 @@
       sign_transfer_intent_wasm,
       sign_burn_intent_wasm,
       sign_mint_intent_wasm,
-      simulate_apply_wasm
+      simulate_apply_wasm,
+      verify_ots_wasm
     } from '../pkg/grey_misnomer_wasm.js';
 
     import {
@@ -1650,7 +1651,7 @@
         showAuditWorkerProgress(false);
 
         renderLedgerSummary(publicLedgerSummary, publicLedgerRaw);
-        await checkOtsProof();
+        await checkOtsProof(publicLedgerRaw);
         await fetchManifestAndVerifyMirrors(publicLedgerSummary);
       } catch (err) {
         showAuditWorkerProgress(false);
@@ -1977,18 +1978,46 @@
       tbody.replaceChildren(...rows);
     }
 
-    async function checkOtsProof() {
+    async function checkOtsProof(targetText) {
       const otsStatus = document.getElementById('otsStatusText');
+      if (!otsStatus) return;
       try {
-        const resp = await fetch('events.jsonl.ots', { method: 'HEAD', cache: 'no-store' });
-        if (resp.ok) {
-          const sz = resp.headers.get('content-length');
-          const sizeStr = sz ? `${sz} bytes` : '140 bytes';
-          if (otsStatus) {
-            otsStatus.textContent = `Proof file present (${sizeStr}) · Anchored in calendar pools (Alice, Bob, Finney) · Pending Bitcoin block attestation`;
+        let rawLog = typeof targetText === 'string' ? targetText : publicLedgerRaw;
+        if (!rawLog) {
+          const logResp = await fetch('events.jsonl', { cache: 'no-store' });
+          if (!logResp.ok) {
+            otsStatus.style.color = 'var(--muted)';
+            otsStatus.textContent = `Unable to fetch events.jsonl for OTS digest comparison (HTTP ${logResp.status})`;
+            return;
           }
+          rawLog = await logResp.text();
         }
-      } catch (_) {}
+        const resp = await fetch('events.jsonl.ots', { method: 'GET', cache: 'no-store' });
+        if (!resp.ok) {
+          otsStatus.style.color = 'var(--muted)';
+          otsStatus.textContent = `OpenTimestamps proof file not found (HTTP ${resp.status})`;
+          return;
+        }
+        const otsBytes = new Uint8Array(await resp.arrayBuffer());
+        const targetBytes = new TextEncoder().encode(rawLog);
+        const report = JSON.parse(verify_ots_wasm(otsBytes, targetBytes));
+        if (!report.digest_matches) {
+          otsStatus.style.color = 'var(--red, #f87171)';
+          const blocksStr = (report.bitcoin_blocks || []).length > 0
+            ? ` (stale proof cites old BTC blocks: ${report.bitcoin_blocks.join(', ')})`
+            : '';
+          otsStatus.textContent = `⚠ Digest Mismatch / Stale Proof (${otsBytes.length} bytes) · Proof attests SHA-256 ${report.attested_sha256.slice(0, 12)}… != Log ${report.actual_sha256.slice(0, 12)}…${blocksStr}`;
+        } else if ((report.bitcoin_blocks || []).length > 0) {
+          otsStatus.style.color = 'var(--green, #4ade80)';
+          otsStatus.textContent = `✓ Verified SHA-256 Match (${report.actual_sha256.slice(0, 12)}…) · Attested in Bitcoin block(s): ${report.bitcoin_blocks.join(', ')}`;
+        } else {
+          otsStatus.style.color = 'var(--amber, #fbbf24)';
+          otsStatus.textContent = `⏳ Verified SHA-256 Match (${report.actual_sha256.slice(0, 12)}…) · Pending Bitcoin block confirmation in ${(report.pending_calendars || []).length} calendar(s)`;
+        }
+      } catch (err) {
+        otsStatus.style.color = 'var(--red, #f87171)';
+        otsStatus.textContent = `⚠ OpenTimestamps Proof Error: ${err}`;
+      }
     }
 
     function toggleTamperSandbox() {

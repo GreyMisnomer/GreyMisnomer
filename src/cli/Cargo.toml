@@ -9,6 +9,10 @@ default-run = "grey-misnomer-cli"
 name = "grey_misnomer_cli"
 path = "src/lib.rs"
 
+[features]
+default = []
+demo-keys = ["grey-misnomer-core/demo-keys"]
+
 [[bin]]
 name = "grey-misnomer-cli"
 path = "src/main.rs"
@@ -16,6 +20,7 @@ path = "src/main.rs"
 [[bin]]
 name = "generate_ledger"
 path = "src/bin/generate_ledger.rs"
+required-features = ["demo-keys"]
 
 [dependencies]
 grey-misnomer-core = { path = "../core" }

@@ -37,9 +37,9 @@ fn make_mrv_records() -> Vec<MRVRecord> {
 }
 
 fn setup_registry() -> (Registry, Keypair, Keypair, Keypair) {
-    let authority = Keypair::from_seed_str("authority-test");
-    let sequencer = Keypair::from_seed_str("sequencer-test");
-    let vvb = Keypair::from_seed_str("vvb-test");
+    let authority = Keypair::generate();
+    let sequencer = Keypair::generate();
+    let vvb = Keypair::generate();
     let mut registry = Registry::new();
 
     let nonce = [42u8; 32];
@@ -209,8 +209,8 @@ fn full_protocol_chain_mrv_to_poo() {
 
     // Step 4: Setup initialized registry with Genesis and accredited VVB
     let (mut registry, _, _, vvb) = setup_registry();
-    let project_owner = Keypair::from_seed_str("project-owner");
-    let buyer = Keypair::from_seed_str("buyer-key");
+    let project_owner = Keypair::generate();
+    let buyer = Keypair::generate();
 
     // Step 5: Mint credits bound to MRV commitment with strict VVB signature
     let mint_event = make_mint_event(
@@ -320,7 +320,7 @@ fn tampered_mrv_does_not_verify() {
 #[test]
 fn poi_cannot_authorize_more_than_supply() {
     let (mut registry, _, _, vvb) = setup_registry();
-    let owner = Keypair::from_seed_str("owner-key");
+    let owner = Keypair::generate();
     let records = make_mrv_records();
     let commitment = mrv::commit(&records, 0);
 
@@ -355,7 +355,7 @@ fn poi_cannot_authorize_more_than_supply() {
 #[test]
 fn spent_poi_cannot_mint_again() {
     let (mut registry, _, _, vvb) = setup_registry();
-    let owner = Keypair::from_seed_str("owner-key");
+    let owner = Keypair::generate();
     let records = make_mrv_records();
     let commitment = mrv::commit(&records, 0);
 
@@ -390,7 +390,7 @@ fn spent_poi_cannot_mint_again() {
 #[test]
 fn burned_range_cannot_be_reminted() {
     let (mut registry, _, _, vvb) = setup_registry();
-    let owner = Keypair::from_seed_str("owner-key");
+    let owner = Keypair::generate();
     let records = make_mrv_records();
     let commitment_a = mrv::commit(&records, 0);
 
@@ -438,7 +438,7 @@ fn burned_range_cannot_be_reminted() {
 #[test]
 fn partial_retirement_two_sequential_burns() {
     let (mut registry, _, _, vvb) = setup_registry();
-    let owner = Keypair::from_seed_str("owner-key");
+    let owner = Keypair::generate();
     let records = make_mrv_records();
     let commitment = mrv::commit(&records, 0);
 
@@ -532,7 +532,7 @@ fn partial_retirement_two_sequential_burns() {
 #[test]
 fn partial_burn_missing_slice_returns_not_found() {
     let (mut registry, _, _, vvb) = setup_registry();
-    let owner = Keypair::from_seed_str("owner-key");
+    let owner = Keypair::generate();
     let records = make_mrv_records();
     let commitment = mrv::commit(&records, 0);
 

@@ -11,6 +11,7 @@ use grey_misnomer_core::{
         ReplaySummary,
     },
     manifest::{Manifest, ManifestArchiveOrg, ManifestCheckpoint, ManifestIpfs, ManifestMirrors},
+    ots::parse_ots_proof,
     registry::{apply, RegistryEvent},
 };
 use serde::Serialize;
@@ -56,6 +57,19 @@ struct KeygenOutput {
 }
 
 #[derive(Serialize)]
+struct OtsCliReport {
+    proof_path: Option<String>,
+    proof_present: bool,
+    digest_matches: bool,
+    status: String,
+    attested_sha256: Option<String>,
+    actual_sha256: Option<String>,
+    bitcoin_blocks: Vec<u64>,
+    pending_calendars: Vec<String>,
+    error: Option<String>,
+}
+
+#[derive(Serialize)]
 struct CheckpointCliReport {
     file: String,
     size: u64,
@@ -63,14 +77,135 @@ struct CheckpointCliReport {
     timestamp: u64,
     sequencer_verified: bool,
     ots_proof_present: bool,
+    ots_digest_matches: bool,
+    ots_status: String,
+    ots_bitcoin_blocks: Vec<u64>,
+    ots_error: Option<String>,
 }
 
 #[derive(Serialize)]
 struct CliReplayFullReport {
     log_path: String,
     summary: ReplaySummary,
+    log_ots: OtsCliReport,
     checkpoints: Vec<CheckpointCliReport>,
     all_passed: bool,
+}
+
+fn inspect_ots_sidecar(target_path: &Path, raw_target_bytes: &[u8]) -> OtsCliReport {
+    let ots_path = PathBuf::from(format!("{}.ots", target_path.display()));
+    if !ots_path.exists() {
+        return OtsCliReport {
+            proof_path: None,
+            proof_present: false,
+            digest_matches: false,
+            status: "missing".to_string(),
+            attested_sha256: None,
+            actual_sha256: None,
+            bitcoin_blocks: Vec::new(),
+            pending_calendars: Vec::new(),
+            error: None,
+        };
+    }
+
+    let ots_bytes = match fs::read(&ots_path) {
+        Ok(b) => b,
+        Err(err) => {
+            return OtsCliReport {
+                proof_path: Some(ots_path.display().to_string()),
+                proof_present: true,
+                digest_matches: false,
+                status: "malformed".to_string(),
+                attested_sha256: None,
+                actual_sha256: None,
+                bitcoin_blocks: Vec::new(),
+                pending_calendars: Vec::new(),
+                error: Some(format!("Failed to read OTS proof: {err}")),
+            };
+        }
+    };
+
+    match parse_ots_proof(&ots_bytes, raw_target_bytes) {
+        Ok(report) => {
+            let status = if !report.digest_matches {
+                "digest-mismatch"
+            } else if !report.bitcoin_blocks.is_empty() {
+                "bitcoin-anchored"
+            } else {
+                "pending"
+            };
+            OtsCliReport {
+                proof_path: Some(ots_path.display().to_string()),
+                proof_present: true,
+                digest_matches: report.digest_matches,
+                status: status.to_string(),
+                attested_sha256: Some(report.attested_sha256),
+                actual_sha256: Some(report.actual_sha256),
+                bitcoin_blocks: report.bitcoin_blocks,
+                pending_calendars: report.pending_calendars,
+                error: if report.digest_matches {
+                    None
+                } else {
+                    Some("SHA-256 digest mismatch between .ots proof and target file".to_string())
+                },
+            }
+        }
+        Err(err) => OtsCliReport {
+            proof_path: Some(ots_path.display().to_string()),
+            proof_present: true,
+            digest_matches: false,
+            status: "malformed".to_string(),
+            attested_sha256: None,
+            actual_sha256: None,
+            bitcoin_blocks: Vec::new(),
+            pending_calendars: Vec::new(),
+            error: Some(err.to_string()),
+        },
+    }
+}
+
+fn format_ots_human_status(ots: &OtsCliReport) -> String {
+    match ots.status.as_str() {
+        "bitcoin-anchored" => {
+            let blocks: Vec<String> = ots.bitcoin_blocks.iter().map(ToString::to_string).collect();
+            format!(
+                "Bitcoin-Anchored ✅ (SHA-256 verified, BTC block(s): {})",
+                blocks.join(", ")
+            )
+        }
+        "pending" => format!(
+            "Calendar Pending ⏳ (SHA-256 verified, {} calendar(s))",
+            ots.pending_calendars.len()
+        ),
+        "digest-mismatch" => {
+            let att = ots
+                .attested_sha256
+                .as_deref()
+                .map(|s| &s[..s.len().min(12)])
+                .unwrap_or("unknown");
+            let act = ots
+                .actual_sha256
+                .as_deref()
+                .map(|s| &s[..s.len().min(12)])
+                .unwrap_or("unknown");
+            let hist = if ots.bitcoin_blocks.is_empty() {
+                String::new()
+            } else {
+                let blocks: Vec<String> =
+                    ots.bitcoin_blocks.iter().map(ToString::to_string).collect();
+                format!(
+                    "; stale proof points to old BTC block(s): {}",
+                    blocks.join(", ")
+                )
+            };
+            format!("❌ DIGEST MISMATCH / STALE (attested {att} != file {act}{hist})")
+        }
+        "malformed" => format!(
+            "❌ MALFORMED PROOF ({})",
+            ots.error.as_deref().unwrap_or("invalid format")
+        ),
+        _ => "No .ots proof file found".to_string(),
+    }
 }
 
 #[derive(Serialize)]
@@ -128,6 +263,9 @@ struct StatusOutput {
     retired_credits: u64,
     total_batches: usize,
     latest_checkpoint: Option<u64>,
+    ots_status: String,
+    ots_digest_matches: bool,
+    ots_bitcoin_blocks: Vec<u64>,
     invariants_passed: bool,
 }
 
@@ -152,7 +290,7 @@ fn print_usage() {
     println!("FLAGS:");
     println!("    --chain-id <HEX>            Expected 32-byte registry domain chain_id");
     println!("    --checkpoints <DIR>         Directory of checkpoints/<size>.json files to audit");
-    println!("    --key <SEED/HEX>            Private key seed or 64-hex secret");
+    println!("    --key <HEX>                 Private key (64-hex secret)");
     println!("    --keystore <FILE.gmkey>     Passphrase-protected keystore file (RFC-006)");
     println!(
         "    --passphrase <PASS>         Passphrase to decrypt keystore (or GM_PASSPHRASE env)"
@@ -164,6 +302,7 @@ fn print_usage() {
     println!("    --out <PATH>                Destination output path or directory");
     println!("    --checkpoint                Force checkpoint signature upon sequencing");
     println!("    --dry-run                   Validate candidate transaction without disk writes");
+    println!("    --require-ots               Fail verification if .ots SHA-256 digest is missing or mismatches");
     println!("    --json                      Machine-readable JSON output");
     println!("    -h, --help                  Print help information");
 }
@@ -176,8 +315,10 @@ fn print_init_usage() {
     println!();
     println!("FLAGS:");
     println!("    --chain-name <NAME>         Human-readable name for the new registry chain");
-    println!("    --authority-key <HEX/SEED>  Seed or private key hex for root authority (generated if omitted)");
-    println!("    --sequencer-key <HEX/SEED>  Seed or private key hex for sequencer (generated if omitted)");
+    println!("    --authority-key <HEX>       64-hex private key for root authority (generated if omitted)");
+    println!(
+        "    --sequencer-key <HEX>       64-hex private key for sequencer (generated if omitted)"
+    );
     println!("    --out <DIR>                 Target directory for events.jsonl and manifest.json (default: . or ./regtest)");
     println!("    --regtest                   Bootstrap an isolated regtest chain with test participants and keys");
     println!("    --json                      Machine-readable JSON output");
@@ -213,7 +354,9 @@ fn print_sequence_tx_usage() {
     println!("    --input <PATH>              Candidate transaction file or '-' for stdin");
     println!("    --log <PATH>                Path to events.jsonl (defaults to events.jsonl)");
     println!("    --chain-id <HEX>            Expected registry domain chain_id (32 bytes hex)");
-    println!("    --key <SEED/HEX>            Sequencer private key for signing checkpoints");
+    println!(
+        "    --key <HEX>                 Sequencer 64-hex private key for signing checkpoints"
+    );
     println!("    --keystore <FILE.gmkey>     Passphrase-protected sequencer keystore");
     println!(
         "    --passphrase <PASS>         Passphrase to decrypt keystore (or GM_PASSPHRASE env)"
@@ -427,7 +570,19 @@ fn handle_keygen(args: &[String]) -> Result<()> {
     }
 
     let (kp, seed_str) = match seed {
-        Some(s) => (Keypair::from_seed_str(&s), s),
+        Some(s) => {
+            #[cfg(feature = "demo-keys")]
+            {
+                (Keypair::from_seed_str(&s), s)
+            }
+            #[cfg(not(feature = "demo-keys"))]
+            {
+                let _ = s;
+                bail!(
+                    "--seed derivation is disabled outside demo-keys builds because string seeds produce publicly forgeable secret keys. Run `grey-misnomer-cli keygen` without --seed to generate a random keypair via OS CSPRNG."
+                );
+            }
+        }
         None => {
             let kp = Keypair::generate();
             let hex_seed = hex::encode(kp.signing_key.to_bytes());
@@ -738,6 +893,7 @@ fn handle_status(args: &[String]) -> Result<()> {
     }
 
     let content = fs::read_to_string(&resolved_path)?;
+    let log_ots = inspect_ots_sidecar(&resolved_path, content.as_bytes());
     let summary = replay_log_with_anchor(content.lines(), None)
         .map_err(|e| anyhow::anyhow!("Ledger verification error: {e}"))?;
 
@@ -797,6 +953,9 @@ fn handle_status(args: &[String]) -> Result<()> {
             retired_credits,
             total_batches: summary.batches_count,
             latest_checkpoint,
+            ots_status: log_ots.status.clone(),
+            ots_digest_matches: log_ots.digest_matches,
+            ots_bitcoin_blocks: log_ots.bitcoin_blocks.clone(),
             invariants_passed: summary.invariant_report.all_passed,
         };
         println!("{}", serde_json::to_string_pretty(&out)?);
@@ -836,6 +995,7 @@ fn handle_status(args: &[String]) -> Result<()> {
         } else {
             println!("  Checkpoint Head:  [None yet]");
         }
+        println!("  Bitcoin Anchor:   {}", format_ots_human_status(&log_ots));
         println!(
             "  Invariants:       {}",
             if summary.invariant_report.all_passed {
@@ -1439,6 +1599,7 @@ fn handle_sequence_tx(args: &[String]) -> Result<()> {
 
 fn handle_replay(args: &[String]) -> Result<()> {
     let mut json_output = false;
+    let mut require_ots = false;
     let mut log_path: Option<PathBuf> = None;
     let mut expected_chain_id_hex: Option<String> = None;
     let mut checkpoints_dir: Option<PathBuf> = None;
@@ -1447,6 +1608,7 @@ fn handle_replay(args: &[String]) -> Result<()> {
     while i < args.len() {
         match args[i].as_str() {
             "--json" => json_output = true,
+            "--require-ots" => require_ots = true,
             "--chain-id" => {
                 i += 1;
                 if i < args.len() {
@@ -1487,6 +1649,7 @@ fn handle_replay(args: &[String]) -> Result<()> {
 
     let content = fs::read_to_string(&resolved_path)
         .with_context(|| format!("Failed to read {}", resolved_path.display()))?;
+    let log_ots = inspect_ots_sidecar(&resolved_path, content.as_bytes());
 
     let expected_chain_id = expected_chain_id_hex
         .as_deref()
@@ -1527,9 +1690,8 @@ fn handle_replay(args: &[String]) -> Result<()> {
                 let file_path = entry.path();
                 let cp_str = fs::read_to_string(&file_path)?;
                 if let Ok(cp) = Checkpoint::from_json(&cp_str) {
-                    let ots_path = file_path.with_extension("json.ots");
-                    let ots_present = ots_path.exists();
-                    cp_list.push((file_path.display().to_string(), cp, ots_present));
+                    let ots_report = inspect_ots_sidecar(&file_path, cp_str.as_bytes());
+                    cp_list.push((file_path.display().to_string(), cp, ots_report));
                 }
             }
         }
@@ -1557,14 +1719,18 @@ fn handle_replay(args: &[String]) -> Result<()> {
             &chain_id_bytes,
         ) {
             Ok(_) => {
-                for (file_str, cp, ots_present) in &cp_list {
+                for (file_str, cp, ots_report) in &cp_list {
                     checkpoint_reports.push(CheckpointCliReport {
                         file: file_str.clone(),
                         size: cp.size,
                         head_hash: hex::encode(cp.head_hash),
                         timestamp: cp.timestamp,
                         sequencer_verified: true,
-                        ots_proof_present: *ots_present,
+                        ots_proof_present: ots_report.proof_present,
+                        ots_digest_matches: ots_report.digest_matches,
+                        ots_status: ots_report.status.clone(),
+                        ots_bitcoin_blocks: ots_report.bitcoin_blocks.clone(),
+                        ots_error: ots_report.error.clone(),
                     });
                 }
             }
@@ -1576,18 +1742,34 @@ fn handle_replay(args: &[String]) -> Result<()> {
         }
     }
 
-    let all_passed = summary.invariant_report.all_passed;
+    let ots_ok = if require_ots {
+        log_ots.digest_matches
+            && checkpoint_reports
+                .iter()
+                .all(|cp| !cp.ots_proof_present || cp.ots_digest_matches)
+    } else {
+        true
+    };
+    let all_passed = summary.invariant_report.all_passed && ots_ok;
 
     if json_output {
         let full_report = CliReplayFullReport {
             log_path: resolved_path.display().to_string(),
             summary,
+            log_ots,
             checkpoints: checkpoint_reports,
             all_passed,
         };
         println!("{}", serde_json::to_string_pretty(&full_report)?);
     } else {
-        print_full_report(&resolved_path, &summary, &checkpoint_reports);
+        print_full_report(
+            &resolved_path,
+            &summary,
+            &log_ots,
+            &checkpoint_reports,
+            require_ots,
+            ots_ok,
+        );
     }
 
     if all_passed {
@@ -1597,7 +1779,14 @@ fn handle_replay(args: &[String]) -> Result<()> {
     }
 }
 
-fn print_full_report(path: &Path, summary: &ReplaySummary, checkpoints: &[CheckpointCliReport]) {
+fn print_full_report(
+    path: &Path,
+    summary: &ReplaySummary,
+    log_ots: &OtsCliReport,
+    checkpoints: &[CheckpointCliReport],
+    require_ots: bool,
+    ots_ok: bool,
+) {
     println!();
     println!("══════════════════════════════════════════════════════════════════════");
     println!("   GreyMisnomer Protocol — Cryptographic Audit Report (RFC-005)       ");
@@ -1676,13 +1865,36 @@ fn print_full_report(path: &Path, summary: &ReplaySummary, checkpoints: &[Checkp
     );
     println!();
 
+    println!("── OpenTimestamps Log Anchor (RFC-005) ──────────────────────────────");
+    println!(" Log Proof Status:  {}", format_ots_human_status(log_ots));
+    if let Some(ref path_str) = log_ots.proof_path {
+        println!(" Proof File:        {path_str}");
+    }
+    println!();
+
     if !checkpoints.is_empty() {
         println!("── Signed Checkpoints & Bitcoin Anchors (RFC-005 §3.7) ─────────────");
         for cp in checkpoints {
-            let ots_indicator = if cp.ots_proof_present {
-                " [OTS: Bitcoin-Anchored ✅]"
-            } else {
-                " [OTS: Pending]"
+            let ots_indicator = match cp.ots_status.as_str() {
+                "bitcoin-anchored" if cp.ots_digest_matches => {
+                    let blocks: Vec<String> = cp
+                        .ots_bitcoin_blocks
+                        .iter()
+                        .map(ToString::to_string)
+                        .collect();
+                    format!(
+                        " [OTS: Bitcoin-Anchored ✅ (BTC block(s): {})]",
+                        blocks.join(", ")
+                    )
+                }
+                "pending" if cp.ots_digest_matches => {
+                    " [OTS: Calendar Pending ⏳ (digest matches)]".to_string()
+                }
+                "digest-mismatch" => {
+                    " [OTS: ❌ DIGEST MISMATCH — proof does not match checkpoint]".to_string()
+                }
+                "malformed" => " [OTS: ❌ MALFORMED PROOF]".to_string(),
+                _ => " [OTS: No proof file]".to_string(),
             };
             println!(
                 "  [PASS] Size {}: {} (Sequencer Verified){}",
@@ -1694,10 +1906,14 @@ fn print_full_report(path: &Path, summary: &ReplaySummary, checkpoints: &[Checkp
         println!();
     }
 
-    if summary.invariant_report.all_passed {
+    if summary.invariant_report.all_passed && ots_ok {
         println!(" VERDICT: ✅ ALL PROTOCOL & AUTHORIZATION INVARIANTS SATISFIED");
-    } else {
+    } else if !summary.invariant_report.all_passed {
         println!(" VERDICT: ❌ INVARIANT CHECKS FAILED");
+    } else if require_ots && !ots_ok {
+        println!(
+            " VERDICT: ❌ --require-ots FAILED (missing or mismatched .ots SHA-256 commitment)"
+        );
     }
     println!("══════════════════════════════════════════════════════════════════════");
     println!();

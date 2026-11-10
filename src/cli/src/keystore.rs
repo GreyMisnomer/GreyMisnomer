@@ -213,7 +213,7 @@ pub fn encrypt_gmkey(
     })
 }
 
-/// Helper to load a `Keypair` either from a raw `--key <HEX/SEED>` flag
+/// Helper to load a `Keypair` either from a raw `--key <HEX>` flag
 /// or from a `--keystore <FILE.gmkey>` with `--passphrase <PASS>` / `GM_PASSPHRASE` env.
 pub fn resolve_keypair(
     key_opt: Option<&str>,
@@ -252,10 +252,17 @@ pub fn resolve_keypair(
                 }
             }
         }
-        return Ok(Keypair::from_seed_str(key_str));
+        #[cfg(feature = "demo-keys")]
+        {
+            return Ok(Keypair::from_seed_str(key_str));
+        }
+        #[cfg(not(feature = "demo-keys"))]
+        bail!(
+            "Invalid --key format: expected 64-character hex private key (or --keystore <FILE.gmkey> --passphrase <PASS>). Arbitrary string seed derivation is disabled outside demo-keys builds."
+        );
     }
 
-    bail!("No signing key provided. Specify --key <SEED/HEX> or --keystore <FILE.gmkey> --passphrase <PASS>")
+    bail!("No signing key provided. Specify --key <HEX> or --keystore <FILE.gmkey> --passphrase <PASS>")
 }
 
 #[cfg(test)]
@@ -288,5 +295,23 @@ mod tests {
             }
             Ok(_) => panic!("Expected decryption error for wrong password"),
         }
+    }
+
+    #[cfg(not(feature = "demo-keys"))]
+    #[test]
+    fn test_resolve_keypair_rejects_public_seed_strings_by_default() {
+        let res = resolve_keypair(Some("authority-demo-key-2026"), None, None);
+        assert!(
+            res.is_err(),
+            "arbitrary non-hex seed strings must be rejected in default builds"
+        );
+    }
+
+    #[test]
+    fn test_csprng_keypair_generate_is_unique() {
+        let a = Keypair::generate();
+        let b = Keypair::generate();
+        assert_ne!(a.pubkey(), b.pubkey());
+        assert_ne!(a.secret_hex(), b.secret_hex());
     }
 }

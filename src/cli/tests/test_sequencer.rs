@@ -92,9 +92,13 @@ fn test_cli_sequence_tx_lifecycle_and_invariants() {
     assert_eq!(summary.events_count, 5);
     let chain_id = summary.state.chain_id;
 
-    // Current owner of CC-IN-SOLAR-2026-001 is Infosys:
-    // Keypair from seed "infosys-corporate-buyer-2026"
-    let infosys = Keypair::from_seed_str("infosys-corporate-buyer-2026");
+    // Current owner of CC-IN-SOLAR-2026-001 in committed events.jsonl is Infosys
+    let infosys = resolve_keypair(
+        Some("0f40aafb63d6f2157cef51206b800cc8142fd8204d0bd075d205555129bc7f3b"),
+        None,
+        None,
+    )
+    .expect("valid infosys fixture hex key");
     let batch = summary
         .state
         .get_credit("CC-IN-SOLAR-2026-001")
@@ -279,8 +283,13 @@ fn test_cli_sequence_tx_with_keystore_checkpoint() {
     let summary = replay_log_str(&original_log).expect("replay original log");
     let chain_id = summary.state.chain_id;
 
-    // Encrypt sequencer keypair into a .gmkey
-    let sequencer = Keypair::from_seed_str("sequencer-demo-key-2026");
+    // Encrypt committed sequencer fixture keypair into a .gmkey
+    let sequencer = resolve_keypair(
+        Some("5639156043909ee807959732549ed904b628d8e3deec39b741f2e933320e1f9a"),
+        None,
+        None,
+    )
+    .expect("valid sequencer fixture hex key");
     assert_eq!(summary.state.sequencer, sequencer.pubkey());
 
     let pass = "AutonomousSequencer2026!";
@@ -293,7 +302,12 @@ fn test_cli_sequence_tx_with_keystore_checkpoint() {
     .unwrap();
 
     // Prepare valid candidate transaction signed by Infosys (op_index 2)
-    let infosys = Keypair::from_seed_str("infosys-corporate-buyer-2026");
+    let infosys = resolve_keypair(
+        Some("0f40aafb63d6f2157cef51206b800cc8142fd8204d0bd075d205555129bc7f3b"),
+        None,
+        None,
+    )
+    .expect("valid infosys fixture hex key");
     let recipient = Keypair::generate();
     let transfer_msg =
         build_transfer_preimage(&chain_id, "CC-IN-SOLAR-2026-001", 2, &recipient.pubkey());
@@ -425,6 +439,80 @@ fn test_cli_init_and_status() {
     assert!(status_stdout.contains("\"chain_valid\": true"));
     assert!(status_stdout.contains("\"log_size\": 2"));
     assert!(status_stdout.contains("\"invariants_passed\": true"));
+
+    let _ = fs::remove_dir_all(&temp_dir);
+}
+
+#[test]
+fn test_cli_ots_digest_verification_and_require_ots_flag() {
+    let cli_bin = get_cli_bin();
+    let log_path = get_events_jsonl_path();
+
+    // 1. Committed events.jsonl vs stale events.jsonl.ots must NEVER report Bitcoin-Anchored ✅
+    let replay_out = Command::new(&cli_bin)
+        .arg("replay")
+        .arg(&log_path)
+        .arg("--json")
+        .output()
+        .expect("run cli replay");
+    assert!(replay_out.status.success());
+    let json: serde_json::Value =
+        serde_json::from_slice(&replay_out.stdout).expect("valid replay json");
+    assert_eq!(json["log_ots"]["proof_present"], true);
+    assert_eq!(json["log_ots"]["digest_matches"], false);
+    assert_eq!(json["log_ots"]["status"], "digest-mismatch");
+
+    // 2. --require-ots must exit non-zero on stale .ots proof
+    let strict_fail = Command::new(&cli_bin)
+        .arg("replay")
+        .arg(&log_path)
+        .arg("--require-ots")
+        .output()
+        .expect("run cli replay --require-ots");
+    assert!(
+        !strict_fail.status.success(),
+        "--require-ots must fail on stale .ots proof"
+    );
+
+    // 3. Synthetic matching .ots proof passes --require-ots
+    let temp_dir = std::env::temp_dir().join(format!("gm_test_ots_{}", std::process::id()));
+    let _ = fs::remove_dir_all(&temp_dir);
+    fs::create_dir_all(&temp_dir).unwrap();
+    let temp_log = temp_dir.join("events.jsonl");
+    let raw_events = fs::read(&log_path).unwrap();
+    fs::write(&temp_log, &raw_events).unwrap();
+
+    use sha2::{Digest, Sha256};
+    let digest = Sha256::digest(&raw_events);
+    let mut synthetic_ots = Vec::new();
+    synthetic_ots.extend_from_slice(&grey_misnomer_core::ots::OTS_HEADER_MAGIC);
+    synthetic_ots.push(1); // version 1
+    synthetic_ots.push(0x08); // OP_SHA256
+    synthetic_ots.extend_from_slice(&digest);
+    synthetic_ots.push(0x00); // OP_ATTESTATION
+    synthetic_ots.extend_from_slice(&grey_misnomer_core::ots::BITCOIN_ATTESTATION_TAG);
+    synthetic_ots.push(3); // varbytes payload len (height 972000 -> 3 bytes LEB128)
+                           // 972000 = 0xED4E0 -> LEB128: [0xe0, 0xa9, 0x3b]
+    synthetic_ots.extend_from_slice(&[0xe0, 0xa9, 0x3b]);
+    fs::write(temp_dir.join("events.jsonl.ots"), synthetic_ots).unwrap();
+
+    let strict_pass = Command::new(&cli_bin)
+        .arg("replay")
+        .arg(&temp_log)
+        .arg("--require-ots")
+        .arg("--json")
+        .output()
+        .expect("run cli replay --require-ots on valid synthetic ots");
+    assert!(
+        strict_pass.status.success(),
+        "--require-ots failed unexpectedly: {}",
+        String::from_utf8_lossy(&strict_pass.stderr)
+    );
+    let pass_json: serde_json::Value =
+        serde_json::from_slice(&strict_pass.stdout).expect("valid json");
+    assert_eq!(pass_json["log_ots"]["digest_matches"], true);
+    assert_eq!(pass_json["log_ots"]["status"], "bitcoin-anchored");
+    assert_eq!(pass_json["log_ots"]["bitcoin_blocks"][0], 972000);
 
     let _ = fs::remove_dir_all(&temp_dir);
 }

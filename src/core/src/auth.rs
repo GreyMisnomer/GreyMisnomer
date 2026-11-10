@@ -192,24 +192,24 @@ impl Keypair {
         }
     }
 
+    /// Deterministically derive a keypair from a seed string.
+    /// Restricted to tests and the explicit `demo-keys` feature because
+    /// public seed strings produce publicly forgeable secret keys.
+    #[cfg(any(test, feature = "demo-keys"))]
     pub fn from_seed_str(seed: &str) -> Self {
         let hash = blake3::hash(seed.as_bytes());
         Self::from_bytes(hash.as_bytes())
     }
 
+    /// Generate a cryptographically random keypair using the OS CSPRNG
+    /// (or WebCrypto in WASM via `getrandom`).
     pub fn generate() -> Self {
-        use std::sync::atomic::{AtomicU64, Ordering};
-        static COUNTER: AtomicU64 = AtomicU64::new(1);
-        let count = COUNTER.fetch_add(1, Ordering::SeqCst);
-        let time = std::time::SystemTime::now()
-            .duration_since(std::time::UNIX_EPOCH)
-            .map(|d| d.as_nanos())
-            .unwrap_or(0);
-        let mut hasher = blake3::Hasher::new();
-        hasher.update(&count.to_be_bytes());
-        hasher.update(&time.to_be_bytes());
-        let hash = hasher.finalize();
-        Self::from_bytes(hash.as_bytes())
+        let mut secret = [0u8; 32];
+        getrandom::getrandom(&mut secret)
+            .expect("OS CSPRNG unavailable: cannot safely generate Ed25519 keypair");
+        let kp = Self::from_bytes(&secret);
+        secret.fill(0);
+        kp
     }
 
     pub fn pubkey(&self) -> PubKey {

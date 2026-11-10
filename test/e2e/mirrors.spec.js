@@ -29,6 +29,12 @@ test.describe('RFC-006 Decentralized Multi-Mirror Verification & Gateway Failove
 
     const equivocationStatus = page.locator('#mirrorEquivocationStatus');
     await expect(equivocationStatus).toContainText('No Split-View');
+
+    // Verify OpenTimestamps proof check compares real SHA-256 digests and flags stale events.jsonl.ots
+    const otsStatus = page.locator('#otsStatusText');
+    await expect(otsStatus).toContainText('Digest Mismatch / Stale Proof', { timeout: 10000 });
+    await expect(otsStatus).toContainText('571e3f633093');
+    await expect(otsStatus).toContainText('54b2a0346481');
   });
 
   test('Simulated Origin failure triggers automatic fallback and reports mirror source', async ({ page }) => {

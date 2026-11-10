@@ -784,7 +784,10 @@ fn apply_burn_in_place(
 
     // Commit validated mutation in-place
     state.credits[idx] = staged_batch;
-    state.indices.active_ranges.remove(&target_slice.range.start);
+    state
+        .indices
+        .active_ranges
+        .remove(&target_slice.range.start);
     for r in remainders {
         state.indices.active_ranges.insert(r.start, r.end);
     }
@@ -1280,9 +1283,11 @@ impl Registry {
         };
         let burn_range = SerialRange::new(*range_start, *range_end)?;
         let (old_project_id, old_owner) = {
-            let old_batch = self.get_credit(credit_id).ok_or_else(|| RegistryError::NotFound {
-                id: credit_id.clone(),
-            })?;
+            let old_batch = self
+                .get_credit(credit_id)
+                .ok_or_else(|| RegistryError::NotFound {
+                    id: credit_id.clone(),
+                })?;
             (old_batch.project_id.clone(), old_batch.owner)
         };
 

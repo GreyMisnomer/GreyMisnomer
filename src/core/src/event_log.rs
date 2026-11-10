@@ -524,10 +524,12 @@ where
         }
 
         // 4. Apply state transition in place (zero whole-state clone)
-        apply_in_place(&mut state, &entry.event).map_err(|e| ReplayError::StateTransitionError {
-            line: line_num,
-            seq: entry.seq,
-            error: e,
+        apply_in_place(&mut state, &entry.event).map_err(|e| {
+            ReplayError::StateTransitionError {
+                line: line_num,
+                seq: entry.seq,
+                error: e,
+            }
         })?;
 
         // 5. If genesis, verify against expected chain_id anchor if provided

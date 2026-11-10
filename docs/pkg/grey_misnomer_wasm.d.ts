@@ -121,6 +121,12 @@ export function verify_checkpoint(checkpoint_json: string, sequencer_pubkey_hex:
  */
 export function verify_inclusion(records_json: string, index: number, root_hex: string): string;
 
+/**
+ * Verify an OpenTimestamps `.ots` binary proof against target bytes and return JSON metadata
+ * (`OtsProofReport`: `attested_sha256`, `actual_sha256`, `digest_matches`, `bitcoin_blocks`, `pending_calendars`).
+ */
+export function verify_ots_wasm(ots_bytes: Uint8Array, target_bytes: Uint8Array): string;
+
 export type InitInput = RequestInfo | URL | Response | BufferSource | WebAssembly.Module;
 
 export interface InitOutput {
@@ -137,6 +143,7 @@ export interface InitOutput {
     readonly simulate_apply_wasm: (a: number, b: number, c: number, d: number) => [number, number, number, number];
     readonly verify_checkpoint: (a: number, b: number, c: number, d: number) => [number, number, number];
     readonly verify_inclusion: (a: number, b: number, c: number, d: number, e: number) => [number, number, number, number];
+    readonly verify_ots_wasm: (a: number, b: number, c: number, d: number) => [number, number, number, number];
     readonly wasmregistry_authority: (a: number) => [number, number];
     readonly wasmregistry_batch_state: (a: number, b: number, c: number) => [number, number, number, number];
     readonly wasmregistry_burn: (a: number, b: number, c: number) => [number, number, number, number];

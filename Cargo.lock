@@ -319,9 +319,11 @@ dependencies = [
  "anyhow",
  "blake3",
  "ed25519-dalek",
+ "getrandom",
  "hex",
  "serde",
  "serde_json",
+ "sha2",
  "thiserror",
 ]
 

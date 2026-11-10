@@ -295,7 +295,7 @@ impl WasmRegistry {
                 return (pk, kp.clone());
             }
         }
-        let kp = Keypair::from_seed_str(owner_str);
+        let kp = Keypair::generate();
         let pk = kp.pubkey();
         self.owner_keys.insert(pk, kp.clone());
         self.wallet_aliases.insert(owner_str.to_string(), pk);
@@ -315,9 +315,9 @@ impl WasmRegistry {
 impl WasmRegistry {
     #[wasm_bindgen(constructor)]
     pub fn new() -> WasmRegistry {
-        let authority_key = Keypair::from_seed_str("wasm-demo-authority-seed-00000000");
-        let sequencer_key = Keypair::from_seed_str("wasm-demo-sequencer-seed-00000000");
-        let vvb_key = Keypair::from_seed_str("wasm-demo-vvb-seed-000000000000");
+        let authority_key = Keypair::generate();
+        let sequencer_key = Keypair::generate();
+        let vvb_key = Keypair::generate();
 
         let mut inner = Registry::new();
         let nonce = [42u8; 32];
@@ -1260,6 +1260,15 @@ pub fn simulate_apply_wasm(events_jsonl: &str, event_json: &str) -> Result<Strin
     serde_json::to_string(&res).map_err(js_err)
 }
 
+/// Verify an OpenTimestamps `.ots` binary proof against target bytes and return JSON metadata
+/// (`OtsProofReport`: `attested_sha256`, `actual_sha256`, `digest_matches`, `bitcoin_blocks`, `pending_calendars`).
+#[wasm_bindgen]
+pub fn verify_ots_wasm(ots_bytes: &[u8], target_bytes: &[u8]) -> Result<String, JsValue> {
+    let report = grey_misnomer_core::ots::parse_ots_proof(ots_bytes, target_bytes)
+        .map_err(|e| js_err(format!("OTS parse error: {e}")))?;
+    serde_json::to_string(&report).map_err(js_err)
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -1284,10 +1293,14 @@ mod tests {
         let summary: serde_json::Value = serde_json::from_str(&summary_json).unwrap();
         let chain_id = summary["state"]["chain_id"].as_str().unwrap();
 
-        // Infosys key is the current owner with op_index 2
-        let infosys =
-            grey_misnomer_core::auth::Keypair::from_seed_str("infosys-corporate-buyer-2026");
-        let bob = grey_misnomer_core::auth::Keypair::from_seed_str("bob-recipient-key");
+        // Infosys fixture key from committed events.jsonl (op_index 2)
+        let infosys_bytes: [u8; 32] = [
+            0x0f, 0x40, 0xaa, 0xfb, 0x63, 0xd6, 0xf2, 0x15, 0x7c, 0xef, 0x51, 0x20, 0x6b, 0x80,
+            0x0c, 0xc8, 0x14, 0x2f, 0xd8, 0x20, 0x4d, 0x0b, 0xd0, 0x75, 0xd2, 0x05, 0x55, 0x51,
+            0x29, 0xbc, 0x7f, 0x3b,
+        ];
+        let infosys = grey_misnomer_core::auth::Keypair::from_bytes(&infosys_bytes);
+        let bob = grey_misnomer_core::auth::Keypair::generate();
 
         let transfer_params = serde_json::json!({
             "chain_id": chain_id,
@@ -1332,5 +1345,23 @@ mod tests {
             .as_str()
             .unwrap()
             .contains("operation index mismatch"));
+    }
+
+    #[test]
+    fn test_wasm_verify_ots_detects_stale_digest_mismatch() {
+        let ots_bytes = include_bytes!("../../../events.jsonl.ots");
+        let events_bytes = include_bytes!("../../../events.jsonl");
+        let report_json =
+            verify_ots_wasm(ots_bytes, events_bytes).expect("valid ots must parse in wasm");
+        let report: serde_json::Value = serde_json::from_str(&report_json).unwrap();
+        assert_eq!(report["digest_matches"], false);
+        assert_eq!(
+            report["attested_sha256"],
+            "571e3f633093538496842c7f995dc9a13dde4886bdf38bdc34202a2aa1f6a4af"
+        );
+        assert_eq!(
+            report["bitcoin_blocks"],
+            serde_json::json!([971952, 971954, 971961])
+        );
     }
 }
