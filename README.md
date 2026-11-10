@@ -279,9 +279,11 @@ All protocol behavior is specified through RFCs before implementation:
 | [RFC-002](docs/rfc/rfc-002.md) | Credit Serialization Format & Range Locking | ✅ Implemented |
 | [RFC-003](docs/rfc/rfc-003.md) | MRV Data Commitment & Merkle Root Format | ✅ Implemented |
 | [RFC-004](docs/rfc/rfc-004.md) | Canonical Event Log Schema & Hash Chain Replayer | ✅ Implemented |
-| [RFC-005](docs/rfc/rfc-005.md) | Cryptographic Identity & Signed Events Specification | 📋 Proposed (Stage 1.5) |
+| [RFC-005](docs/rfc/rfc-005.md) | Cryptographic Identity & Signed Events Specification | ✅ Implemented (Stage 1.5) |
+| [RFC-006](docs/rfc/rfc-006.md) | Sovereign Distributed Ledger & Multi-Mirror Publishing | ✅ Implemented (Stage 2–3) |
+| [RFC-GM-002](docs/SOVEREIGN_PROTOCOL_EVOLUTION.md) | **v2.0 Sovereign P2P Evolution (`greymisnomerd`, UCO, FROST BFT, zkVM)** | 📋 Blueprint (Stages 4–6) |
 
-> New features require an accepted RFC before code is written. See the [RFC template](docs/rfc/rfc-template.md) to propose a new specification.
+> New features require an accepted RFC before code is written. See the [RFC template](docs/rfc/rfc-template.md) to propose a new specification (`RFC-007+`).
 
 ---
 
@@ -290,6 +292,7 @@ All protocol behavior is specified through RFCs before implementation:
 | Resource | Link |
 |----------|------|
 | **Live Platform** | [greymisnomer.github.io/GreyMisnomer](https://greymisnomer.github.io/GreyMisnomer/) |
+| **v2.0 P2P Architecture Blueprint** | [RFC-GM-002: Sovereign Protocol Evolution](docs/SOVEREIGN_PROTOCOL_EVOLUTION.md) |
 | **Whitepaper** | [Design Document v2](architecture/design_document_v2.pdf) |
 | **Q&A Document** | [Questions & Answers](architecture/qna_document_v1.pdf) |
 | **Architecture Diagrams** | [architecture/diagrams/](architecture/diagrams/) |

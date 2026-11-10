@@ -2,10 +2,10 @@
 
 **Document Identifier:** RFC-GM-002  
 **Author:** Prabhat Vilas Karlekar  
-**Current Baseline Version:** GreyMisnomer 1.3.0  
-**Target Architecture:** GreyMisnomer 2.0 (Stages 4–6)  
+**Current Baseline Version:** GreyMisnomer 1.3.0 (`RFC-001` – `RFC-006`)  
+**Target Architecture:** GreyMisnomer 2.0 (Stages 4–6; implementation sub-specs authored as `RFC-007+` in [`docs/rfc/`](rfc/))  
 **Status:** Architectural Blueprint & Protocol Specification  
-**Canonical Master Copy:** `GreyMisnomer_r1/09_SOVEREIGN_PROTOCOL_EVOLUTION.md`
+**Companion Design Workspace:** `GreyMisnomer_r1/09_SOVEREIGN_PROTOCOL_EVOLUTION.md` (deep-dive narrative companion)
 
 ---
 
@@ -64,7 +64,7 @@ To graduate from a Certificate Transparency model (analogous to Google Trillian 
 | **6. State Scalability** | Indexed UTXO chainstate database (LevelDB) | Full flat-file sequential parse (`events.jsonl`)| Browser WASM RAM exhaustion at high event counts | Embedded pure-Rust copy-on-write DB (`redb`) |
 | **7. Asset Origin Truth** | Native closed-loop mathematical currency | Single auditor signature at issuance | Fraudulent physical claims immortalized on-chain | Multi-oracle quorum, satellite telemetry & slashing |
 
-*(See [09_SOVEREIGN_PROTOCOL_EVOLUTION.md](../../GreyMisnomer_r1/09_SOVEREIGN_PROTOCOL_EVOLUTION.md) for full subsection analyses).*
+*(For expanded prose analyses of Sections 2.1–2.7, see the companion planning document `GreyMisnomer_r1/09_SOVEREIGN_PROTOCOL_EVOLUTION.md`.)*
 
 ---
 
@@ -103,11 +103,45 @@ From a strict monetary economics and protocol engineering standpoint, **raw carb
 ```
 
 ### 4.1 Layer 1: Pure Verification Engine & UTXO State Machine (`grey-misnomer-core`)
-* Pure, deterministic, zero-I/O Rust library compiling to native, WebAssembly, C-FFI, and UniFFI mobile targets. Quantities are strictly 64-bit unsigned integer kilograms ($\text{kgCO}_2\text{e}$).
-* **Carbon UTXO Model:**
+* Pure, deterministic, zero-I/O Rust library compiling to native, WebAssembly, C-FFI, and UniFFI mobile targets. All floating-point operations remain prohibited; quantities preserve v1.3.0's exact integer precision (`MICRO_UNITS_PER_CREDIT = 1_000_000`, where $1\text{ credit} = 1\text{ tCO}_2\text{e} = 1,000\text{ kg} = 1,000,000\text{ micro-units}$, i.e., $1\text{ gCO}_2\text{e}$ resolution).
+* **Carbon UTXO Model (Unretired Credit Outputs — UCOs):**
+  ```rust
+  #[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord, Serialize, Deserialize)]
+  pub struct OutPoint {
+      pub txid: [u8; 32], // BLAKE3 hash of parent issuance or transfer event
+      pub vout: u32,      // Output index in the event payload
+  }
+
+  #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+  pub struct UnretiredCreditOutput {
+      pub outpoint: OutPoint,
+      pub credit_id: String,
+      pub range_start: u64,
+      pub range_end: u64,
+      pub micro_units: u64,   // 1 tCO2e (1,000 kg) = 1,000,000 micro-units (1 gCO2e)
+      pub owner: PubKey,
+      pub op_index: u64,
+      pub project_id: String,
+      pub methodology_hash: [u8; 32],
+      pub mrv_data_root: [u8; 32],
+  }
+
+  pub struct ProofOfOffsetCommitment {
+      pub consumed_outpoint: OutPoint,
+      pub credit_id: String,
+      pub range_start: u64,
+      pub range_end: u64,
+      pub micro_units: u64,
+      pub beneficiary: String,
+      pub claim_type: ClaimType,
+      pub retirement_time: u64,
+      pub owner_sig: Signature,
+  }
+  ```
   * `Mint (PoI)` $\to$ Produces Unretired Credit Outputs (UCOs) bound to serialized ranges $[start, end]$ and MRV roots.
-  * `Split/Transfer` $\to$ Consumes input UCOs and creates new disjoint UCOs ($\sum In == \sum Out$).
-  * `Burn (PoO)` $\to$ Consumes UCO into a provably unspendable burn commitment with beneficiary identity and claim scope.
+  * `Split/Transfer` $\to$ Consumes input UCOs and creates new disjoint UCOs ($\sum In.\text{micro\_units} == \sum Out.\text{micro\_units}$).
+  * `Burn (PoO)` $\to$ Consumes UCO into a provably unspendable `ProofOfOffsetCommitment` with beneficiary identity and claim scope.
+* **v1.3.0 → v2.0 Migration Continuity:** A deterministic genesis converter replays v1.3.0 `events.jsonl`, converting every active `SerialSlice` across `CreditBatch` records into a genesis v2.0 `UnretiredCreditOutput` while seeding `burned_serials` and `used_data_roots` in `redb` so no existing credits or Bitcoin `.ots` proofs are ever invalidated.
 
 ### 4.2 Layer 2: Peer-to-Peer Full Node Daemon (`greymisnomerd`)
 * **Dedicated Network Ports:**
@@ -192,6 +226,16 @@ From a strict monetary economics and protocol engineering standpoint, **raw carb
 └────────────────────────────────────────────────────────────────────────┘
 ```
 
+### 6.1 Zero-Protocol-Budget Model ($0 Central SaaS, Operator-Run Nodes)
+Every crate and SDK used across Stages 4–6 (`redb`, `axum`, `rust-libp2p`, `iroh`, `frost-ed25519`, `Tauri v2`, `UniFFI`, `SP1`/`RISC Zero`) is open-source software costing **$0**. Like Bitcoin Core (`bitcoind`), GreyMisnomer pays zero central cloud or server bills; node operators, developers, and institutional regulators execute `greymisnomerd` on their own machines or sovereign infrastructure.
+
 ---
 
-*For full line-by-line analyses, mathematical proofs, and comprehensive structural details, refer to the master specification: [GreyMisnomer_r1/09_SOVEREIGN_PROTOCOL_EVOLUTION.md](../../GreyMisnomer_r1/09_SOVEREIGN_PROTOCOL_EVOLUTION.md).*
+## 7. Document Charter & Engineering Commitment
+
+This specification establishes the official engineering roadmap for GreyMisnomer 2.0. All future protocol RFCs (`RFC-007+` in [`docs/rfc/`](rfc/)), pull requests, crate refactorings, network wire formats, and RPC schemas must adhere to four foundational principles:
+
+1. **Determinism Above All:** Fixed-point integer accounting (`MICRO_UNITS_PER_CREDIT = 1_000_000`), pure state transitions, zero floating-point ambiguities.
+2. **True Sovereignty:** Zero dependence on Web2 hosting (GitHub, AWS, Cloudflare) for network liveness or transaction execution.
+3. **Registry-Market Separation:** Neutral, tamper-proof state machine of physical truth; markets settle externally without a speculative native coin.
+4. **Thermodynamic Finality:** Fast institutional BFT consensus for real-time ordering, anchored irreversibly into Bitcoin's cumulative Proof of Work via OpenTimestamps.
