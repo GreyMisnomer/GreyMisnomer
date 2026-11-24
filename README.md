@@ -58,6 +58,15 @@ docker run -p 8080:8080 ghcr.io/greymisnomer/node:latest
 # Open http://localhost:8080/app.html
 ```
 
+### Option 5: Sovereign Daemon (`greymisnomerd`) & Tauri Desktop App (Stage 4)
+```bash
+# Launch the sovereign daemon on unclaimed port 9482 with redb ACID chainstate
+cargo run -p greymisnomerd -- --rpc-port 9482 --p2p-port 9483
+
+# Launch the desktop workbench sidecar
+cargo run -p grey-misnomer-desktop
+```
+
 ---
 
 ## 🚀 Try it Live
@@ -281,7 +290,7 @@ All protocol behavior is specified through RFCs before implementation:
 | [RFC-004](docs/rfc/rfc-004.md) | Canonical Event Log Schema & Hash Chain Replayer | ✅ Implemented |
 | [RFC-005](docs/rfc/rfc-005.md) | Cryptographic Identity & Signed Events Specification | ✅ Implemented (Stage 1.5) |
 | [RFC-006](docs/rfc/rfc-006.md) | Sovereign Distributed Ledger & Multi-Mirror Publishing | ✅ Implemented (Stage 2–3) |
-| [RFC-007](docs/rfc/rfc-007.md) | **v1.3 Hardening, Hybrid UCO, RFC 9162 Tiles, C2SP Witnesses & MRV Oracles** | 📋 Proposed (Stages 3.5–4) |
+| [RFC-007](docs/rfc/rfc-007.md) | **v1.3 Hardening, Hybrid UCO, RFC 9162 Tiles, C2SP Witnesses, redb Daemon & Tauri Desktop** | ✅ Implemented (Stage 4) |
 | [RFC-GM-002](docs/SOVEREIGN_PROTOCOL_EVOLUTION.md) | **v2.0 Sovereign Protocol Blueprint (`greymisnomerd`, Ports `9482`/`9483`)** | 📋 Blueprint (Stages 3.5–6) |
 
 > New features require an accepted RFC before code is written. See the [RFC template](docs/rfc/rfc-template.md) to propose a new specification (`RFC-008+`).
