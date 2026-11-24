@@ -338,6 +338,7 @@ fn print_status_usage() {
     );
     println!();
     println!("FLAGS:");
+    println!("    --rpc-url [URL]             Query running greymisnomerd node (default: http://127.0.0.1:9482)");
     println!("    --json                      Machine-readable JSON output");
     println!("    -h, --help                  Print help information");
 }
@@ -861,12 +862,24 @@ fn handle_init(args: &[String]) -> Result<()> {
 
 fn handle_status(args: &[String]) -> Result<()> {
     let mut log_path: Option<PathBuf> = None;
+    let mut rpc_url: Option<String> = None;
     let mut json = false;
 
     let mut i = 0;
     while i < args.len() {
         match args[i].as_str() {
             "--json" => json = true,
+            "--rpc-url" => {
+                if i + 1 < args.len() && !args[i + 1].starts_with('-') {
+                    i += 1;
+                    rpc_url = Some(args[i].clone());
+                } else {
+                    rpc_url = Some("http://127.0.0.1:9482".to_string());
+                }
+            }
+            arg if arg.starts_with("--rpc-url=") => {
+                rpc_url = Some(arg.strip_prefix("--rpc-url=").unwrap().to_string());
+            }
             "--log-path" | "--log" => {
                 i += 1;
                 if i < args.len() {
@@ -883,6 +896,10 @@ fn handle_status(args: &[String]) -> Result<()> {
             unknown => bail!("Unknown option for status: {unknown}"),
         }
         i += 1;
+    }
+
+    if let Some(url) = rpc_url {
+        return handle_daemon_rpc_status(&url, json);
     }
 
     let resolved_path = match log_path {
@@ -1008,6 +1025,78 @@ fn handle_status(args: &[String]) -> Result<()> {
         );
         println!("══════════════════════════════════════════════════════════════════════");
     }
+
+    Ok(())
+}
+
+fn handle_daemon_rpc_status(rpc_url: &str, json: bool) -> Result<()> {
+    let clean_url = rpc_url.trim_end_matches('/');
+    let url_without_proto = clean_url.strip_prefix("http://").unwrap_or(clean_url);
+    let mut parts = url_without_proto.split(':');
+    let host = parts.next().unwrap_or("127.0.0.1");
+    let port: u16 = parts.next().and_then(|p| p.parse().ok()).unwrap_or(9482);
+
+    use std::io::{Read, Write};
+    use std::net::TcpStream;
+
+    let mut stream = TcpStream::connect((host, port))
+        .map_err(|e| anyhow::anyhow!("Failed to connect to greymisnomerd at {host}:{port}: {e}"))?;
+
+    let req = format!(
+        "GET /v1/chain/status HTTP/1.1\r\nHost: {host}:{port}\r\nConnection: close\r\n\r\n"
+    );
+    stream.write_all(req.as_bytes())?;
+
+    let mut response = Vec::new();
+    stream.read_to_end(&mut response)?;
+
+    let resp_str = String::from_utf8_lossy(&response);
+    let body = if let Some(idx) = resp_str.find("\r\n\r\n") {
+        &resp_str[idx + 4..]
+    } else {
+        &resp_str
+    };
+
+    let status_val: serde_json::Value = serde_json::from_str(body)
+        .map_err(|e| anyhow::anyhow!("Failed to parse status response: {e}\nRaw: {body}"))?;
+
+    if json {
+        println!("{}", serde_json::to_string_pretty(&status_val)?);
+        return Ok(());
+    }
+
+    println!("══════════════════════════════════════════════════════════════════════════════");
+    println!(
+        "  GreyMisnomer Sovereign Daemon Node Status (Port {})",
+        status_val["rpc_port"].as_u64().unwrap_or(9482)
+    );
+    println!("══════════════════════════════════════════════════════════════════════════════");
+    println!(
+        "  Chain ID:           {}",
+        status_val["chain_id"].as_str().unwrap_or("")
+    );
+    println!(
+        "  Tree Size:          {}",
+        status_val["tree_size"].as_str().unwrap_or("")
+    );
+    println!(
+        "  Current Epoch:      {}",
+        status_val["current_epoch"].as_str().unwrap_or("")
+    );
+    println!(
+        "  Active UCOs:        {}",
+        status_val["active_ucos_count"].as_str().unwrap_or("")
+    );
+    println!(
+        "  Retired PoOs:       {}",
+        status_val["poo_count"].as_str().unwrap_or("")
+    );
+    println!(
+        "  Regtest Mode:       {}",
+        status_val["regtest"].as_bool().unwrap_or(false)
+    );
+    println!("  RPC URL:            {clean_url}");
+    println!("══════════════════════════════════════════════════════════════════════════════");
 
     Ok(())
 }

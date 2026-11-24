@@ -188,21 +188,23 @@ pub fn evaluate_cosign_request(
         }));
     }
 
-    // 3. New extension: verify consistency proof
-    if req.consistency_proof.old_size != bookmark.tree_size
-        || req.consistency_proof.new_size != req.new_size
-    {
-        return Err(RegistryError::InvalidRange);
-    }
+    // 3. New extension: verify consistency proof if extending from non-genesis
+    if bookmark.tree_size > 0 {
+        if req.consistency_proof.old_size != bookmark.tree_size
+            || req.consistency_proof.new_size != req.new_size
+        {
+            return Err(RegistryError::InvalidRange);
+        }
 
-    let is_consistent =
-        verify_consistency(req.consistency_proof, &bookmark.events_root, req.new_root);
-    if !is_consistent {
-        return Err(RegistryError::CheckpointHeadMismatch {
-            size: req.new_size,
-            expected: hex::encode(bookmark.events_root),
-            found: hex::encode(req.new_root),
-        });
+        let is_consistent =
+            verify_consistency(req.consistency_proof, &bookmark.events_root, req.new_root);
+        if !is_consistent {
+            return Err(RegistryError::CheckpointHeadMismatch {
+                size: req.new_size,
+                expected: hex::encode(bookmark.events_root),
+                found: hex::encode(req.new_root),
+            });
+        }
     }
 
     // Valid extension: sign cosignature

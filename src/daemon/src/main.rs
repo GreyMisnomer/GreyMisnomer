@@ -3,18 +3,14 @@
 //! Binds strictly to 127.0.0.1:9482 for authenticated localhost RPC & WebSockets,
 //! while syncing immutable RFC 9162 Merkle tiles from mirrors in the background.
 
-pub mod config;
-pub mod rpc;
-pub mod storage;
-pub mod tile_sync;
-
 use anyhow::Result;
 use clap::Parser;
-use config::DaemonConfig;
-use rpc::{start_rpc_server, AppState};
+use greymisnomerd::config::DaemonConfig;
+use greymisnomerd::rpc::{start_rpc_server, AppState};
+use greymisnomerd::storage::ChainStorage;
+use greymisnomerd::tile_sync;
 use std::collections::BTreeMap;
 use std::fs;
-use storage::ChainStorage;
 use tokio::net::TcpListener;
 use tokio::sync::broadcast;
 use tracing::info;
