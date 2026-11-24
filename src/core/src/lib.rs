@@ -21,7 +21,8 @@ pub mod registry; // Registry state machine — enforces all 7 invariants (RFC-0
 pub mod serial; // SerialRange — fundamental primitive (RFC-002) // MRV data commitment, Merkle tree (RFC-003)
 pub mod spv; // RFC-007: Active unspentness and permanent retirement SPV proofs
 pub mod uco; // RFC-007: Hybrid UCO primitives, OutPoint, ProofOfOffsetCommitment
-pub mod uco_engine; // RFC-007: Pure apply_uco engine, monotonic cursors & partition splits // RFC-007: Hardened MRV oracle quorums, scoped VVBs & buffer pool
+pub mod uco_engine; // RFC-007: Pure apply_uco engine, monotonic cursors & partition splits
+pub mod witness; // RFC-007: C2SP tlog-cosignature witness protocol & verification // RFC-007: Hardened MRV oracle quorums, scoped VVBs & buffer pool
 
 /// 1 credit = 1_000_000 micro-credits (RFC-001 / Phase Alpha integer accounting)
 pub const MICRO_UNITS_PER_CREDIT: u64 = 1_000_000;
