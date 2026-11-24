@@ -4,5 +4,6 @@ members = [
     "src/wasm",
     "src/cli",
     "src/witness",
+    "src/daemon",
 ]
 resolver = "2"
