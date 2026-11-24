@@ -64,6 +64,41 @@ impl std::fmt::Display for OutPoint {
     }
 }
 
+impl std::str::FromStr for OutPoint {
+    type Err = RegistryError;
+
+    fn from_str(s: &str) -> Result<Self, Self::Err> {
+        let mut parts = s.split(':');
+        let txid_hex = parts.next().ok_or_else(|| RegistryError::NotFound {
+            id: s.to_string(),
+        })?;
+        let vout_str = parts.next().ok_or_else(|| RegistryError::NotFound {
+            id: s.to_string(),
+        })?;
+        if parts.next().is_some() {
+            return Err(RegistryError::NotFound {
+                id: s.to_string(),
+            });
+        }
+        let txid_bytes = hex::decode(txid_hex).map_err(|_| RegistryError::NotFound {
+            id: s.to_string(),
+        })?;
+        if txid_bytes.len() != 32 {
+            return Err(RegistryError::NotFound {
+                id: s.to_string(),
+            });
+        }
+        let mut txid = [0u8; 32];
+        txid.copy_from_slice(&txid_bytes);
+
+        let vout: u32 = vout_str.parse().map_err(|_| RegistryError::NotFound {
+            id: s.to_string(),
+        })?;
+
+        Ok(Self::new(txid, vout))
+    }
+}
+
 // ---------------------------------------------------------------------------
 // UnretiredCreditOutput (UCO) — the core v2 "UTXO" with serial intervals
 // ---------------------------------------------------------------------------

@@ -328,10 +328,7 @@ mod tests {
                 // Verify cosignature against witness pubkey
                 let mut keys = BTreeMap::new();
                 keys.insert("witness-ngo-1".to_string(), witness_key.pubkey());
-                assert!(
-                    verify_witness_quorum(note, std::slice::from_ref(&cosignature), &keys, 1)
-                        .is_ok()
-                );
+                assert!(verify_witness_quorum(note, std::slice::from_ref(&cosignature), &keys, 1).is_ok());
 
                 // Test canonical note line format roundtrip
                 let line = cosignature.to_note_line();
