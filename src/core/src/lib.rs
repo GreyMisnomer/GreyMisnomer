@@ -8,6 +8,7 @@ pub mod credit; // CarbonCredit, CreditBatch (RFC-001 + RFC-002)
 pub mod error; // RegistryError — all protocol failure modes
 pub mod event_log; // EventEntry, schema & hash chaining for events.jsonl (RFC-004)
 pub mod manifest; // Canonical Distribution Manifest (RFC-006 §5.2)
+pub mod migrate; // RFC-007: Deterministic v1.3 -> v2.0 test/importer converter
 pub mod mrv;
 pub mod oracle;
 pub mod ots; // OpenTimestamps binary proof & SHA-256 commitment verification
