@@ -38,6 +38,18 @@ pub struct DaemonConfig {
     #[arg(long = "witness-keys", env = "GM_WITNESS_KEYS")]
     pub witness_keys_file: Option<PathBuf>,
 
+    /// Bootstrap peers for P2P wire mesh (can be specified multiple times)
+    #[arg(long = "peer", env = "GM_PEERS")]
+    pub peers: Vec<String>,
+
+    /// Node ID identifier for P2P wire mesh
+    #[arg(long, env = "GM_NODE_ID")]
+    pub node_id: Option<String>,
+
+    /// Enable P2P relay mode
+    #[arg(long, default_value_t = false, env = "GM_RELAY")]
+    pub enable_relay: bool,
+
     /// Run in isolated local regtest mode
     #[arg(long, default_value_t = false)]
     pub regtest: bool,
@@ -51,6 +63,9 @@ impl Default for DaemonConfig {
             data_dir: PathBuf::from(".greymisnomer"),
             tile_mirrors: Vec::new(),
             witness_keys_file: None,
+            peers: Vec::new(),
+            node_id: None,
+            enable_relay: false,
             regtest: false,
         }
     }

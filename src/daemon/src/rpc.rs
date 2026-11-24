@@ -38,6 +38,34 @@ pub struct AppState {
     pub regtest: bool,
     pub cookie_token: Option<String>,
     pub rpc_port: u16,
+    pub p2p_mesh: Option<std::sync::Arc<crate::p2p::P2pMesh<ChainStorage>>>,
+}
+
+impl AppState {
+    pub fn new(
+        storage: ChainStorage,
+        event_tx: broadcast::Sender<String>,
+        regtest: bool,
+        cookie_token: Option<String>,
+        rpc_port: u16,
+    ) -> Self {
+        Self {
+            storage,
+            event_tx,
+            regtest,
+            cookie_token,
+            rpc_port,
+            p2p_mesh: None,
+        }
+    }
+
+    pub fn with_p2p_mesh(
+        mut self,
+        mesh: std::sync::Arc<crate::p2p::P2pMesh<ChainStorage>>,
+    ) -> Self {
+        self.p2p_mesh = Some(mesh);
+        self
+    }
 }
 
 // ---------------------------------------------------------------------------
@@ -54,6 +82,22 @@ pub struct ChainStatusResponse {
     pub latest_checkpoint: Option<String>,
     pub rpc_port: u16,
     pub regtest: bool,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct NetworkPeersResponse {
+    pub node_id: String,
+    pub p2p_port: u16,
+    pub peer_count: usize,
+    pub peers: Vec<PeerInfoResponse>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct PeerInfoResponse {
+    pub address: String,
+    pub node_id: String,
+    pub connected_at_secs: u64,
+    pub is_relay: bool,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -87,6 +131,7 @@ pub fn build_router(state: AppState) -> Router {
         .route("/v1/proof/poo/:id", get(get_poo_proof))
         .route("/v1/proof/poi/:root", get(get_poi_proof))
         .route("/v1/checkpoint/latest", get(get_latest_checkpoint))
+        .route("/v1/network/peers", get(get_network_peers))
         .route("/v1/tx/submit", post(submit_tx))
         .route("/v1/events/subscribe", get(subscribe_events))
         .layer(cors)
@@ -305,6 +350,36 @@ async fn get_latest_checkpoint(
         })
 }
 
+async fn get_network_peers(
+    State(state): State<AppState>,
+) -> Result<Json<NetworkPeersResponse>, (StatusCode, String)> {
+    if let Some(ref mesh) = state.p2p_mesh {
+        let peers = mesh.connected_peers().await;
+        let peer_infos: Vec<PeerInfoResponse> = peers
+            .into_iter()
+            .map(|p| PeerInfoResponse {
+                address: p.addr.to_string(),
+                node_id: p.node_id,
+                connected_at_secs: p.connected_at_secs,
+                is_relay: p.is_relay,
+            })
+            .collect();
+        Ok(Json(NetworkPeersResponse {
+            node_id: mesh.node_id().to_string(),
+            p2p_port: mesh.listen_addr().port(),
+            peer_count: peer_infos.len(),
+            peers: peer_infos,
+        }))
+    } else {
+        Ok(Json(NetworkPeersResponse {
+            node_id: "standalone".to_string(),
+            p2p_port: 0,
+            peer_count: 0,
+            peers: Vec::new(),
+        }))
+    }
+}
+
 async fn submit_tx(
     State(state): State<AppState>,
     Json(tx): Json<UcoTransaction>,
@@ -320,6 +395,11 @@ async fn submit_tx(
     })?;
 
     let txid_hex = hex::encode(delta.txid);
+
+    // Broadcast over P2P mesh if active
+    if let Some(ref mesh) = state.p2p_mesh {
+        let _ = mesh.broadcast_tx(&tx).await;
+    }
 
     // 2. In regtest mode: commit immediately and broadcast
     if state.regtest {
@@ -473,6 +553,7 @@ mod tests {
             regtest: true,
             cookie_token: Some("secret123".to_string()),
             rpc_port: 9482,
+            p2p_mesh: None,
         };
 
         let app = build_router(state);
@@ -571,6 +652,19 @@ mod tests {
         let spv_body = spv_resp.into_body().collect().await.unwrap().to_bytes();
         let spv_proof: UcoUnspentSpvProof = serde_json::from_slice(&spv_body).unwrap();
         assert_eq!(spv_proof.uco.outpoint, created_op);
+
+        // 7. Query network peers endpoint via GET /v1/network/peers
+        let peers_req = Request::builder()
+            .uri("/v1/network/peers")
+            .header("Authorization", "Bearer secret123")
+            .body(Body::empty())
+            .unwrap();
+        let peers_resp = app.clone().oneshot(peers_req).await.unwrap();
+        assert_eq!(peers_resp.status(), StatusCode::OK);
+        let peers_body = peers_resp.into_body().collect().await.unwrap().to_bytes();
+        let peers_json: NetworkPeersResponse = serde_json::from_slice(&peers_body).unwrap();
+        assert_eq!(peers_json.node_id, "standalone");
+        assert_eq!(peers_json.peer_count, 0);
 
         // Clean up
         let _ = fs::remove_dir_all(db_path.parent().unwrap());

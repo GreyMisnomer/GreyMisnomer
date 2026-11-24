@@ -537,6 +537,40 @@ impl UcoStoreRead for StorageReadTx {
     }
 }
 
+impl UcoStoreRead for ChainStorage {
+    fn chain_id(&self) -> [u8; 32] {
+        self.read_tx()
+            .map(|rtx| rtx.chain_id())
+            .unwrap_or([0u8; 32])
+    }
+
+    fn current_epoch(&self) -> u64 {
+        self.read_tx().map(|rtx| rtx.current_epoch()).unwrap_or(0)
+    }
+
+    fn get_uco(&self, outpoint: &OutPoint) -> Option<UnretiredCreditOutput> {
+        self.read_tx().ok()?.get_uco(outpoint)
+    }
+
+    fn get_serial_cursor(&self, project_id: &str, vintage_year: u16) -> u64 {
+        self.read_tx()
+            .map(|rtx| rtx.get_serial_cursor(project_id, vintage_year))
+            .unwrap_or(0)
+    }
+
+    fn is_vvb_active(&self, vvb: &PubKey) -> bool {
+        self.read_tx()
+            .map(|rtx| rtx.is_vvb_active(vvb))
+            .unwrap_or(false)
+    }
+
+    fn is_mrv_root_used(&self, root: &[u8; 32]) -> bool {
+        self.read_tx()
+            .map(|rtx| rtx.is_mrv_root_used(root))
+            .unwrap_or(false)
+    }
+}
+
 // ---------------------------------------------------------------------------
 // Unit & Integration Tests
 // ---------------------------------------------------------------------------

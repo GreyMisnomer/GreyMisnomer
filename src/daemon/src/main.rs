@@ -50,12 +50,51 @@ async fn main() -> Result<()> {
         Some(token)
     };
 
+    // Initialize P2P wire mesh
+    let node_id = config
+        .node_id
+        .clone()
+        .unwrap_or_else(|| format!("node-{}", &hex::encode(fastrand_bytes())[..8]));
+
+    let mut bootstrap_addrs = Vec::new();
+    for p in &config.peers {
+        if let Ok(addr) = p.parse() {
+            bootstrap_addrs.push(addr);
+        }
+    }
+
+    let p2p_cfg = greymisnomerd::p2p::P2pConfig {
+        listen_addr: format!("0.0.0.0:{}", config.p2p_port)
+            .parse()
+            .unwrap_or_else(|_| std::net::SocketAddr::from(([0, 0, 0, 0], config.p2p_port))),
+        node_id,
+        bootstrap_peers: bootstrap_addrs,
+        enable_relay: config.enable_relay,
+    };
+
+    let mempool = std::sync::Arc::new(tokio::sync::Mutex::new(
+        greymisnomerd::mempool::Mempool::new(0),
+    ));
+    let p2p_mesh = std::sync::Arc::new(greymisnomerd::p2p::P2pMesh::new(
+        p2p_cfg,
+        mempool,
+        std::sync::Arc::new(storage.clone()),
+    ));
+
+    let p2p_runner = std::sync::Arc::clone(&p2p_mesh);
+    tokio::spawn(async move {
+        if let Err(e) = p2p_runner.start().await {
+            tracing::warn!("P2P mesh error: {e}");
+        }
+    });
+
     let app_state = AppState {
         storage: storage.clone(),
         event_tx: event_tx.clone(),
         regtest: config.regtest,
         cookie_token,
         rpc_port: config.rpc_port,
+        p2p_mesh: Some(p2p_mesh),
     };
 
     // Spawn tile mirror sync loop if mirrors configured

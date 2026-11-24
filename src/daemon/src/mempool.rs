@@ -210,6 +210,11 @@ impl Mempool {
             .unwrap_or(false)
     }
 
+    pub fn penalize_peer(&mut self, peer_id: &str, penalty: i32) {
+        let peer_entry = self.peer_scores.entry(peer_id.to_string()).or_default();
+        peer_entry.penalize(penalty);
+    }
+
     pub fn submit_tx<S: UcoStoreRead>(
         &mut self,
         tx: UcoTransaction,
