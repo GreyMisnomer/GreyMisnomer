@@ -192,7 +192,7 @@ pub struct UcoTransitionDelta {
 pub trait UcoStoreRead {
     fn chain_id(&self) -> [u8; 32];
     fn current_epoch(&self) -> u64;
-    fn get_uco(&self, outpoint: &OutPoint) -> Option<&UnretiredCreditOutput>;
+    fn get_uco(&self, outpoint: &OutPoint) -> Option<UnretiredCreditOutput>;
     fn get_serial_cursor(&self, project_id: &str, vintage_year: u16) -> u64;
     fn is_vvb_active(&self, vvb: &PubKey) -> bool;
     fn is_mrv_root_used(&self, root: &[u8; 32]) -> bool;
@@ -267,8 +267,8 @@ impl UcoStoreRead for UcoState {
         self.current_epoch
     }
 
-    fn get_uco(&self, outpoint: &OutPoint) -> Option<&UnretiredCreditOutput> {
-        self.unspent_outputs.get(outpoint)
+    fn get_uco(&self, outpoint: &OutPoint) -> Option<UnretiredCreditOutput> {
+        self.unspent_outputs.get(outpoint).cloned()
     }
 
     fn get_serial_cursor(&self, project_id: &str, vintage_year: u16) -> u64 {
@@ -442,11 +442,11 @@ fn apply_split_transfer<S: UcoStoreRead>(
             .ok_or_else(|| RegistryError::OutpointNotFound {
                 outpoint: op.to_string(),
             })?;
-        resolved_inputs.push(uco);
         input_op_indices.push(uco.op_index);
+        resolved_inputs.push(uco);
     }
 
-    let first = resolved_inputs[0];
+    let first = &resolved_inputs[0];
     for uco in &resolved_inputs[1..] {
         if uco.project_id != first.project_id
             || uco.vintage_year != first.vintage_year
@@ -683,7 +683,7 @@ fn normalize_intervals(mut intervals: Vec<(u64, u64)>) -> Vec<(u64, u64)> {
 
 /// Verifies that `outputs` form an exact disjoint partition of `inputs`.
 fn verify_partition(
-    inputs: &[&UnretiredCreditOutput],
+    inputs: &[UnretiredCreditOutput],
     outputs: &[UcoTransferOutputSpec],
 ) -> Result<(), RegistryError> {
     // 1. Verify every output has valid intervals and sum matches width

@@ -4,6 +4,7 @@
 //! while syncing immutable RFC 9162 Merkle tiles from mirrors in the background.
 
 pub mod config;
+pub mod storage;
 
 use anyhow::Result;
 use clap::Parser;
@@ -34,4 +35,3 @@ async fn main() -> Result<()> {
 
     Ok(())
 }
-
