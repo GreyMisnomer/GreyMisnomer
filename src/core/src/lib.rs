@@ -9,6 +9,7 @@ pub mod error; // RegistryError — all protocol failure modes
 pub mod event_log; // EventEntry, schema & hash chaining for events.jsonl (RFC-004)
 pub mod manifest; // Canonical Distribution Manifest (RFC-006 §5.2)
 pub mod mrv;
+pub mod oracle;
 pub mod ots; // OpenTimestamps binary proof & SHA-256 commitment verification
 pub mod poi; // Proof-of-Integrity (RFC-001)
 pub mod poo; // Proof-of-Offset (RFC-001)
@@ -16,7 +17,7 @@ pub mod project; // Project, ProjectStatus (RFC-001)
 pub mod registry; // Registry state machine — enforces all 7 invariants (RFC-001)
 pub mod serial; // SerialRange — fundamental primitive (RFC-002) // MRV data commitment, Merkle tree (RFC-003)
 pub mod uco; // RFC-007: Hybrid UCO primitives, OutPoint, ProofOfOffsetCommitment
-pub mod uco_engine; // RFC-007: Pure apply_uco engine, monotonic cursors & partition splits
+pub mod uco_engine; // RFC-007: Pure apply_uco engine, monotonic cursors & partition splits // RFC-007: Hardened MRV oracle quorums, scoped VVBs & buffer pool
 
 /// 1 credit = 1_000_000 micro-credits (RFC-001 / Phase Alpha integer accounting)
 pub const MICRO_UNITS_PER_CREDIT: u64 = 1_000_000;
