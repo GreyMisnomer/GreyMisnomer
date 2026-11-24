@@ -22,6 +22,15 @@
       vault
     } from './keystore.js';
 
+    import {
+      NodeClient,
+      formatMicroUnitsToCredits,
+      parseCreditsToMicroUnits,
+      DEFAULT_DAEMON_RPC_URL,
+      MICRO_UNITS_PER_CREDIT,
+      MAX_UCO_MICRO_UNITS
+    } from './node_client.js';
+
     // ══════════════════════════════════════════════════════════════════
     //  STATE
     // ══════════════════════════════════════════════════════════════════
@@ -247,6 +256,7 @@
       refreshDashboard();
       verifyPublicLedger();
       initMempoolTracker();
+      probeDaemonStatus();
     });
 
     // ══════════════════════════════════════════════════════════════════
@@ -3731,3 +3741,93 @@
         container.appendChild(card);
       });
     }
+
+    // ══════════════════════════════════════════════════════════════════
+    //  SOVEREIGN DAEMON STATUS & MODAL (Stage 4.16)
+    // ══════════════════════════════════════════════════════════════════
+    const daemonClient = new NodeClient();
+    window.daemonClient = daemonClient;
+    window.formatMicroUnitsToCredits = formatMicroUnitsToCredits;
+    window.parseCreditsToMicroUnits = parseCreditsToMicroUnits;
+
+    async function probeDaemonStatus() {
+      const badge = document.getElementById('nodeStatusBadge');
+      const dot = document.getElementById('nodeStatusDot');
+      const text = document.getElementById('nodeStatusText');
+      if (!badge || !dot || !text) return;
+
+      const res = await daemonClient.probeConnection();
+      if (res.ok && res.status) {
+        dot.style.background = 'var(--green)';
+        dot.style.boxShadow = '0 0 6px var(--green)';
+        badge.style.borderColor = 'rgba(46, 204, 113, 0.4)';
+        badge.style.background = 'rgba(46, 204, 113, 0.08)';
+        text.textContent = 'Sovereign Node (:9482)';
+        renderDaemonModalDetails(res.status);
+      } else {
+        dot.style.background = 'var(--muted)';
+        dot.style.boxShadow = 'none';
+        badge.style.borderColor = 'rgba(100, 116, 139, 0.4)';
+        badge.style.background = 'rgba(100, 116, 139, 0.08)';
+        text.textContent = 'WASM Sandbox';
+        renderDaemonModalDetails(null);
+      }
+    }
+
+    function renderDaemonModalDetails(status) {
+      const container = document.getElementById('daemonModalContent');
+      if (!container) return;
+      if (!status) {
+        container.innerHTML = `
+          <div style="padding:1rem; text-align:center; color:var(--muted); font-size:0.85rem;">
+            Local daemon offline or unreachable at <code>http://127.0.0.1:9482</code>.<br>
+            Using client-side WebAssembly verification fallback.
+          </div>`;
+        return;
+      }
+      container.innerHTML = `
+        <div style="display:grid; grid-template-columns:repeat(auto-fit, minmax(180px, 1fr)); gap:0.75rem; font-size:0.82rem;">
+          <div style="background:rgba(0,0,0,0.2); padding:0.6rem; border-radius:6px; border:1px solid var(--border);">
+            <div style="color:var(--muted); font-size:0.7rem; text-transform:uppercase;">Chain ID</div>
+            <div style="font-family:var(--mono); font-weight:600; color:var(--purple);" id="daemonModalChainId">${status.chainId}</div>
+          </div>
+          <div style="background:rgba(0,0,0,0.2); padding:0.6rem; border-radius:6px; border:1px solid var(--border);">
+            <div style="color:var(--muted); font-size:0.7rem; text-transform:uppercase;">Tree Size (Leaves)</div>
+            <div style="font-family:var(--mono); font-weight:600; color:var(--green);" id="daemonModalTreeSize">${status.treeSize.toString()}</div>
+          </div>
+          <div style="background:rgba(0,0,0,0.2); padding:0.6rem; border-radius:6px; border:1px solid var(--border);">
+            <div style="color:var(--muted); font-size:0.7rem; text-transform:uppercase;">Current Epoch</div>
+            <div style="font-family:var(--mono); font-weight:600; color:var(--blue);" id="daemonModalEpoch">${status.currentEpoch.toString()}</div>
+          </div>
+          <div style="background:rgba(0,0,0,0.2); padding:0.6rem; border-radius:6px; border:1px solid var(--border);">
+            <div style="color:var(--muted); font-size:0.7rem; text-transform:uppercase;">Active UCOs</div>
+            <div style="font-family:var(--mono); font-weight:600; color:var(--amber);" id="daemonModalUcos">${status.activeUcosCount.toString()}</div>
+          </div>
+          <div style="background:rgba(0,0,0,0.2); padding:0.6rem; border-radius:6px; border:1px solid var(--border);">
+            <div style="color:var(--muted); font-size:0.7rem; text-transform:uppercase;">PoO Receipts</div>
+            <div style="font-family:var(--mono); font-weight:600; color:var(--cyan);" id="daemonModalPoos">${status.pooCount.toString()}</div>
+          </div>
+          <div style="background:rgba(0,0,0,0.2); padding:0.6rem; border-radius:6px; border:1px solid var(--border);">
+            <div style="color:var(--muted); font-size:0.7rem; text-transform:uppercase;">RPC Port</div>
+            <div style="font-family:var(--mono); font-weight:600; color:var(--text);">${status.rpcPort}</div>
+          </div>
+        </div>
+      `;
+    }
+
+    function openDaemonModal() {
+      const m = document.getElementById('modalDaemon');
+      if (m) {
+        m.classList.add('show');
+        probeDaemonStatus();
+      }
+    }
+
+    function closeDaemonModal() {
+      const m = document.getElementById('modalDaemon');
+      if (m) m.classList.remove('show');
+    }
+
+    window.openDaemonModal = openDaemonModal;
+    window.closeDaemonModal = closeDaemonModal;
+    window.probeDaemonStatus = probeDaemonStatus;

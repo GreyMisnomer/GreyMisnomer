@@ -94,6 +94,11 @@
     <header class="topbar">
       <div class="demo-badge">🔥 LOCAL DEMO - Session State</div>
       <div style="display:flex; gap: 1.5rem; align-items:center; flex-wrap:wrap;">
+        <button id="nodeStatusBadge" class="topbar-key-btn" onclick="openDaemonModal()" style="border-color: rgba(100, 116, 139, 0.4); background: rgba(100, 116, 139, 0.08);">
+          <span class="key-dot" id="nodeStatusDot" style="background: var(--muted); box-shadow: none;"></span>
+          <span id="nodeStatusIcon">🌐</span>
+          <span id="nodeStatusText">WASM Sandbox</span>
+        </button>
         <button id="btnKeyManager" class="topbar-key-btn" onclick="openKeyManagerModal()">
           <span class="key-dot"></span>
           <span>🔑</span>
@@ -1035,6 +1040,28 @@
           <button class="btn btn-primary btn-sm" onclick="closeMempoolModal(); navigate('signer');" style="gap:0.35rem;">
             <span>✍️</span> Open Intent Builder
           </button>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- 🌐 MODAL: Sovereign Node Status (Stage 4.16) -->
+  <div class="modal-backdrop" id="modalDaemon" onclick="if(event.target === this) closeDaemonModal()">
+    <div class="modal-dialog" style="max-width: 600px;">
+      <div class="modal-header">
+        <h3><span>🌐</span> Sovereign Node Status (:9482)</h3>
+        <button class="modal-close-btn" onclick="closeDaemonModal()">&times;</button>
+      </div>
+      <div class="modal-body" style="gap: 1rem;">
+        <div style="display:flex; justify-content:space-between; align-items:center; padding:0.5rem 0.75rem; background:rgba(0,0,0,0.25); border-radius:8px; border:1px solid var(--border); font-size:0.8rem;">
+          <div style="color:var(--muted)">Target RPC Endpoint: <code style="color:var(--cyan)">http://127.0.0.1:9482</code></div>
+          <button class="btn btn-secondary btn-xs" id="btnRefreshDaemonModal" onclick="probeDaemonStatus()">🔄 Probe</button>
+        </div>
+        <div id="daemonModalContent">
+          <!-- Rendered dynamically -->
+        </div>
+        <div style="font-size:0.75rem; color:var(--muted); border-top:1px solid var(--border); padding-top:0.6rem;">
+          Native local daemon provides redb ACID state storage, RFC 9162 tile mirror synchronization, and multi-witness threshold cosignatures ($0 FOSS stack).
         </div>
       </div>
     </div>
