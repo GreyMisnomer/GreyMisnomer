@@ -123,4 +123,47 @@ pub enum RegistryError {
         head_a: String,
         head_b: String,
     },
+
+    // -----------------------------------------------------------------------
+    // RFC-007: Hybrid UCO error variants
+    // -----------------------------------------------------------------------
+    /// RFC-007 §3.2: A `u64` field exceeds `MAX_UCO_MICRO_UNITS` (JS `MAX_SAFE_INTEGER` guard)
+    #[error("value {value} exceeds JS-safe maximum {max}")]
+    ExceedsJsSafeMax { value: u64, max: u64 },
+
+    /// RFC-007 §3.1: Transaction output fan-out exceeds `MAX_TX_OUTPUTS`
+    #[error("transaction output count {count} exceeds maximum {max}")]
+    OutputFanoutExceeded { count: usize, max: usize },
+
+    /// RFC-007 §3.1: UCO interval `micro_units` does not match `end - start`
+    #[error("UCO interval mismatch: expected width {expected}, found {found}")]
+    UcoIntervalMismatch { expected: u64, found: u64 },
+
+    /// RFC-007 §6: Pre-retirement challenge window has not elapsed
+    #[error("challenge window still active: current epoch {current}, required {challenge_until}")]
+    ChallengeWindowActive { current: u64, challenge_until: u64 },
+
+    /// RFC-007 §3.1: Split/transfer output intervals are not a valid partition
+    #[error("disjoint partition violation: output intervals do not exactly cover inputs")]
+    DisjointPartitionViolation,
+
+    /// RFC-007 §6: UCO is locked under an escrow program and cannot be retired
+    #[error("UCO locked under escrow program: {program}")]
+    EscrowLocked { program: String },
+
+    /// RFC-007 §6: Referenced OutPoint not found in unspent set
+    #[error("outpoint not found in unspent set: {outpoint}")]
+    OutpointNotFound { outpoint: String },
+
+    /// RFC-007 §6: MRV oracle quorum not met for mint
+    #[error("MRV oracle quorum not met: required {required}, found {found}")]
+    OracleQuorumNotMet { required: usize, found: usize },
+
+    /// RFC-007 §6: VVB attestation signature invalid
+    #[error("invalid VVB attestation from {vvb}")]
+    InvalidVvbAttestation { vvb: String },
+
+    /// RFC-007 §6: Buffer pool insufficient for revocation compensation
+    #[error("buffer pool insufficient: required {required}, available {available}")]
+    InsufficientBuffer { required: u64, available: u64 },
 }
