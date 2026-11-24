@@ -1,0 +1,32 @@
+{
+  "$schema": "https://raw.githubusercontent.com/tauri-apps/tauri/dev/crates/tauri-cli/schema.json",
+  "productName": "GreyMisnomer",
+  "version": "2.0.0",
+  "identifier": "org.greymisnomer.desktop",
+  "build": {
+    "frontendDist": "../../../docs"
+  },
+  "app": {
+    "withGlobalTauri": true,
+    "windows": [
+      {
+        "title": "GreyMisnomer — Sovereign Node & Registry Workbench",
+        "width": 1280,
+        "height": 860,
+        "resizable": true,
+        "fullscreen": false
+      }
+    ],
+    "security": {
+      "csp": "default-src 'self' 'unsafe-inline' 'unsafe-eval' http://127.0.0.1:9482 ws://127.0.0.1:9482 https://dweb.link https://ipfs.io https://web.archive.org data: blob:"
+    }
+  },
+  "bundle": {
+    "active": true,
+    "targets": ["dmg", "msi", "appimage"],
+    "icon": [
+      "../../../docs/GreyMisnomer_Logos/logo_32x32.png",
+      "../../../docs/GreyMisnomer_Logos/logo_256x256.png"
+    ]
+  }
+}

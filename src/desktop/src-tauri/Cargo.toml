@@ -1,0 +1,21 @@
+[package]
+name = "grey-misnomer-desktop"
+version = "2.0.0"
+description = "GreyMisnomer Sovereign Desktop Node & Workbench (Tauri v2 Wrapper)"
+edition = "2021"
+authors = ["Prabhat Vilas Karlekar"]
+license = "MIT OR Apache-2.0"
+
+[dependencies]
+serde = { version = "1.0", features = ["derive"] }
+serde_json = "1.0"
+tokio = { version = "1.0", features = ["full"] }
+tracing = "0.1"
+
+# NOTE: When packaging the full desktop binary with Tauri v2 CLI (`cargo tauri build`),
+# the Tauri runtime dependencies are enabled:
+# tauri = { version = "2.0", features = ["tray-icon"] }
+
+[features]
+default = []
+gui = []

@@ -630,6 +630,16 @@ dependencies = [
 ]
 
 [[package]]
+name = "grey-misnomer-desktop"
+version = "2.0.0"
+dependencies = [
+ "serde",
+ "serde_json",
+ "tokio",
+ "tracing",
+]
+
+[[package]]
 name = "grey-misnomer-wasm"
 version = "0.1.0"
 dependencies = [

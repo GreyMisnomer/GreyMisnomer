@@ -57,12 +57,12 @@ jobs:
         if: matrix.use_cross
         run: cargo install cross --git https://github.com/cross-rs/cross
 
-      - name: Build CLI Binary
+      - name: Build CLI and Daemon Binaries
         run: |
           if [ "${{ matrix.use_cross }}" = "true" ]; then
-            cross build --release --target ${{ matrix.target }} -p grey-misnomer-cli
+            cross build --release --target ${{ matrix.target }} -p grey-misnomer-cli -p greymisnomerd
           else
-            cargo build --release --target ${{ matrix.target }} -p grey-misnomer-cli
+            cargo build --release --target ${{ matrix.target }} -p grey-misnomer-cli -p greymisnomerd
           fi
         shell: bash
 
@@ -70,16 +70,18 @@ jobs:
         id: package
         shell: bash
         run: |
-          STAGING="grey-misnomer-cli-${{ matrix.target }}"
+          STAGING="grey-misnomer-${{ matrix.target }}"
           mkdir -p "$STAGING"
 
           if [ "${{ matrix.os }}" = "windows-latest" ]; then
             cp "target/${{ matrix.target }}/release/grey-misnomer-cli.exe" "$STAGING/"
+            cp "target/${{ matrix.target }}/release/greymisnomerd.exe" "$STAGING/"
             cp README.md LICENSE "$STAGING/"
             7z a "$STAGING.zip" "$STAGING"
             echo "archive=$STAGING.zip" >> $GITHUB_OUTPUT
           else
             cp "target/${{ matrix.target }}/release/grey-misnomer-cli" "$STAGING/"
+            cp "target/${{ matrix.target }}/release/greymisnomerd" "$STAGING/"
             cp README.md LICENSE "$STAGING/"
             tar -czvf "$STAGING.tar.gz" "$STAGING"
             echo "archive=$STAGING.tar.gz" >> $GITHUB_OUTPUT
