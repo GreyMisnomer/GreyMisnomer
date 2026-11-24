@@ -20,6 +20,7 @@ pub mod project; // Project, ProjectStatus (RFC-001)
 pub mod registry; // Registry state machine — enforces all 7 invariants (RFC-001)
 pub mod serial; // SerialRange — fundamental primitive (RFC-002) // MRV data commitment, Merkle tree (RFC-003)
 pub mod spv; // RFC-007: Active unspentness and permanent retirement SPV proofs
+pub mod tiles; // RFC 9162 / RFC-007: Immutable static tile layout generator
 pub mod uco; // RFC-007: Hybrid UCO primitives, OutPoint, ProofOfOffsetCommitment
 pub mod uco_engine; // RFC-007: Pure apply_uco engine, monotonic cursors & partition splits
 pub mod witness; // RFC-007: C2SP tlog-cosignature witness protocol & verification // RFC-007: Hardened MRV oracle quorums, scoped VVBs & buffer pool

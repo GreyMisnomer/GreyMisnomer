@@ -516,3 +516,39 @@ fn test_cli_ots_digest_verification_and_require_ots_flag() {
 
     let _ = fs::remove_dir_all(&temp_dir);
 }
+
+#[test]
+fn test_cli_export_tiles() {
+    let cli_bin = get_cli_bin();
+    let events_path = get_events_jsonl_path();
+
+    let temp_dir = std::env::temp_dir().join("gm_test_cli_export_tiles");
+    let _ = fs::remove_dir_all(&temp_dir);
+    fs::create_dir_all(&temp_dir).unwrap();
+
+    let output_tiles = temp_dir.join("tiles");
+
+    let status = Command::new(&cli_bin)
+        .arg("export-tiles")
+        .arg(&events_path)
+        .arg("--out")
+        .arg(&output_tiles)
+        .arg("--json")
+        .output()
+        .expect("run cli export-tiles");
+
+    assert!(
+        status.status.success(),
+        "export-tiles failed: {}",
+        String::from_utf8_lossy(&status.stderr)
+    );
+
+    let report: serde_json::Value =
+        serde_json::from_slice(&status.stdout).expect("valid json output");
+
+    assert!(report["total_events"].as_u64().unwrap() > 0);
+    assert!(report["entry_tiles_created"].as_u64().unwrap() >= 1);
+    assert!(output_tiles.join("checkpoint").exists());
+
+    let _ = fs::remove_dir_all(&temp_dir);
+}

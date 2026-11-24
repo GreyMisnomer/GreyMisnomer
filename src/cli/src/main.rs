@@ -286,6 +286,7 @@ fn print_usage() {
         "    checkpoint [FILE]           Replay log, create and sign checkpoint for current head"
     );
     println!("    verify-checkpoint <FILE>    Verify an individual signed checkpoint file");
+    println!("    export-tiles [FILE]         Export RFC 9162 immutable static tiles and checkpoint note");
     println!();
     println!("FLAGS:");
     println!("    --chain-id <HEX>            Expected 32-byte registry domain chain_id");
@@ -544,6 +545,7 @@ fn main() -> Result<()> {
         "sign-checkpoint" => handle_sign_checkpoint(&args[2..]),
         "checkpoint" => handle_checkpoint(&args[2..]),
         "verify-checkpoint" => handle_verify_checkpoint(&args[2..]),
+        "export-tiles" => handle_export_tiles(&args[2..]),
         "replay" => handle_replay(&args[2..]),
         _ if args[1].starts_with('-') => handle_replay(&args[1..]),
         _ => handle_replay(&args[1..]),
@@ -1294,6 +1296,87 @@ fn handle_verify_checkpoint(args: &[String]) -> Result<()> {
             path.display(),
             seq_str
         );
+    }
+
+    Ok(())
+}
+
+fn handle_export_tiles(args: &[String]) -> Result<()> {
+    let mut log_path: Option<PathBuf> = None;
+    let mut out_dir = PathBuf::from("tiles");
+    let mut json = false;
+
+    let mut i = 0;
+    while i < args.len() {
+        match args[i].as_str() {
+            "--out" | "--out-dir" | "--dir" => {
+                i += 1;
+                if i < args.len() {
+                    out_dir = PathBuf::from(&args[i]);
+                }
+            }
+            "--json" => json = true,
+            val if !val.starts_with('-') && log_path.is_none() => {
+                log_path = Some(PathBuf::from(val));
+            }
+            unknown => bail!("Unknown option for export-tiles: {unknown}"),
+        }
+        i += 1;
+    }
+
+    let target_log = log_path
+        .or_else(find_default_log_path)
+        .context("Could not find event log file. Pass [FILE] or run from repository root.")?;
+
+    let file_content = fs::read_to_string(&target_log)?;
+    let raw_lines: Vec<Vec<u8>> = file_content
+        .lines()
+        .filter(|l| !l.trim().is_empty())
+        .map(|l| l.as_bytes().to_vec())
+        .collect();
+
+    let mut log_tree = grey_misnomer_core::merkle_log::MerkleLogTree::new();
+    for line in &raw_lines {
+        log_tree.append(line);
+    }
+
+    let header = grey_misnomer_core::header::CheckpointHeaderV2 {
+        version: 2,
+        chain_id: [0u8; 32],
+        tree_size: raw_lines.len() as u64,
+        timestamp_ns: std::time::SystemTime::now()
+            .duration_since(std::time::UNIX_EPOCH)
+            .unwrap_or_default()
+            .as_nanos() as u64,
+        events_root: log_tree.root(),
+        uco_state_root: [0u8; 32],
+        poo_archive_root: [0u8; 32],
+        active_validators_hash: [0u8; 32],
+    };
+
+    let report = grey_misnomer_core::tiles::export_static_tiles(&raw_lines, &header, &out_dir)
+        .map_err(|e| anyhow::anyhow!("Failed to export static tiles: {e}"))?;
+
+    if json {
+        println!("{}", serde_json::to_string_pretty(&report)?);
+    } else {
+        println!("══════════════════════════════════════════════════════════════════════");
+        println!("  GreyMisnomer RFC 9162 Static Tiles Export (C2SP tlog-tiles)         ");
+        println!("══════════════════════════════════════════════════════════════════════");
+        println!("  Source Log:             {}", target_log.display());
+        println!("  Total Events Exported:  {}", report.total_events);
+        println!("  Entry Tiles Created:    {}", report.entry_tiles_created);
+        println!("  Subtree Tiles Created:  {}", report.tree_tiles_created);
+        println!(
+            "  Events Merkle Root:     {}",
+            hex::encode(report.events_root)
+        );
+        println!("  Output Directory:       {}", out_dir.display());
+        println!(
+            "  Checkpoint Note:        {}",
+            report.checkpoint_path.display()
+        );
+        println!("══════════════════════════════════════════════════════════════════════");
     }
 
     Ok(())
