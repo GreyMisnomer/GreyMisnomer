@@ -33,3 +33,4 @@ cargo build -p grey-misnomer-desktop
 # Run desktop test suite
 cargo test -p grey-misnomer-desktop
 ```
+
