@@ -7,6 +7,7 @@ pub mod checkpoint; // Signed checkpoints & equivocation detection (RFC-005 §3.
 pub mod credit; // CarbonCredit, CreditBatch (RFC-001 + RFC-002)
 pub mod error; // RegistryError — all protocol failure modes
 pub mod event_log; // EventEntry, schema & hash chaining for events.jsonl (RFC-004)
+pub mod header; // RFC-007: CheckpointHeaderV2 3-root binary header layout
 pub mod manifest; // Canonical Distribution Manifest (RFC-006 §5.2)
 pub mod merkle_log; // RFC 9162 / RFC-007: Verifiable Merkle log, inclusion & consistency proofs
 pub mod migrate; // RFC-007: Deterministic v1.3 -> v2.0 test/importer converter
@@ -18,6 +19,7 @@ pub mod poo; // Proof-of-Offset (RFC-001)
 pub mod project; // Project, ProjectStatus (RFC-001)
 pub mod registry; // Registry state machine — enforces all 7 invariants (RFC-001)
 pub mod serial; // SerialRange — fundamental primitive (RFC-002) // MRV data commitment, Merkle tree (RFC-003)
+pub mod spv; // RFC-007: Active unspentness and permanent retirement SPV proofs
 pub mod uco; // RFC-007: Hybrid UCO primitives, OutPoint, ProofOfOffsetCommitment
 pub mod uco_engine; // RFC-007: Pure apply_uco engine, monotonic cursors & partition splits // RFC-007: Hardened MRV oracle quorums, scoped VVBs & buffer pool
 
