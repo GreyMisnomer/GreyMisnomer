@@ -532,6 +532,99 @@ pub mod hex_bytes32 {
     }
 }
 
+// ---------------------------------------------------------------------------
+// RFC-007 §4.1: Domain-Separated Hash Prefixes (v2)
+// ---------------------------------------------------------------------------
+
+/// Domain prefix bytes for RFC 9162 log leaf hashing:
+/// `0x00 || canonical_event_bytes`
+pub const DOMAIN_LOG_LEAF: u8 = 0x00;
+
+/// Domain prefix bytes for RFC 9162 internal node hashing:
+/// `0x01 || left_hash[32] || right_hash[32]`
+pub const DOMAIN_LOG_INTERNAL: u8 = 0x01;
+
+/// Domain prefix string for active UCO state leaf hashing:
+/// `"GM-v2-UCO:" || canonical_uco_bytes`
+pub const DOMAIN_UCO: &str = "GM-v2-UCO:";
+
+/// Domain prefix string for PoO burn commitment leaf hashing:
+/// `"GM-v2-POO:" || canonical_poo_bytes`
+pub const DOMAIN_POO: &str = "GM-v2-POO:";
+
+/// Domain prefix string for checkpoint signing note:
+/// `"GM-v2-CHK:" || canonical_header_bytes`
+pub const DOMAIN_CHECKPOINT_V2: &str = "GM-v2-CHK:";
+
+/// RFC 9162 log leaf hash: `BLAKE3(0x00 || data)`
+pub fn hash_log_leaf(data: &[u8]) -> [u8; 32] {
+    let mut buf = Vec::with_capacity(1 + data.len());
+    buf.push(DOMAIN_LOG_LEAF);
+    buf.extend_from_slice(data);
+    *blake3::hash(&buf).as_bytes()
+}
+
+/// RFC 9162 internal node hash: `BLAKE3(0x01 || left[32] || right[32])`
+pub fn hash_log_internal(left: &[u8; 32], right: &[u8; 32]) -> [u8; 32] {
+    let mut buf = [0u8; 65];
+    buf[0] = DOMAIN_LOG_INTERNAL;
+    buf[1..33].copy_from_slice(left);
+    buf[33..65].copy_from_slice(right);
+    *blake3::hash(&buf).as_bytes()
+}
+
+/// Domain-separated UCO state leaf hash: `BLAKE3("GM-v2-UCO:" || data)`
+pub fn hash_uco_leaf(data: &[u8]) -> [u8; 32] {
+    let mut buf = Vec::with_capacity(DOMAIN_UCO.len() + data.len());
+    buf.extend_from_slice(DOMAIN_UCO.as_bytes());
+    buf.extend_from_slice(data);
+    *blake3::hash(&buf).as_bytes()
+}
+
+/// Domain-separated PoO archive leaf hash: `BLAKE3("GM-v2-POO:" || data)`
+pub fn hash_poo_leaf(data: &[u8]) -> [u8; 32] {
+    let mut buf = Vec::with_capacity(DOMAIN_POO.len() + data.len());
+    buf.extend_from_slice(DOMAIN_POO.as_bytes());
+    buf.extend_from_slice(data);
+    *blake3::hash(&buf).as_bytes()
+}
+
+/// Domain-separated checkpoint signing hash: `BLAKE3("GM-v2-CHK:" || data)`
+pub fn hash_checkpoint_v2(data: &[u8]) -> [u8; 32] {
+    let mut buf = Vec::with_capacity(DOMAIN_CHECKPOINT_V2.len() + data.len());
+    buf.extend_from_slice(DOMAIN_CHECKPOINT_V2.as_bytes());
+    buf.extend_from_slice(data);
+    *blake3::hash(&buf).as_bytes()
+}
+
+// ---------------------------------------------------------------------------
+// RFC-007 §3.2: Stringified JSON-RPC u64 Serde Helpers
+// ---------------------------------------------------------------------------
+// JavaScript `JSON.parse()` silently truncates integers > 2^53 - 1.
+// All external JSON-RPC payloads serialize u64 as base-10 strings.
+// Internal binary hashing/signing always uses canonical big-endian bytes.
+
+/// Serde module for `u64` fields serialized as base-10 strings in JSON.
+/// Use `#[serde(with = "crate::auth::string_u64")]` on u64 RPC fields.
+pub mod string_u64 {
+    use serde::{de, Deserialize, Deserializer, Serializer};
+
+    pub fn serialize<S>(value: &u64, serializer: S) -> Result<S::Ok, S::Error>
+    where
+        S: Serializer,
+    {
+        serializer.serialize_str(&value.to_string())
+    }
+
+    pub fn deserialize<'de, D>(deserializer: D) -> Result<u64, D::Error>
+    where
+        D: Deserializer<'de>,
+    {
+        let s = String::deserialize(deserializer)?;
+        s.parse::<u64>().map_err(de::Error::custom)
+    }
+}
+
 // =========================================================================
 #[cfg(test)]
 mod tests {
@@ -663,5 +756,140 @@ mod tests {
         assert!(Keypair::from_hex(&hex.to_uppercase()).is_err());
         // Test length mismatch
         assert!(Keypair::from_hex(&hex[..60]).is_err());
+    }
+
+    // -----------------------------------------------------------------------
+    // RFC-007 §4.1: Domain-separated hash function tests
+    // -----------------------------------------------------------------------
+
+    #[test]
+    fn test_domain_log_leaf_vs_internal_differ() {
+        // A leaf hash of 64 zero bytes must differ from an internal node
+        // hash of two 32-byte zero children — this is the RFC 9162
+        // second-preimage attack prevention.
+        let data = [0u8; 64];
+        let leaf = hash_log_leaf(&data);
+
+        let left = [0u8; 32];
+        let right = [0u8; 32];
+        let internal = hash_log_internal(&left, &right);
+
+        assert_ne!(
+            leaf, internal,
+            "leaf vs internal must differ for same bytes"
+        );
+    }
+
+    #[test]
+    fn test_domain_uco_poo_checkpoint_isolation() {
+        let data = b"identical canonical bytes";
+        let h_uco = hash_uco_leaf(data);
+        let h_poo = hash_poo_leaf(data);
+        let h_chk = hash_checkpoint_v2(data);
+
+        // All three domain-separated hashes must differ
+        assert_ne!(h_uco, h_poo);
+        assert_ne!(h_uco, h_chk);
+        assert_ne!(h_poo, h_chk);
+    }
+
+    #[test]
+    fn test_domain_hash_determinism() {
+        let data = b"deterministic test payload";
+        assert_eq!(hash_log_leaf(data), hash_log_leaf(data));
+        assert_eq!(hash_uco_leaf(data), hash_uco_leaf(data));
+        assert_eq!(hash_poo_leaf(data), hash_poo_leaf(data));
+        assert_eq!(hash_checkpoint_v2(data), hash_checkpoint_v2(data));
+    }
+
+    #[test]
+    fn test_domain_log_leaf_golden_preimage() {
+        // Verify the hash starts with 0x00 prefix in the preimage
+        let data = b"test event bytes";
+        let hash = hash_log_leaf(data);
+        assert_ne!(hash, [0u8; 32]); // non-trivial
+
+        // Re-compute manually to confirm
+        let mut buf = vec![0x00u8];
+        buf.extend_from_slice(data);
+        let expected = *blake3::hash(&buf).as_bytes();
+        assert_eq!(hash, expected);
+    }
+
+    #[test]
+    fn test_domain_internal_node_golden_preimage() {
+        let left = [0x11u8; 32];
+        let right = [0x22u8; 32];
+        let hash = hash_log_internal(&left, &right);
+
+        let mut buf = vec![0x01u8];
+        buf.extend_from_slice(&left);
+        buf.extend_from_slice(&right);
+        let expected = *blake3::hash(&buf).as_bytes();
+        assert_eq!(hash, expected);
+    }
+
+    // -----------------------------------------------------------------------
+    // RFC-007 §3.2: Stringified u64 JSON codec tests
+    // -----------------------------------------------------------------------
+
+    #[test]
+    fn test_string_u64_roundtrip() {
+        use serde::{Deserialize, Serialize};
+
+        #[derive(Serialize, Deserialize, Debug, PartialEq)]
+        struct TestStruct {
+            #[serde(with = "super::string_u64")]
+            amount: u64,
+        }
+
+        let val = TestStruct {
+            amount: 9_000_000_000_000_000,
+        };
+        let json = serde_json::to_string(&val).unwrap();
+        // Must be a JSON string, not a number
+        assert!(
+            json.contains("\"9000000000000000\""),
+            "u64 must serialize as string: {json}"
+        );
+
+        let parsed: TestStruct = serde_json::from_str(&json).unwrap();
+        assert_eq!(val, parsed);
+    }
+
+    #[test]
+    fn test_string_u64_max_value() {
+        use serde::{Deserialize, Serialize};
+
+        #[derive(Serialize, Deserialize, Debug, PartialEq)]
+        struct TestStruct {
+            #[serde(with = "super::string_u64")]
+            v: u64,
+        }
+
+        let val = TestStruct { v: u64::MAX };
+        let json = serde_json::to_string(&val).unwrap();
+        assert!(json.contains(&format!("\"{}\"", u64::MAX)));
+
+        let parsed: TestStruct = serde_json::from_str(&json).unwrap();
+        assert_eq!(val, parsed);
+    }
+
+    #[test]
+    fn test_string_u64_zero() {
+        use serde::{Deserialize, Serialize};
+
+        #[derive(Serialize, Deserialize, Debug, PartialEq)]
+        struct TestStruct {
+            #[serde(with = "super::string_u64")]
+            v: u64,
+        }
+
+        let val = TestStruct { v: 0 };
+        let json = serde_json::to_string(&val).unwrap();
+        assert!(json.contains("\"0\""));
+
+        let parsed: TestStruct = serde_json::from_str(&json).unwrap();
+        assert_eq!(val, parsed);
     }
 }
