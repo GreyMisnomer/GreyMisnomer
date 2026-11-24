@@ -5,6 +5,7 @@
 
 pub mod config;
 pub mod storage;
+pub mod tile_sync;
 
 use anyhow::Result;
 use clap::Parser;

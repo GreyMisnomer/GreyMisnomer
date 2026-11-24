@@ -54,15 +54,55 @@ pub struct Cosignature {
 
 impl Cosignature {
     /// Formats as a canonical C2SP cosignature note line:
-    /// `— <witness_name> <hex_key_id><hex_signature>`
+    /// `— <witness_name> <hex_key_id><hex_timestamp_16><hex_signature_128>`
     pub fn to_note_line(&self) -> String {
         format!(
-            "— {} {:08x}{}{}",
+            "— {} {:08x}{:016x}{}",
             self.witness_name,
             u32::from_be_bytes(self.key_id),
             self.timestamp,
             self.signature.to_hex()
         )
+    }
+
+    /// Parses a C2SP cosignature line starting with `—` or `--`.
+    pub fn parse_note_line(line: &str) -> Result<Self, RegistryError> {
+        let trimmed = line.trim();
+        let payload = if let Some(rest) = trimmed.strip_prefix('—') {
+            rest.trim()
+        } else if let Some(rest) = trimmed.strip_prefix("--") {
+            rest.trim()
+        } else {
+            return Err(RegistryError::BadSignature);
+        };
+
+        let mut parts = payload.split_whitespace();
+        let witness_name = parts.next().ok_or(RegistryError::BadSignature)?.to_string();
+        let blob = parts.next().ok_or(RegistryError::BadSignature)?;
+
+        if blob.len() != 152 {
+            return Err(RegistryError::BadSignature);
+        }
+
+        let key_id_bytes = hex::decode(&blob[..8]).map_err(|_| RegistryError::BadSignature)?;
+        let mut key_id = [0u8; 4];
+        key_id.copy_from_slice(&key_id_bytes);
+
+        let timestamp_bytes = hex::decode(&blob[8..24]).map_err(|_| RegistryError::BadSignature)?;
+        let timestamp = u64::from_be_bytes(
+            timestamp_bytes
+                .try_into()
+                .map_err(|_| RegistryError::BadSignature)?,
+        );
+
+        let signature = Signature::from_hex(&blob[24..152])?;
+
+        Ok(Self {
+            witness_name,
+            key_id,
+            timestamp,
+            signature,
+        })
     }
 }
 
@@ -288,7 +328,15 @@ mod tests {
                 // Verify cosignature against witness pubkey
                 let mut keys = BTreeMap::new();
                 keys.insert("witness-ngo-1".to_string(), witness_key.pubkey());
-                assert!(verify_witness_quorum(note, &[cosignature], &keys, 1).is_ok());
+                assert!(
+                    verify_witness_quorum(note, std::slice::from_ref(&cosignature), &keys, 1)
+                        .is_ok()
+                );
+
+                // Test canonical note line format roundtrip
+                let line = cosignature.to_note_line();
+                let parsed = Cosignature::parse_note_line(&line).expect("parse cosignature line");
+                assert_eq!(parsed, cosignature);
             }
             _ => panic!("expected Extended decision"),
         }
