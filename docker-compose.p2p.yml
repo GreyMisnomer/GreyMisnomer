@@ -1,0 +1,65 @@
+version: '3.8'
+
+services:
+  node1:
+    build:
+      context: .
+      dockerfile: sovereign/relay/Dockerfile
+    container_name: gm-node1-relay
+    ports:
+      - "9482:9482"
+      - "9483:9483"
+    environment:
+      - GM_DATA_DIR=/data
+      - GM_RPC_PORT=9482
+      - GM_P2P_PORT=9483
+      - GM_NODE_ID=node1-relay
+      - GM_RELAY=true
+    command: ["--regtest", "--enable-relay"]
+    volumes:
+      - node1_data:/data
+
+  node2:
+    build:
+      context: .
+      dockerfile: sovereign/relay/Dockerfile
+    container_name: gm-node2-validator
+    ports:
+      - "9582:9582"
+      - "9583:9583"
+    environment:
+      - GM_DATA_DIR=/data
+      - GM_RPC_PORT=9582
+      - GM_P2P_PORT=9583
+      - GM_NODE_ID=node2-validator
+      - GM_PEERS=node1:9483
+    command: ["--regtest", "--peer", "node1:9483"]
+    depends_on:
+      - node1
+    volumes:
+      - node2_data:/data
+
+  node3:
+    build:
+      context: .
+      dockerfile: sovereign/relay/Dockerfile
+    container_name: gm-node3-observer
+    ports:
+      - "9682:9682"
+      - "9683:9683"
+    environment:
+      - GM_DATA_DIR=/data
+      - GM_RPC_PORT=9682
+      - GM_P2P_PORT=9683
+      - GM_NODE_ID=node3-observer
+      - GM_PEERS=node1:9483
+    command: ["--regtest", "--peer", "node1:9483"]
+    depends_on:
+      - node1
+    volumes:
+      - node3_data:/data
+
+volumes:
+  node1_data:
+  node2_data:
+  node3_data:

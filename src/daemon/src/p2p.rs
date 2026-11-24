@@ -123,7 +123,7 @@ impl<S: UcoStoreRead + Send + Sync + 'static> P2pMesh<S> {
         self.broadcast(frame)
     }
 
-    pub async fn start(self: Arc<Self>) -> Result<(), String> {
+    pub async fn start(self: Arc<Self>) -> Result<SocketAddr, String> {
         let listener = TcpListener::bind(self.config.listen_addr)
             .await
             .map_err(|e| {
@@ -132,10 +132,11 @@ impl<S: UcoStoreRead + Send + Sync + 'static> P2pMesh<S> {
                     self.config.listen_addr
                 )
             })?;
+        let bound_addr = listener.local_addr().map_err(|e| e.to_string())?;
 
         info!(
             "[P2P Wire Mesh] Listening on {} (Node ID: {})",
-            self.config.listen_addr, self.config.node_id
+            bound_addr, self.config.node_id
         );
 
         // Connect to initial bootstrap peers
@@ -158,7 +159,7 @@ impl<S: UcoStoreRead + Send + Sync + 'static> P2pMesh<S> {
                             Ok((stream, remote_addr)) => {
                                 let self_peer = Arc::clone(&self_listener);
                                 tokio::spawn(async move {
-                                    self_peer.handle_incoming_connection(stream, remote_addr).await;
+                                    self_peer.handle_connection(stream, remote_addr).await;
                                 });
                             }
                             Err(e) => {
@@ -174,10 +175,10 @@ impl<S: UcoStoreRead + Send + Sync + 'static> P2pMesh<S> {
             }
         });
 
-        Ok(())
+        Ok(bound_addr)
     }
 
-    pub async fn connect_to_peer(&self, addr: SocketAddr) -> Result<(), String> {
+    pub async fn connect_to_peer(self: &Arc<Self>, addr: SocketAddr) -> Result<(), String> {
         let mut stream = TcpStream::connect(addr)
             .await
             .map_err(|e| format!("Connection to {addr} failed: {e}"))?;
@@ -207,10 +208,16 @@ impl<S: UcoStoreRead + Send + Sync + 'static> P2pMesh<S> {
         };
 
         self.peers.write().await.insert(addr, peer_info);
+
+        let self_clone = Arc::clone(self);
+        tokio::spawn(async move {
+            self_clone.handle_connection(stream, addr).await;
+        });
+
         Ok(())
     }
 
-    async fn handle_incoming_connection(&self, mut stream: TcpStream, remote_addr: SocketAddr) {
+    async fn handle_connection(&self, mut stream: TcpStream, remote_addr: SocketAddr) {
         let now = std::time::SystemTime::now()
             .duration_since(std::time::UNIX_EPOCH)
             .unwrap_or_default()
@@ -270,21 +277,16 @@ impl<S: UcoStoreRead + Send + Sync + 'static> P2pMesh<S> {
         &self,
         frame: WireFrame,
         remote_addr: SocketAddr,
-        stream: &mut TcpStream,
+        _stream: &mut TcpStream,
     ) {
         match frame.msg_type {
             MessageType::PeerPing => {
-                let now = std::time::SystemTime::now()
-                    .duration_since(std::time::UNIX_EPOCH)
-                    .unwrap_or_default()
-                    .as_secs();
-                let pong = WireFrame::new(
-                    MessageType::PeerPing,
-                    now,
-                    self.config.node_id.as_bytes().to_vec(),
-                );
-                if let Ok(bytes) = pong.encode() {
-                    let _ = stream.write_all(&bytes).await;
+                let remote_node_id = String::from_utf8_lossy(&frame.payload).to_string();
+                if !remote_node_id.is_empty() {
+                    let mut peers = self.peers.write().await;
+                    if let Some(peer_info) = peers.get_mut(&remote_addr) {
+                        peer_info.node_id = remote_node_id;
+                    }
                 }
             }
             MessageType::TxIntent => {
