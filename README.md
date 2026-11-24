@@ -291,6 +291,7 @@ All protocol behavior is specified through RFCs before implementation:
 | [RFC-005](docs/rfc/rfc-005.md) | Cryptographic Identity & Signed Events Specification | ✅ Implemented (Stage 1.5) |
 | [RFC-006](docs/rfc/rfc-006.md) | Sovereign Distributed Ledger & Multi-Mirror Publishing | ✅ Implemented (Stage 2–3) |
 | [RFC-007](docs/rfc/rfc-007.md) | **v1.3 Hardening, Hybrid UCO, RFC 9162 Tiles, C2SP Witnesses, redb Daemon & Tauri Desktop** | ✅ Implemented (Stage 4) |
+| [RFC-008](docs/rfc/rfc-008.md) | **P2P Wire Protocol (Port 9483), Coinless Anti-Spam & Multi-Mirror MRV Pinning** | ✅ Implemented (Stage 4.5) |
 | [RFC-GM-002](docs/SOVEREIGN_PROTOCOL_EVOLUTION.md) | **v2.0 Sovereign Protocol Blueprint (`greymisnomerd`, Ports `9482`/`9483`)** | 📋 Blueprint (Stages 3.5–6) |
 
 > New features require an accepted RFC before code is written. See the [RFC template](docs/rfc/rfc-template.md) to propose a new specification (`RFC-008+`).
