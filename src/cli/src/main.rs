@@ -287,6 +287,14 @@ fn print_usage() {
     );
     println!("    verify-checkpoint <FILE>    Verify an individual signed checkpoint file");
     println!("    export-tiles [FILE]         Export RFC 9162 immutable static tiles and checkpoint note");
+    println!(
+        "    tx-mint [FLAGS]             Sign and submit a v2 UcoMint transaction to greymisnomerd"
+    );
+    println!("    tx-transfer [FLAGS]         Sign and submit a v2 UcoSplitTransfer transaction to greymisnomerd");
+    println!("    tx-burn [FLAGS]             Sign and submit a v2 UcoBurn (PoO) transaction to greymisnomerd");
+    println!("    rpc-ucos [--rpc-url URL]    List active UCOs on running greymisnomerd node");
+    println!("    rpc-peers [--rpc-url URL]   List connected P2P peers on port 9483");
+    println!("    rpc-mempool [--rpc-url URL] Inspect pending transactions in node mempool");
     println!();
     println!("FLAGS:");
     println!("    --chain-id <HEX>            Expected 32-byte registry domain chain_id");
@@ -547,6 +555,12 @@ fn main() -> Result<()> {
         "checkpoint" => handle_checkpoint(&args[2..]),
         "verify-checkpoint" => handle_verify_checkpoint(&args[2..]),
         "export-tiles" => handle_export_tiles(&args[2..]),
+        "tx-mint" => grey_misnomer_cli::v2_rpc::handle_tx_mint(&args[2..]),
+        "tx-transfer" => grey_misnomer_cli::v2_rpc::handle_tx_transfer(&args[2..]),
+        "tx-burn" => grey_misnomer_cli::v2_rpc::handle_tx_burn(&args[2..]),
+        "rpc-ucos" => grey_misnomer_cli::v2_rpc::handle_rpc_ucos(&args[2..]),
+        "rpc-peers" => grey_misnomer_cli::v2_rpc::handle_rpc_peers(&args[2..]),
+        "rpc-mempool" => grey_misnomer_cli::v2_rpc::handle_rpc_mempool(&args[2..]),
         "replay" => handle_replay(&args[2..]),
         _ if args[1].starts_with('-') => handle_replay(&args[1..]),
         _ => handle_replay(&args[1..]),
