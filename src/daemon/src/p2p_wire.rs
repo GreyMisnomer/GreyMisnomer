@@ -4,7 +4,8 @@
 use thiserror::Error;
 
 pub const P2P_MAGIC: [u8; 4] = [0x47, 0x4D, 0x32, 0x50]; // "GM2P"
-pub const HEADER_LEN: usize = 16;
+/// 4B magic + 1B msg_type + 1B flags + 2B reserved + 8B timestamp + 4B payload_len
+pub const HEADER_LEN: usize = 20;
 pub const CHECKSUM_LEN: usize = 32;
 pub const MAX_PAYLOAD_SIZE: usize = 1_048_576; // 1 MiB frame cap
 
@@ -89,9 +90,12 @@ impl WireFrame {
         Ok(buf)
     }
 
-    pub fn decode(bytes: &[u8]) -> Result<Self, P2pWireError> {
-        if bytes.len() < HEADER_LEN + CHECKSUM_LEN {
-            return Err(P2pWireError::Truncated(HEADER_LEN + CHECKSUM_LEN));
+    /// Decodes a complete `WireFrame` from a streaming TCP read buffer.
+    /// Returns `Ok(None)` when more bytes are needed from the socket, or
+    /// `Ok(Some((frame, bytes_consumed)))` on success.
+    pub fn decode_from_buffer(bytes: &[u8]) -> Result<Option<(Self, usize)>, P2pWireError> {
+        if bytes.len() < HEADER_LEN {
+            return Ok(None);
         }
 
         let mut magic = [0u8; 4];
@@ -120,24 +124,34 @@ impl WireFrame {
             });
         }
 
-        let expected_total_len = 20 + payload_len + CHECKSUM_LEN;
+        let expected_total_len = HEADER_LEN + payload_len + CHECKSUM_LEN;
         if bytes.len() < expected_total_len {
-            return Err(P2pWireError::Truncated(expected_total_len));
+            return Ok(None);
         }
 
-        let payload = bytes[20..20 + payload_len].to_vec();
-        let expected_checksum = blake3::hash(&bytes[4..20 + payload_len]);
-        let provided_checksum = &bytes[20 + payload_len..20 + payload_len + 32];
+        let payload = bytes[HEADER_LEN..HEADER_LEN + payload_len].to_vec();
+        let expected_checksum = blake3::hash(&bytes[4..HEADER_LEN + payload_len]);
+        let provided_checksum = &bytes[HEADER_LEN + payload_len..expected_total_len];
 
         if expected_checksum.as_bytes() != provided_checksum {
             return Err(P2pWireError::ChecksumMismatch);
         }
 
-        Ok(Self {
-            msg_type,
-            timestamp,
-            payload,
-        })
+        Ok(Some((
+            Self {
+                msg_type,
+                timestamp,
+                payload,
+            },
+            expected_total_len,
+        )))
+    }
+
+    pub fn decode(bytes: &[u8]) -> Result<Self, P2pWireError> {
+        match Self::decode_from_buffer(bytes)? {
+            Some((frame, _)) => Ok(frame),
+            None => Err(P2pWireError::Truncated(HEADER_LEN + CHECKSUM_LEN)),
+        }
     }
 }
 
@@ -147,6 +161,7 @@ mod tests {
 
     #[test]
     fn test_wire_frame_encode_decode_roundtrip() {
+        assert_eq!(HEADER_LEN, 20);
         let frame = WireFrame::new(
             MessageType::TxIntent,
             1732450000,
@@ -158,6 +173,33 @@ mod tests {
 
         let decoded = WireFrame::decode(&encoded).expect("decode should succeed");
         assert_eq!(decoded, frame);
+    }
+
+    #[test]
+    fn test_wire_frame_stream_fragmentation_and_coalescing() {
+        let f1 = WireFrame::new(MessageType::PeerPing, 1, b"alice".to_vec());
+        let f2 = WireFrame::new(MessageType::TxIntent, 2, b"tx-payload-data".to_vec());
+
+        let mut stream = f1.encode().unwrap();
+        let f2_bytes = f2.encode().unwrap();
+        stream.extend_from_slice(&f2_bytes);
+
+        // Fragmented byte-by-byte trickle yields None until first frame completes
+        for partial_end in 1..f1.encode().unwrap().len() {
+            assert_eq!(
+                WireFrame::decode_from_buffer(&stream[..partial_end]).unwrap(),
+                None
+            );
+        }
+
+        // Decoding coalesced stream extracts frame 1 then frame 2 cleanly
+        let (dec1, len1) = WireFrame::decode_from_buffer(&stream).unwrap().unwrap();
+        assert_eq!(dec1, f1);
+        let (dec2, len2) = WireFrame::decode_from_buffer(&stream[len1..])
+            .unwrap()
+            .unwrap();
+        assert_eq!(dec2, f2);
+        assert_eq!(len1 + len2, stream.len());
     }
 
     #[test]

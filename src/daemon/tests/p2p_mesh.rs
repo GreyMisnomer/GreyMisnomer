@@ -312,3 +312,420 @@ async fn test_p2p_structural_anti_spam_invariants() {
         .unwrap_err();
     assert_eq!(err2, MempoolError::AmountExceedsMaxCap);
 }
+
+#[tokio::test]
+async fn test_alice_bob_genesis_mint_transfer_catchup_and_reverse_burn_p2p() {
+    use axum::body::Body;
+    use axum::http::{Request, StatusCode};
+    use grey_misnomer_core::uco::PoOClaimType;
+    use grey_misnomer_core::uco_engine::UcoBurnTx;
+    use greymisnomerd::genesis::{apply_genesis_to_storage, generate_genesis_v2};
+    use greymisnomerd::rpc::{build_router, AppState, ChainStatusResponse, TxSubmitResponse};
+    use greymisnomerd::storage::ChainStorage;
+    use http_body_util::BodyExt;
+    use tokio::sync::broadcast;
+    use tower::ServiceExt;
+
+    let temp_root = std::env::temp_dir().join(format!("gm_alice_bob_{}", std::process::id()));
+    let _ = std::fs::remove_dir_all(&temp_root);
+    let alice_db_path = temp_root.join("alice/chainstate.redb");
+    let bob_db_path = temp_root.join("bob/chainstate.redb");
+    std::fs::create_dir_all(alice_db_path.parent().unwrap()).unwrap();
+    std::fs::create_dir_all(bob_db_path.parent().unwrap()).unwrap();
+
+    // 1. Alice creates fresh CSPRNG v2 Genesis (she holds private keys; Bob only gets public genesis)
+    let (genesis, keys) = generate_genesis_v2("AliceBobNet", None);
+    let seq_kp = Arc::new(keys.sequencer.to_keypair().unwrap());
+    let vvb_kp = keys.vvb.to_keypair().unwrap();
+    let alice_kp = keys.alice.to_keypair().unwrap();
+    let bob_kp = keys.bob.to_keypair().unwrap();
+
+    // 2. Start Alice Node (Genesis Sequencer + Relay)
+    let alice_storage = ChainStorage::open(&alice_db_path).unwrap();
+    apply_genesis_to_storage(&alice_storage, &genesis).unwrap();
+    let (alice_evt, _) = broadcast::channel(32);
+    let alice_mp = Arc::new(Mutex::new(Mempool::new(0)));
+    let alice_mesh = Arc::new(
+        P2pMesh::new(
+            P2pConfig {
+                listen_addr: SocketAddr::from(([127, 0, 0, 1], 0)),
+                node_id: "alice-genesis".to_string(),
+                bootstrap_peers: Vec::new(),
+                enable_relay: true,
+            },
+            alice_mp,
+            Arc::new(alice_storage.clone()),
+        )
+        .with_chain_sync(alice_storage.clone(), alice_evt.clone())
+        .with_sequencer_key(Arc::clone(&seq_kp)),
+    );
+    let alice_p2p_addr = alice_mesh.clone().start().await.unwrap();
+
+    let alice_app = build_router(
+        AppState::new(alice_storage.clone(), alice_evt, true, None, 9482)
+            .with_p2p_mesh(Arc::clone(&alice_mesh))
+            .with_sequencer_key(Arc::clone(&seq_kp)),
+    );
+
+    // 3. Before Bob even joins, Alice mints 10 credits (10_000_000 micro-units) to Alice
+    let mut mint = UcoMintTx {
+        project_id: "SOLAR-RAJASTHAN-01".to_string(),
+        batch_id: "BATCH-01".to_string(),
+        vintage_year: 2026,
+        micro_units: 10_000_000,
+        initial_owner: alice_kp.pubkey(),
+        methodology_hash: [0x11; 32],
+        mrv_data_root: [0x22; 32],
+        mrv_blob_mirrors: vec!["ipfs://mrv-alpha".to_string()],
+        challenge_window_epochs: 0,
+        vvb_signatures: Vec::new(),
+    };
+    let mint_pre = mint.signing_preimage(&genesis.chain_id);
+    mint.vvb_signatures
+        .push((vvb_kp.pubkey(), vvb_kp.sign(&mint_pre)));
+
+    let resp = alice_app
+        .clone()
+        .oneshot(
+            Request::builder()
+                .method("POST")
+                .uri("/v1/tx/submit")
+                .header("Content-Type", "application/json")
+                .body(Body::from(
+                    serde_json::to_vec(&UcoTransaction::Mint(mint)).unwrap(),
+                ))
+                .unwrap(),
+        )
+        .await
+        .unwrap();
+    assert_eq!(resp.status(), StatusCode::OK);
+    let body = resp.into_body().collect().await.unwrap().to_bytes();
+    let mint_res: TxSubmitResponse = serde_json::from_slice(&body).unwrap();
+    assert_eq!(mint_res.status, "committed");
+    assert_eq!(mint_res.tree_size, Some("1".to_string()));
+
+    let mint_outpoint = grey_misnomer_core::uco::OutPoint::new(
+        hex::decode(&mint_res.txid).unwrap().try_into().unwrap(),
+        0,
+    );
+
+    // 4. Alice transfers 4 credits to Bob, leaving 6 change credits to Alice -> tree_size = 2
+    let mut split = UcoSplitTransferTx {
+        inputs: vec![mint_outpoint],
+        outputs: vec![
+            UcoTransferOutputSpec {
+                owner: bob_kp.pubkey(),
+                start_micro_unit: 0,
+                end_micro_unit: 4_000_000,
+                micro_units: 4_000_000,
+                locked_escrow_program: None,
+            },
+            UcoTransferOutputSpec {
+                owner: alice_kp.pubkey(),
+                start_micro_unit: 4_000_000,
+                end_micro_unit: 10_000_000,
+                micro_units: 6_000_000,
+                locked_escrow_program: None,
+            },
+        ],
+        input_signatures: Vec::new(),
+    };
+    let split_pre = split.signing_preimage(&genesis.chain_id, &[0]);
+    split.input_signatures.push(alice_kp.sign(&split_pre));
+
+    let resp2 = alice_app
+        .clone()
+        .oneshot(
+            Request::builder()
+                .method("POST")
+                .uri("/v1/tx/submit")
+                .header("Content-Type", "application/json")
+                .body(Body::from(
+                    serde_json::to_vec(&UcoTransaction::SplitTransfer(split)).unwrap(),
+                ))
+                .unwrap(),
+        )
+        .await
+        .unwrap();
+    assert_eq!(resp2.status(), StatusCode::OK);
+    let body2 = resp2.into_body().collect().await.unwrap().to_bytes();
+    let split_res: TxSubmitResponse = serde_json::from_slice(&body2).unwrap();
+    assert_eq!(split_res.tree_size, Some("2".to_string()));
+    let bob_outpoint = grey_misnomer_core::uco::OutPoint::new(
+        hex::decode(&split_res.txid).unwrap().try_into().unwrap(),
+        0,
+    );
+
+    // 5. NOW Bob initializes with ONLY public genesis_v2.json (no private sequencer/VVB keys!) and dials Alice
+    let bob_storage = ChainStorage::open(&bob_db_path).unwrap();
+    apply_genesis_to_storage(&bob_storage, &genesis).unwrap();
+    let (bob_evt, _) = broadcast::channel(32);
+    let bob_mp = Arc::new(Mutex::new(Mempool::new(0)));
+    let bob_mesh = Arc::new(
+        P2pMesh::new(
+            P2pConfig {
+                listen_addr: SocketAddr::from(([127, 0, 0, 1], 0)),
+                node_id: "bob-peer".to_string(),
+                bootstrap_peers: vec![alice_p2p_addr],
+                enable_relay: false,
+            },
+            bob_mp,
+            Arc::new(bob_storage.clone()),
+        )
+        .with_chain_sync(bob_storage.clone(), bob_evt.clone()),
+    );
+    let _bob_p2p_addr = bob_mesh.clone().start().await.unwrap();
+    let bob_app = build_router(
+        AppState::new(bob_storage.clone(), bob_evt, false, None, 9582)
+            .with_p2p_mesh(Arc::clone(&bob_mesh)),
+    );
+
+    // Wait for automatic P2P catch-up (PeerPing -> TileRequest -> TileResponse -> verify -> redb)
+    let mut synced = false;
+    for _ in 0..30 {
+        if bob_storage.read_tx().unwrap().tree_size() == 2 {
+            synced = true;
+            break;
+        }
+        sleep(Duration::from_millis(50)).await;
+    }
+    assert!(
+        synced,
+        "Bob failed to sync Alice's committed history over port 9483"
+    );
+
+    // Verify Bob independently holds both active UCOs and exact same checkpoint
+    let bob_status_resp = bob_app
+        .clone()
+        .oneshot(
+            Request::builder()
+                .uri("/v1/chain/status")
+                .body(Body::empty())
+                .unwrap(),
+        )
+        .await
+        .unwrap();
+    let bob_status: ChainStatusResponse = serde_json::from_slice(
+        &bob_status_resp
+            .into_body()
+            .collect()
+            .await
+            .unwrap()
+            .to_bytes(),
+    )
+    .unwrap();
+    assert_eq!(bob_status.tree_size, "2");
+    assert_eq!(bob_status.active_ucos_count, "2");
+
+    // 6. Now Bob submits a Burn transaction of 1.5 credits (returning 2.5 change) to BOB's own localhost RPC!
+    let mut burn = UcoBurnTx {
+        input: bob_outpoint,
+        start_micro_unit: 0,
+        end_micro_unit: 1_500_000,
+        micro_units: 1_500_000,
+        beneficiary: "Bob Steel Carbon Retirement".to_string(),
+        claim_type: PoOClaimType::Voluntary,
+        owner_sig: Signature::default(),
+        change_owner: Some(bob_kp.pubkey()),
+    };
+    let burn_pre = burn.signing_preimage(&genesis.chain_id, 0);
+    burn.owner_sig = bob_kp.sign(&burn_pre);
+
+    let bob_burn_resp = bob_app
+        .clone()
+        .oneshot(
+            Request::builder()
+                .method("POST")
+                .uri("/v1/tx/submit")
+                .header("Content-Type", "application/json")
+                .body(Body::from(
+                    serde_json::to_vec(&UcoTransaction::Burn(burn)).unwrap(),
+                ))
+                .unwrap(),
+        )
+        .await
+        .unwrap();
+    assert_eq!(bob_burn_resp.status(), StatusCode::OK);
+    let bob_burn_res: TxSubmitResponse = serde_json::from_slice(
+        &bob_burn_resp
+            .into_body()
+            .collect()
+            .await
+            .unwrap()
+            .to_bytes(),
+    )
+    .unwrap();
+    assert_eq!(bob_burn_res.status, "validated_pending");
+
+    // Bob gossips TxIntent -> Alice auto-sequences -> Alice announces tree_size 3 -> Bob syncs!
+    let mut both_at_3 = false;
+    for _ in 0..40 {
+        if alice_storage.read_tx().unwrap().tree_size() == 3
+            && bob_storage.read_tx().unwrap().tree_size() == 3
+        {
+            both_at_3 = true;
+            break;
+        }
+        sleep(Duration::from_millis(50)).await;
+    }
+    assert!(
+        both_at_3,
+        "Alice and Bob did not converge to tree_size 3 after Bob's P2P Burn"
+    );
+
+    let a_rtx = alice_storage.read_tx().unwrap();
+    let b_rtx = bob_storage.read_tx().unwrap();
+    assert_eq!(a_rtx.poo_count(), 1);
+    assert_eq!(b_rtx.poo_count(), 1);
+    assert_eq!(
+        a_rtx.get_latest_checkpoint().unwrap(),
+        b_rtx.get_latest_checkpoint().unwrap()
+    );
+
+    alice_mesh.shutdown();
+    bob_mesh.shutdown();
+    let _ = std::fs::remove_dir_all(&temp_root);
+}
+
+#[tokio::test]
+async fn test_nat_relay_star_topology_ledger_convergence() {
+    use axum::body::Body;
+    use axum::http::{Request, StatusCode};
+    use greymisnomerd::genesis::{apply_genesis_to_storage, generate_genesis_v2};
+    use greymisnomerd::rpc::{build_router, AppState};
+    use greymisnomerd::storage::ChainStorage;
+    use tokio::sync::broadcast;
+    use tower::ServiceExt;
+
+    let temp_root = std::env::temp_dir().join(format!("gm_relay_star_{}", std::process::id()));
+    let _ = std::fs::remove_dir_all(&temp_root);
+
+    let (genesis, keys) = generate_genesis_v2("RelayStarNet", None);
+    let seq_kp = Arc::new(keys.sequencer.to_keypair().unwrap());
+    let vvb_kp = keys.vvb.to_keypair().unwrap();
+    let alice_kp = keys.alice.to_keypair().unwrap();
+
+    let relay_db = temp_root.join("relay/chainstate.redb");
+    let alice_db = temp_root.join("alice/chainstate.redb");
+    let bob_db = temp_root.join("bob/chainstate.redb");
+    std::fs::create_dir_all(relay_db.parent().unwrap()).unwrap();
+    std::fs::create_dir_all(alice_db.parent().unwrap()).unwrap();
+    std::fs::create_dir_all(bob_db.parent().unwrap()).unwrap();
+
+    let relay_storage = ChainStorage::open(&relay_db).unwrap();
+    let alice_storage = ChainStorage::open(&alice_db).unwrap();
+    let bob_storage = ChainStorage::open(&bob_db).unwrap();
+    apply_genesis_to_storage(&relay_storage, &genesis).unwrap();
+    apply_genesis_to_storage(&alice_storage, &genesis).unwrap();
+    apply_genesis_to_storage(&bob_storage, &genesis).unwrap();
+
+    // 1. Public Relay (no private sequencer keys) opens port
+    let (relay_evt, _) = broadcast::channel(32);
+    let relay_mesh = Arc::new(
+        P2pMesh::new(
+            P2pConfig {
+                listen_addr: SocketAddr::from(([127, 0, 0, 1], 0)),
+                node_id: "vps-relay".to_string(),
+                bootstrap_peers: Vec::new(),
+                enable_relay: true,
+            },
+            Arc::new(Mutex::new(Mempool::new(0))),
+            Arc::new(relay_storage.clone()),
+        )
+        .with_chain_sync(relay_storage.clone(), relay_evt),
+    );
+    let relay_addr = relay_mesh.clone().start().await.unwrap();
+
+    // 2. Both NATed Alice and NATed Bob connect outbound to Relay
+    let (alice_evt, _) = broadcast::channel(32);
+    let alice_mesh = Arc::new(
+        P2pMesh::new(
+            P2pConfig {
+                listen_addr: SocketAddr::from(([127, 0, 0, 1], 0)),
+                node_id: "alice-nat".to_string(),
+                bootstrap_peers: vec![relay_addr],
+                enable_relay: false,
+            },
+            Arc::new(Mutex::new(Mempool::new(0))),
+            Arc::new(alice_storage.clone()),
+        )
+        .with_chain_sync(alice_storage.clone(), alice_evt.clone())
+        .with_sequencer_key(Arc::clone(&seq_kp)),
+    );
+    let _ = alice_mesh.clone().start().await.unwrap();
+
+    let (bob_evt, _) = broadcast::channel(32);
+    let bob_mesh = Arc::new(
+        P2pMesh::new(
+            P2pConfig {
+                listen_addr: SocketAddr::from(([127, 0, 0, 1], 0)),
+                node_id: "bob-nat".to_string(),
+                bootstrap_peers: vec![relay_addr],
+                enable_relay: false,
+            },
+            Arc::new(Mutex::new(Mempool::new(0))),
+            Arc::new(bob_storage.clone()),
+        )
+        .with_chain_sync(bob_storage.clone(), bob_evt),
+    );
+    let _ = bob_mesh.clone().start().await.unwrap();
+
+    sleep(Duration::from_millis(150)).await;
+
+    // 3. Alice mints via Alice's RPC -> pushes through Relay -> Bob receives & verifies!
+    let alice_app = build_router(
+        AppState::new(alice_storage.clone(), alice_evt, true, None, 9482)
+            .with_p2p_mesh(Arc::clone(&alice_mesh))
+            .with_sequencer_key(Arc::clone(&seq_kp)),
+    );
+    let mut mint = UcoMintTx {
+        project_id: "SOLAR-NAT-01".to_string(),
+        batch_id: "BATCH-NAT".to_string(),
+        vintage_year: 2026,
+        micro_units: 5_000_000,
+        initial_owner: alice_kp.pubkey(),
+        methodology_hash: [0x11; 32],
+        mrv_data_root: [0x99; 32],
+        mrv_blob_mirrors: vec!["ipfs://nat-mrv".to_string()],
+        challenge_window_epochs: 0,
+        vvb_signatures: Vec::new(),
+    };
+    let pre = mint.signing_preimage(&genesis.chain_id);
+    mint.vvb_signatures
+        .push((vvb_kp.pubkey(), vvb_kp.sign(&pre)));
+
+    let resp = alice_app
+        .oneshot(
+            Request::builder()
+                .method("POST")
+                .uri("/v1/tx/submit")
+                .header("Content-Type", "application/json")
+                .body(Body::from(
+                    serde_json::to_vec(&UcoTransaction::Mint(mint)).unwrap(),
+                ))
+                .unwrap(),
+        )
+        .await
+        .unwrap();
+    assert_eq!(resp.status(), StatusCode::OK);
+
+    let mut converged = false;
+    for _ in 0..40 {
+        if relay_storage.read_tx().unwrap().tree_size() == 1
+            && bob_storage.read_tx().unwrap().tree_size() == 1
+        {
+            converged = true;
+            break;
+        }
+        sleep(Duration::from_millis(50)).await;
+    }
+    assert!(
+        converged,
+        "Relay star topology failed to converge Alice -> Relay -> Bob"
+    );
+
+    relay_mesh.shutdown();
+    alice_mesh.shutdown();
+    bob_mesh.shutdown();
+    let _ = std::fs::remove_dir_all(&temp_root);
+}

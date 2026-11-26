@@ -5,14 +5,13 @@
 //! witness cosignatures, validates OTS digest commitments, checks MRV blob
 //! availability across mirrors, and applies state transitions into `redb`.
 
-use crate::storage::{BatchTransition, ChainStorage, StorageError};
+use crate::storage::{BatchOverlayStore, BatchTransition, ChainStorage, StorageError};
 use grey_misnomer_core::auth::{hash_log_leaf, PubKey};
 use grey_misnomer_core::error::RegistryError;
 use grey_misnomer_core::header::CheckpointHeaderV2;
 use grey_misnomer_core::merkle_log::{verify_consistency, MerkleLogTree};
 use grey_misnomer_core::tiles::{TileKey, TILE_WIDTH};
-use grey_misnomer_core::uco::{OutPoint, UnretiredCreditOutput};
-use grey_misnomer_core::uco_engine::{apply_uco, UcoStoreRead, UcoTransaction};
+use grey_misnomer_core::uco_engine::{apply_uco, UcoTransaction};
 use grey_misnomer_core::witness::{verify_witness_quorum, Cosignature};
 use sha2::{Digest, Sha256};
 use std::collections::BTreeMap;
@@ -229,58 +228,6 @@ pub enum SyncResult {
         to_size: u64,
         events_applied: usize,
     },
-}
-
-// ---------------------------------------------------------------------------
-// In-Memory Overlay Store for Intra-Batch Chaining
-// ---------------------------------------------------------------------------
-
-struct BatchOverlayStore<'a> {
-    base: &'a crate::storage::StorageReadTx,
-    delta_ucos: BTreeMap<OutPoint, Option<UnretiredCreditOutput>>,
-    delta_cursors: BTreeMap<(String, u16), u64>,
-    used_roots: std::collections::BTreeSet<[u8; 32]>,
-}
-
-impl<'a> UcoStoreRead for BatchOverlayStore<'a> {
-    fn chain_id(&self) -> [u8; 32] {
-        self.base.chain_id()
-    }
-
-    fn current_epoch(&self) -> u64 {
-        self.base.current_epoch()
-    }
-
-    fn get_uco(&self, outpoint: &OutPoint) -> Option<UnretiredCreditOutput> {
-        if let Some(opt) = self.delta_ucos.get(outpoint) {
-            opt.clone()
-        } else {
-            self.base.get_uco(outpoint)
-        }
-    }
-
-    fn get_serial_cursor(&self, project_id: &str, vintage_year: u16) -> u64 {
-        if let Some(cursor) = self
-            .delta_cursors
-            .get(&(project_id.to_string(), vintage_year))
-        {
-            *cursor
-        } else {
-            self.base.get_serial_cursor(project_id, vintage_year)
-        }
-    }
-
-    fn is_vvb_active(&self, vvb: &PubKey) -> bool {
-        self.base.is_vvb_active(vvb)
-    }
-
-    fn is_mrv_root_used(&self, root: &[u8; 32]) -> bool {
-        if self.used_roots.contains(root) {
-            true
-        } else {
-            self.base.is_mrv_root_used(root)
-        }
-    }
 }
 
 // ---------------------------------------------------------------------------
@@ -512,12 +459,7 @@ impl TileSyncEngine {
 
         // 6. Evaluate and apply state transitions into redb
         let rtx = storage.read_tx()?;
-        let mut overlay = BatchOverlayStore {
-            base: &rtx,
-            delta_ucos: BTreeMap::new(),
-            delta_cursors: BTreeMap::new(),
-            used_roots: std::collections::BTreeSet::new(),
-        };
+        let mut overlay = BatchOverlayStore::new(&rtx);
 
         let mut transitions = Vec::with_capacity(new_raw_events.len());
         for (i, raw_ev) in new_raw_events.iter().enumerate() {
@@ -537,21 +479,7 @@ impl TileSyncEngine {
                         err: e.to_string(),
                     })?;
 
-                // Apply delta into overlay for chaining within this batch
-                for spent in &d.spent_outpoints {
-                    overlay.delta_ucos.insert(*spent, None);
-                }
-                for created in &d.created_ucos {
-                    overlay
-                        .delta_ucos
-                        .insert(created.outpoint, Some(created.clone()));
-                }
-                for ((proj, vin), cursor) in &d.updated_cursors {
-                    overlay.delta_cursors.insert((proj.clone(), *vin), *cursor);
-                }
-                for root in &d.used_data_roots {
-                    overlay.used_roots.insert(*root);
-                }
+                overlay.record_delta(&d);
 
                 (d, mirrors)
             } else {

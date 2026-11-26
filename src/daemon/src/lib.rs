@@ -1,5 +1,7 @@
 pub mod blobs;
+pub mod chain_commit;
 pub mod config;
+pub mod genesis;
 pub mod mempool;
 pub mod p2p;
 pub mod p2p_wire;

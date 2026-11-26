@@ -196,6 +196,13 @@ impl Mempool {
         self.txs.get(txid).map(|(tx, _, _)| tx)
     }
 
+    pub fn list_txs(&self) -> Vec<([u8; 32], UcoTransaction, u64)> {
+        self.txs
+            .iter()
+            .map(|(id, (tx, ts, _))| (*id, tx.clone(), *ts))
+            .collect()
+    }
+
     pub fn peer_score(&self, peer_id: &str) -> i32 {
         self.peer_scores
             .get(peer_id)

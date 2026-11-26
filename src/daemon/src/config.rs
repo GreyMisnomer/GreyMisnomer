@@ -50,6 +50,26 @@ pub struct DaemonConfig {
     #[arg(long, default_value_t = false, env = "GM_RELAY")]
     pub enable_relay: bool,
 
+    /// Initialize fresh CSPRNG v2 Genesis (genesis_v2.json + genesis_keys.json) and exit
+    #[arg(long, default_value_t = false)]
+    pub init_genesis: bool,
+
+    /// Human-readable chain name used during --init-genesis or first --regtest boot
+    #[arg(long, default_value = "GreyMisnomer-Local", env = "GM_CHAIN_NAME")]
+    pub chain_name: String,
+
+    /// Path to public genesis_v2.json file shared with peers
+    #[arg(long = "genesis", env = "GM_GENESIS")]
+    pub genesis_file: Option<PathBuf>,
+
+    /// Path to private genesis_keys.json file authorizing checkpoint signing / auto-sequencing
+    #[arg(long = "sequencer-keys", env = "GM_SEQUENCER_KEYS")]
+    pub sequencer_keys_file: Option<PathBuf>,
+
+    /// Disable .cookie bearer auth on localhost RPC port 9482
+    #[arg(long, default_value_t = false, env = "GM_NO_RPC_AUTH")]
+    pub no_rpc_auth: bool,
+
     /// Run in isolated local regtest mode
     #[arg(long, default_value_t = false)]
     pub regtest: bool,
@@ -66,6 +86,11 @@ impl Default for DaemonConfig {
             peers: Vec::new(),
             node_id: None,
             enable_relay: false,
+            init_genesis: false,
+            chain_name: "GreyMisnomer-Local".to_string(),
+            genesis_file: None,
+            sequencer_keys_file: None,
+            no_rpc_auth: false,
             regtest: false,
         }
     }

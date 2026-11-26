@@ -297,6 +297,7 @@ async fn test_full_witness_tiles_daemon_rpc_lifecycle() {
         cookie_token: Some("auth-token-xyz".to_string()),
         rpc_port: 9482,
         p2p_mesh: None,
+        sequencer_key: None,
     };
     let app = build_router(app_state);
 

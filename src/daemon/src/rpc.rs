@@ -4,7 +4,8 @@
 //! permanent retirement proofs, and transaction submissions bound to 127.0.0.1:9482.
 //! Responses enforce stringified base-10 `u64` integers to ensure complete JS/BigInt safety.
 
-use crate::storage::{BatchTransition, ChainStorage};
+use crate::chain_commit::sequence_and_commit_tx;
+use crate::storage::ChainStorage;
 use axum::extract::ws::{Message, WebSocket, WebSocketUpgrade};
 use axum::extract::{Path, State};
 use axum::http::{HeaderMap, StatusCode};
@@ -12,8 +13,7 @@ use axum::middleware::{self, Next};
 use axum::response::{IntoResponse, Response};
 use axum::routing::{get, post};
 use axum::{Json, Router};
-use grey_misnomer_core::auth::hash_log_leaf;
-use grey_misnomer_core::header::CheckpointHeaderV2;
+use grey_misnomer_core::auth::Keypair;
 use grey_misnomer_core::spv::{
     generate_poo_spv_proof, generate_unspent_spv_proof, PooRetirementSpvProof, UcoUnspentSpvProof,
 };
@@ -23,6 +23,7 @@ use serde::{Deserialize, Serialize};
 use std::collections::BTreeMap;
 use std::net::SocketAddr;
 use std::str::FromStr;
+use std::sync::Arc;
 use tokio::sync::broadcast;
 use tower_http::cors::{Any, CorsLayer};
 use tracing::info;
@@ -38,7 +39,8 @@ pub struct AppState {
     pub regtest: bool,
     pub cookie_token: Option<String>,
     pub rpc_port: u16,
-    pub p2p_mesh: Option<std::sync::Arc<crate::p2p::P2pMesh<ChainStorage>>>,
+    pub p2p_mesh: Option<Arc<crate::p2p::P2pMesh<ChainStorage>>>,
+    pub sequencer_key: Option<Arc<Keypair>>,
 }
 
 impl AppState {
@@ -56,14 +58,17 @@ impl AppState {
             cookie_token,
             rpc_port,
             p2p_mesh: None,
+            sequencer_key: None,
         }
     }
 
-    pub fn with_p2p_mesh(
-        mut self,
-        mesh: std::sync::Arc<crate::p2p::P2pMesh<ChainStorage>>,
-    ) -> Self {
+    pub fn with_p2p_mesh(mut self, mesh: Arc<crate::p2p::P2pMesh<ChainStorage>>) -> Self {
         self.p2p_mesh = Some(mesh);
+        self
+    }
+
+    pub fn with_sequencer_key(mut self, key: Arc<Keypair>) -> Self {
+        self.sequencer_key = Some(key);
         self
     }
 }
@@ -114,6 +119,33 @@ pub struct TxSubmitResponse {
     pub tree_size: Option<String>,
 }
 
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct UcoSummaryItem {
+    pub outpoint: String,
+    pub project_id: String,
+    pub batch_id: String,
+    pub vintage_year: u16,
+    pub start_micro_unit: String,
+    pub end_micro_unit: String,
+    pub micro_units: String,
+    pub owner: String,
+    pub op_index: String,
+    pub challenge_until_epoch: String,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct MempoolTxSummary {
+    pub txid: String,
+    pub kind: String,
+    pub timestamp: String,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct MempoolStatusResponse {
+    pub count: usize,
+    pub transactions: Vec<MempoolTxSummary>,
+}
+
 // ---------------------------------------------------------------------------
 // Router Builder
 // ---------------------------------------------------------------------------
@@ -126,12 +158,14 @@ pub fn build_router(state: AppState) -> Router {
 
     Router::new()
         .route("/v1/chain/status", get(get_chain_status))
+        .route("/v1/ucos", get(list_ucos))
         .route("/v1/uco/:outpoint", get(get_uco))
         .route("/v1/proof/spv/:outpoint", get(get_spv_proof))
         .route("/v1/proof/poo/:id", get(get_poo_proof))
         .route("/v1/proof/poi/:root", get(get_poi_proof))
         .route("/v1/checkpoint/latest", get(get_latest_checkpoint))
         .route("/v1/network/peers", get(get_network_peers))
+        .route("/v1/mempool", get(get_mempool))
         .route("/v1/tx/submit", post(submit_tx))
         .route("/v1/events/subscribe", get(subscribe_events))
         .layer(cors)
@@ -380,92 +414,145 @@ async fn get_network_peers(
     }
 }
 
+async fn list_ucos(
+    State(state): State<AppState>,
+) -> Result<Json<Vec<UcoSummaryItem>>, (StatusCode, String)> {
+    let rtx = state.storage.read_tx().map_err(internal_error)?;
+    let mut ucos = rtx.list_unspent_outputs().map_err(internal_error)?;
+    ucos.sort_by_key(|a| a.outpoint);
+
+    let items = ucos
+        .into_iter()
+        .map(|u| UcoSummaryItem {
+            outpoint: u.outpoint.to_string(),
+            project_id: u.project_id,
+            batch_id: u.batch_id,
+            vintage_year: u.vintage_year,
+            start_micro_unit: u.start_micro_unit.to_string(),
+            end_micro_unit: u.end_micro_unit.to_string(),
+            micro_units: u.micro_units.to_string(),
+            owner: u.owner.to_hex(),
+            op_index: u.op_index.to_string(),
+            challenge_until_epoch: u.challenge_until_epoch.to_string(),
+        })
+        .collect();
+    Ok(Json(items))
+}
+
+async fn get_mempool(
+    State(state): State<AppState>,
+) -> Result<Json<MempoolStatusResponse>, (StatusCode, String)> {
+    if let Some(ref mesh) = state.p2p_mesh {
+        let entries = mesh.mempool().lock().await.list_txs();
+        let transactions: Vec<MempoolTxSummary> = entries
+            .into_iter()
+            .map(|(txid, tx, ts)| {
+                let kind = match tx {
+                    UcoTransaction::Mint(_) => "Mint",
+                    UcoTransaction::SplitTransfer(_) => "SplitTransfer",
+                    UcoTransaction::Burn(_) => "Burn",
+                };
+                MempoolTxSummary {
+                    txid: hex::encode(txid),
+                    kind: kind.to_string(),
+                    timestamp: ts.to_string(),
+                }
+            })
+            .collect();
+        Ok(Json(MempoolStatusResponse {
+            count: transactions.len(),
+            transactions,
+        }))
+    } else {
+        Ok(Json(MempoolStatusResponse {
+            count: 0,
+            transactions: Vec::new(),
+        }))
+    }
+}
+
 async fn submit_tx(
     State(state): State<AppState>,
     Json(tx): Json<UcoTransaction>,
 ) -> Result<Json<TxSubmitResponse>, (StatusCode, String)> {
-    let rtx = state.storage.read_tx().map_err(internal_error)?;
-
-    // 1. Verify transaction against current chainstate
-    let delta = apply_uco(&rtx, &tx).map_err(|e| {
-        (
-            StatusCode::UNPROCESSABLE_ENTITY,
-            format!("transaction evaluation failed: {e}"),
-        )
-    })?;
-
-    let txid_hex = hex::encode(delta.txid);
-
-    // Broadcast over P2P mesh if active
-    if let Some(ref mesh) = state.p2p_mesh {
-        let _ = mesh.broadcast_tx(&tx).await;
-    }
-
-    // 2. In regtest mode: commit immediately and broadcast
-    if state.regtest {
-        let current_size = rtx.tree_size();
-        let ev_raw = serde_json::to_vec(&tx).map_err(|e| {
+    let acts_as_sequencer = {
+        let rtx = state.storage.read_tx().map_err(internal_error)?;
+        apply_uco(&rtx, &tx).map_err(|e| {
             (
-                StatusCode::INTERNAL_SERVER_ERROR,
-                format!("serialization error: {e}"),
+                StatusCode::UNPROCESSABLE_ENTITY,
+                format!("transaction evaluation failed: {e}"),
+            )
+        })?;
+        state.sequencer_key.is_some() || (state.regtest && rtx.get_sequencer_pubkey().is_none())
+    };
+
+    if acts_as_sequencer {
+        let (txid, header, _) = sequence_and_commit_tx(
+            &state.storage,
+            &state.event_tx,
+            &tx,
+            state.sequencer_key.as_deref(),
+        )
+        .map_err(|e| {
+            (
+                StatusCode::UNPROCESSABLE_ENTITY,
+                format!("commit failed: {e}"),
             )
         })?;
 
-        let mirrors = match &tx {
-            UcoTransaction::Mint(m) => Some((m.mrv_data_root, m.mrv_blob_mirrors.clone())),
-            _ => None,
-        };
+        let txid_hex = hex::encode(txid);
 
-        let new_size = current_size + 1;
-        let dummy_header = CheckpointHeaderV2 {
-            version: 2,
-            chain_id: rtx.chain_id(),
-            tree_size: new_size,
-            timestamp_ns: 1_700_000_000,
-            events_root: hash_log_leaf(&ev_raw),
-            uco_state_root: [0; 32],
-            poo_archive_root: [0; 32],
-            active_validators_hash: [0; 32],
-        };
-
-        let note = format!(
-            "greymisnomer/v2\n{}\n{}\n{}\n",
-            new_size,
-            hex::encode(dummy_header.events_root),
-            hex::encode(dummy_header.to_canonical_bytes())
-        );
-
-        let bt = BatchTransition {
-            delta,
-            event_leaf_index: current_size,
-            event_raw_bytes: ev_raw.clone(),
-            mrv_mirrors: mirrors,
-        };
-
-        state
-            .storage
-            .commit_batch(&[bt], Some((&dummy_header, note.as_bytes())), None)
-            .map_err(internal_error)?;
-
-        // Broadcast to WebSocket subscribers
-        let broadcast_msg = serde_json::json!({
-            "event": "tx_committed",
-            "txid": txid_hex,
-            "tree_size": new_size.to_string(),
-        })
-        .to_string();
-        let _ = state.event_tx.send(broadcast_msg);
+        if let Some(ref mesh) = state.p2p_mesh {
+            mesh.mempool().lock().await.remove_tx(&txid);
+            let _ = mesh
+                .broadcast_checkpoint_announcement(
+                    header.chain_id,
+                    header.tree_size,
+                    header.events_root,
+                )
+                .await;
+        }
 
         Ok(Json(TxSubmitResponse {
             status: "committed".to_string(),
             txid: txid_hex,
-            tree_size: Some(new_size.to_string()),
+            tree_size: Some(header.tree_size.to_string()),
         }))
     } else {
-        // Production mode: validated and pending sequencer collection
+        let now = std::time::SystemTime::now()
+            .duration_since(std::time::UNIX_EPOCH)
+            .unwrap_or_default()
+            .as_secs();
+
+        let txid = if let Some(ref mesh) = state.p2p_mesh {
+            let id = mesh
+                .mempool()
+                .lock()
+                .await
+                .submit_tx(tx.clone(), "local-rpc", 0, now, &state.storage)
+                .map_err(|e| {
+                    (
+                        StatusCode::UNPROCESSABLE_ENTITY,
+                        format!("mempool rejected: {e}"),
+                    )
+                })?;
+            let _ = mesh.broadcast_tx(&tx).await;
+            id
+        } else {
+            let rtx = state.storage.read_tx().map_err(internal_error)?;
+            apply_uco(&rtx, &tx)
+                .map_err(|e| {
+                    (
+                        StatusCode::UNPROCESSABLE_ENTITY,
+                        format!("validation failed: {e}"),
+                    )
+                })?
+                .txid
+        };
+
         Ok(Json(TxSubmitResponse {
             status: "validated_pending".to_string(),
-            txid: txid_hex,
+            txid: hex::encode(txid),
             tree_size: None,
         }))
     }
@@ -554,6 +641,7 @@ mod tests {
             cookie_token: Some("secret123".to_string()),
             rpc_port: 9482,
             p2p_mesh: None,
+            sequencer_key: None,
         };
 
         let app = build_router(state);
@@ -665,6 +753,31 @@ mod tests {
         let peers_json: NetworkPeersResponse = serde_json::from_slice(&peers_body).unwrap();
         assert_eq!(peers_json.node_id, "standalone");
         assert_eq!(peers_json.peer_count, 0);
+
+        // 8. Query active UCO list via GET /v1/ucos
+        let ucos_req = Request::builder()
+            .uri("/v1/ucos")
+            .header("Authorization", "Bearer secret123")
+            .body(Body::empty())
+            .unwrap();
+        let ucos_resp = app.clone().oneshot(ucos_req).await.unwrap();
+        assert_eq!(ucos_resp.status(), StatusCode::OK);
+        let ucos_body = ucos_resp.into_body().collect().await.unwrap().to_bytes();
+        let ucos_list: Vec<UcoSummaryItem> = serde_json::from_slice(&ucos_body).unwrap();
+        assert_eq!(ucos_list.len(), 1);
+        assert_eq!(ucos_list[0].micro_units, "10000000");
+
+        // 9. Query mempool status via GET /v1/mempool
+        let mp_req = Request::builder()
+            .uri("/v1/mempool")
+            .header("Authorization", "Bearer secret123")
+            .body(Body::empty())
+            .unwrap();
+        let mp_resp = app.clone().oneshot(mp_req).await.unwrap();
+        assert_eq!(mp_resp.status(), StatusCode::OK);
+        let mp_body = mp_resp.into_body().collect().await.unwrap().to_bytes();
+        let mp_json: MempoolStatusResponse = serde_json::from_slice(&mp_body).unwrap();
+        assert_eq!(mp_json.count, 0);
 
         // Clean up
         let _ = fs::remove_dir_all(db_path.parent().unwrap());

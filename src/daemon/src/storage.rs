@@ -4,11 +4,12 @@
 //! and indexing live UCOs, serial cursors, events, checkpoints, and proofs
 //! with sub-millisecond O(1) lookups and crash-safe atomic commits.
 
-use grey_misnomer_core::auth::PubKey;
+use grey_misnomer_core::auth::{PubKey, Signature};
 use grey_misnomer_core::header::CheckpointHeaderV2;
 use grey_misnomer_core::uco::{OutPoint, ProofOfOffsetCommitment, UnretiredCreditOutput};
 use grey_misnomer_core::uco_engine::{UcoStoreRead, UcoTransitionDelta};
 use redb::{Database, ReadableTable, TableDefinition};
+use std::collections::{BTreeMap, BTreeSet};
 use std::path::Path;
 use std::sync::Arc;
 use thiserror::Error;
@@ -82,6 +83,8 @@ pub const TABLE_USED_DATA_ROOTS: TableDefinition<&[u8], u8> =
 pub const TABLE_VVBS: TableDefinition<&[u8], &str> = TableDefinition::new("vvbs");
 pub const TABLE_BUFFER_POOL: TableDefinition<&str, u64> = TableDefinition::new("buffer_pool");
 pub const TABLE_MRV_MIRRORS: TableDefinition<&[u8], &str> = TableDefinition::new("mrv_mirrors");
+pub const TABLE_SEQUENCER_SIGS: TableDefinition<u64, &[u8]> =
+    TableDefinition::new("sequencer_sigs");
 pub const TABLE_META: TableDefinition<&str, &[u8]> = TableDefinition::new("meta");
 
 // ---------------------------------------------------------------------------
@@ -116,6 +119,7 @@ impl ChainStorage {
             let _ = write_txn.open_table(TABLE_VVBS)?;
             let _ = write_txn.open_table(TABLE_BUFFER_POOL)?;
             let _ = write_txn.open_table(TABLE_MRV_MIRRORS)?;
+            let _ = write_txn.open_table(TABLE_SEQUENCER_SIGS)?;
             let _ = write_txn.open_table(TABLE_META)?;
         }
         write_txn.commit()?;
@@ -194,6 +198,17 @@ impl ChainStorage {
         Ok(())
     }
 
+    /// Persists the trusted genesis sequencer public key into chain metadata.
+    pub fn set_sequencer_pubkey(&self, pubkey: &PubKey) -> Result<(), StorageError> {
+        let write_txn = self.db.begin_write()?;
+        {
+            let mut meta = write_txn.open_table(TABLE_META)?;
+            meta.insert("sequencer_pubkey", &pubkey.as_bytes()[..])?;
+        }
+        write_txn.commit()?;
+        Ok(())
+    }
+
     /// Begins a read transaction implementing `UcoStoreRead`.
     pub fn read_tx(&self) -> Result<StorageReadTx, StorageError> {
         let read_txn = self.db.begin_read()?;
@@ -227,12 +242,23 @@ impl ChainStorage {
         })
     }
 
-    /// Commits a batch of transitions, new event logs, and an optional checkpoint/proof in a single atomic ACID transaction.
+    /// Commits a batch of transitions, new event logs, and an optional checkpoint/proof/signature in a single atomic ACID transaction.
     pub fn commit_batch(
         &self,
         transitions: &[BatchTransition],
         new_checkpoint: Option<(&CheckpointHeaderV2, &[u8])>,
         ots_proof: Option<&[u8]>,
+    ) -> Result<(), StorageError> {
+        self.commit_batch_with_sig(transitions, new_checkpoint, ots_proof, None)
+    }
+
+    /// Commits a batch with an optional detached Ed25519 sequencer signature over the checkpoint header.
+    pub fn commit_batch_with_sig(
+        &self,
+        transitions: &[BatchTransition],
+        new_checkpoint: Option<(&CheckpointHeaderV2, &[u8])>,
+        ots_proof: Option<&[u8]>,
+        sequencer_sig: Option<&Signature>,
     ) -> Result<(), StorageError> {
         let write_txn = self.db.begin_write()?;
         {
@@ -244,6 +270,7 @@ impl ChainStorage {
             let mut poo_table = write_txn.open_table(TABLE_POO_ARCHIVE)?;
             let mut used_roots = write_txn.open_table(TABLE_USED_DATA_ROOTS)?;
             let mut mirrors_table = write_txn.open_table(TABLE_MRV_MIRRORS)?;
+            let mut sigs_table = write_txn.open_table(TABLE_SEQUENCER_SIGS)?;
 
             // 1. Get current poo counter and tree_size
             let (mut poo_count, mut latest_tree_size) = {
@@ -330,9 +357,14 @@ impl ChainStorage {
                 }
             }
 
-            // 4. Record new checkpoint if present
+            // 4. Record new checkpoint and optional sequencer signature if present
             if let Some((header, note_bytes)) = new_checkpoint {
                 chk_table.insert(header.tree_size, note_bytes)?;
+                if let Some(sig) = sequencer_sig {
+                    sigs_table.insert(header.tree_size, &sig.as_bytes()[..])?;
+                }
+            } else if let Some(sig) = sequencer_sig {
+                sigs_table.insert(latest_tree_size, &sig.as_bytes()[..])?;
             }
 
             // 5. Record OTS proof if present
@@ -489,6 +521,124 @@ impl StorageReadTx {
             Ok(Some(list))
         } else {
             Ok(None)
+        }
+    }
+
+    pub fn get_sequencer_pubkey(&self) -> Option<PubKey> {
+        let meta = self.read_txn.open_table(TABLE_META).ok()?;
+        let guard = meta.get("sequencer_pubkey").ok()??;
+        let bytes = guard.value();
+        if bytes.len() == 32 {
+            let mut arr = [0u8; 32];
+            arr.copy_from_slice(bytes);
+            Some(PubKey::from_bytes(arr))
+        } else {
+            None
+        }
+    }
+
+    pub fn get_sequencer_sig(&self, tree_size: u64) -> Result<Option<Signature>, StorageError> {
+        let table = self.read_txn.open_table(TABLE_SEQUENCER_SIGS)?;
+        if let Some(guard) = table.get(tree_size)? {
+            let bytes = guard.value();
+            if bytes.len() == 64 {
+                let mut arr = [0u8; 64];
+                arr.copy_from_slice(bytes);
+                return Ok(Some(Signature::from_bytes(arr)));
+            }
+        }
+        Ok(None)
+    }
+
+    pub fn list_vvbs(&self) -> Result<Vec<(PubKey, String)>, StorageError> {
+        let table = self.read_txn.open_table(TABLE_VVBS)?;
+        let mut out = Vec::new();
+        for item in table.iter()? {
+            let (k, v) = item?;
+            let kb = k.value();
+            if kb.len() == 32 {
+                let mut arr = [0u8; 32];
+                arr.copy_from_slice(kb);
+                out.push((PubKey::from_bytes(arr), v.value().to_string()));
+            }
+        }
+        Ok(out)
+    }
+}
+
+/// Ephemeral in-memory overlay tracking intra-batch UCO/cursor/root mutations
+/// prior to atomic `redb` commit. Shared across tile sync and P2P batch verification.
+pub struct BatchOverlayStore<'a> {
+    pub base: &'a StorageReadTx,
+    pub delta_ucos: BTreeMap<OutPoint, Option<UnretiredCreditOutput>>,
+    pub delta_cursors: BTreeMap<(String, u16), u64>,
+    pub used_roots: BTreeSet<[u8; 32]>,
+}
+
+impl<'a> BatchOverlayStore<'a> {
+    pub fn new(base: &'a StorageReadTx) -> Self {
+        Self {
+            base,
+            delta_ucos: BTreeMap::new(),
+            delta_cursors: BTreeMap::new(),
+            used_roots: BTreeSet::new(),
+        }
+    }
+
+    pub fn record_delta(&mut self, d: &UcoTransitionDelta) {
+        for spent in &d.spent_outpoints {
+            self.delta_ucos.insert(*spent, None);
+        }
+        for created in &d.created_ucos {
+            self.delta_ucos
+                .insert(created.outpoint, Some(created.clone()));
+        }
+        for ((proj, vin), cursor) in &d.updated_cursors {
+            self.delta_cursors.insert((proj.clone(), *vin), *cursor);
+        }
+        for root in &d.used_data_roots {
+            self.used_roots.insert(*root);
+        }
+    }
+}
+
+impl<'a> UcoStoreRead for BatchOverlayStore<'a> {
+    fn chain_id(&self) -> [u8; 32] {
+        self.base.chain_id()
+    }
+
+    fn current_epoch(&self) -> u64 {
+        self.base.current_epoch()
+    }
+
+    fn get_uco(&self, outpoint: &OutPoint) -> Option<UnretiredCreditOutput> {
+        if let Some(opt) = self.delta_ucos.get(outpoint) {
+            opt.clone()
+        } else {
+            self.base.get_uco(outpoint)
+        }
+    }
+
+    fn get_serial_cursor(&self, project_id: &str, vintage_year: u16) -> u64 {
+        if let Some(cursor) = self
+            .delta_cursors
+            .get(&(project_id.to_string(), vintage_year))
+        {
+            *cursor
+        } else {
+            self.base.get_serial_cursor(project_id, vintage_year)
+        }
+    }
+
+    fn is_vvb_active(&self, vvb: &PubKey) -> bool {
+        self.base.is_vvb_active(vvb)
+    }
+
+    fn is_mrv_root_used(&self, root: &[u8; 32]) -> bool {
+        if self.used_roots.contains(root) {
+            true
+        } else {
+            self.base.is_mrv_root_used(root)
         }
     }
 }
