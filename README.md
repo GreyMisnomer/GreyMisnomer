@@ -58,14 +58,16 @@ docker run -p 8080:8080 ghcr.io/greymisnomer/node:latest
 # Open http://localhost:8080/app.html
 ```
 
-### Option 5: Sovereign Daemon (`greymisnomerd`) & Tauri Desktop App (Stage 4)
+### Option 5: Sovereign Daemon (`greymisnomerd`) & Tauri Desktop App (Stage 4.6)
 ```bash
-# Launch the sovereign daemon on unclaimed port 9482 with redb ACID chainstate
-cargo run -p greymisnomerd -- --rpc-port 9482 --p2p-port 9483
+# Bootstrap a fresh sovereign genesis + keys and launch the daemon on RPC 9482 / P2P 9483
+cargo run -p greymisnomerd -- --init-genesis --data-dir ./alice_data
+cargo run -p greymisnomerd -- --data-dir ./alice_data --genesis ./alice_data/genesis_v2.json --sequencer-keys ./alice_data/genesis_keys.json --enable-relay --no-rpc-auth
 
 # Launch the desktop workbench sidecar
 cargo run -p grey-misnomer-desktop
 ```
+> See **[docs/P2P_ALICE_BOB_GUIDE.md](docs/P2P_ALICE_BOB_GUIDE.md)** for the full step-by-step **Alice (Genesis Host) ↔ Bob (Peer) Two-PC Live P2P Guide** (same PC, same LAN, or open Internet / Tailscale / VPS relay).
 
 ---
 
@@ -291,7 +293,7 @@ All protocol behavior is specified through RFCs before implementation:
 | [RFC-005](docs/rfc/rfc-005.md) | Cryptographic Identity & Signed Events Specification | ✅ Implemented (Stage 1.5) |
 | [RFC-006](docs/rfc/rfc-006.md) | Sovereign Distributed Ledger & Multi-Mirror Publishing | ✅ Implemented (Stage 2–3) |
 | [RFC-007](docs/rfc/rfc-007.md) | **v1.3 Hardening, Hybrid UCO, RFC 9162 Tiles, C2SP Witnesses, redb Daemon & Tauri Desktop** | ✅ Implemented (Stage 4) |
-| [RFC-008](docs/rfc/rfc-008.md) | **P2P Wire Protocol (Port 9483), Coinless Anti-Spam & Multi-Mirror MRV Pinning** | ✅ Implemented (Stage 4.5) |
+| [RFC-008](docs/rfc/rfc-008.md) | **P2P Wire Protocol (Port 9483), Framed Genesis Sync, Coinless Anti-Spam & Multi-Mirror MRV Pinning** | ✅ Implemented (Stage 4.5 + 4.6) |
 | [RFC-GM-002](docs/SOVEREIGN_PROTOCOL_EVOLUTION.md) | **v2.0 Sovereign Protocol Blueprint (`greymisnomerd`, Ports `9482`/`9483`)** | 📋 Blueprint (Stages 3.5–6) |
 
 > New features require an accepted RFC before code is written. See the [RFC template](docs/rfc/rfc-template.md) to propose a new specification (`RFC-008+`).
@@ -307,6 +309,7 @@ All protocol behavior is specified through RFCs before implementation:
 | **Whitepaper** | [Design Document v2](architecture/design_document_v2.pdf) |
 | **Q&A Document** | [Questions & Answers](architecture/qna_document_v1.pdf) |
 | **Architecture Diagrams** | [architecture/diagrams/](architecture/diagrams/) |
+| **Two-Node Live P2P Guide (Alice ↔ Bob)** | [docs/P2P_ALICE_BOB_GUIDE.md](docs/P2P_ALICE_BOB_GUIDE.md) |
 | **Development Setup** | [docs/DEVELOPMENT_SETUP.md](docs/DEVELOPMENT_SETUP.md) |
 | **Discord** | [discord.gg/CZXXPJUNM](https://discord.gg/CZXXPJUNM) |
 | **Reddit** | [r/GreyMisnomer](https://reddit.com/r/GreyMisnomer) |
